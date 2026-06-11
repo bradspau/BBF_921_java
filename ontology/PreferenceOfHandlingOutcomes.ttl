@@ -1,0 +1,204 @@
+# Preference Of Handling Outcomes v3.6.0
+
+@prefix pre:  <http://tio.models.tmforum.org/tio/v3.6.0/PreferenceOfHandlingOutcomes/> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+@prefix dct:  <http://purl.org/dc/terms/> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix t:    <http://www.w3.org/2006/time#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+<http://tio.models.tmforum.org/tio/v3.6.0/PreferenceOfHandlingOutcomes/>
+  rdf:type imo:IntentExtensionModel ;
+  rdfs:label "Preference Of Intent Handling Outcomes Model"@en ;
+  rdfs:Comment "This intent extension model allows an intent handler ask intent owners for their preference regarding solution alternatives by presenting alternative outcomes."@en ;
+  dct:title "Preference Of Intent Handling Outcomes Model"@en ;
+  dct:description "This intent extension model allows an intent handler ask intent owners for their preference regarding solution alternatives by presenting alternative outcomes."@en ;
+  dct:subject "intent outcome preference"@en ,
+              "intent expression"@en ;
+  dct:identifier <http://tio.models.tmforum.org/tio/v3.6.0/PreferenceOfHandlingOutcomes/> ;
+  # dct:isPartOf <http://tio.models.tmforum.org/tio/v3.6.0/TMForumIntentOntology> ;
+  dct:replaces <http://tio.models.tmforum.org/tio/v3.5.0/PreferenceOfHandlingOutcomes/> ;
+  dct:contributor <mailto:joerg.niemoeller@ericsson.com> ;
+  dct:created "2024-10-16"^^xsd:date ;
+  dct:creator <mailto:joerg.niemoeller@ericsson.com> ;
+  dct:license <http://www.apache.org/licenses/LICENSE-2.0> ;
+  dct:license <https://github.com/tmforum-apis/Intent_Repository> ;
+  dct:modified "2024-10-16"^^xsd:date ;
+  dct:rights "Copyright © 2024 TM Forum"@en ;
+  dct:rightHolder "TM Forum" ;
+  dct:publisher "TM Forum" ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/how-to-guide/ig1253-intent-in-autonomous-networks-v1-3-0/> ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/introductory-guide/tr291g-preference-of-intent-handling-outcomes-intent-extension-model-v3-6-0/> ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/standard/ig1358-intent-based-operation-user-guide-v1-0-0/> ;
+  skos:changeNote "2024-10-16 - initial draft of turtle file"@en 
+.
+
+pre:about
+  rdfs:label "About Property"@en ;
+  rdfs:comment "The property pre:about is a reference to the judgement request instance stated in the intent reports that are part of the judgement request."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain pre:Preference ;
+  rdfs:range pre:JudgementRequest
+.
+
+pre:aboutOption
+  rdfs:label "About Option Property"@en ;
+  rdfs:comment "The property pre:aboutOption refers to the intent report, for which this preference score object states the score."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain pre:PreferenceScore ;
+  rdfs:range icm:IntentReport
+.
+
+pre:JudgementRequest
+  rdfs:label "Judgement Request Class"@en ;
+  rdfs:comment "The class pre:JudgementRequest represents a request from the intent handler to an intent owner to provide its preference regarding the expected results of available solution options on the intent requirements. It is a subclass of rdfs:Container with members that refer to intent reports requesting the expected outcomes for available options."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf  rdfs:Container
+.
+
+pre:judgementRequest
+  rdfs:label "Judgement Request Property"@en ;
+  rdfs:comment "The property pre:judgementRequest associates a judgement request of class pre:JudgementRequest with an intent report."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain icm:IntentReport ;
+  rdfs:range pre:JudgementRequest
+.
+
+pre:maxScore
+  rdfs:label "Max Score Property"@en ;
+  rdfs:comment "The property pre:maxScore states the maximum value or full score used in providing preference scores. If not provided, the highest sore used within the preferences of this intent owner within this judgement request is considered to be the maximum score."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain pre:ScoreInterpretation
+.
+
+pre:minScore
+  rdfs:label "Min Score Property"@en ;
+  rdfs:comment "The property pre:minScore states the minimum score value used in providing preference scores. If not provided, a minimum score of 0 is assumed by default."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain pre:ScoreInterpretation
+.
+
+pre:neutral
+  rdfs:label "Neutral Property"@en ;
+  rdfs:comment "The property pre:neutral refers to an intent report the intent owner does not mind, but also does not express an explicit preference for. This is the assumed default for options without a dedicated preference statement. It is also assumed if the intent owner does not provide a preference statement before the preference deadline."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain pre:Preference ;
+  rdfs:range icm:IntentReport
+.
+
+pre:objected
+  rdfs:label "Objected Property"@en ;
+  rdfs:comment "The property pre:objected refers to an intent report the intent owner considers problematic from its perspective. The respective solution should not be chosen by the intent handler."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain pre:Preference ;
+  rdfs:range icm:IntentReport
+.
+
+pre:objectedThreshold
+  rdfs:label "Objected Threshold Property"@en ;
+  rdfs:comment "The property pre:objectedThreshold defines the maximum score for objected options. An option with lower than this score should be avoided."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain pre:ScoreInterpretation
+.
+
+pre:Preference
+  rdfs:label "Preference Class"@en ;
+  rdfs:comment "The class pre:Preference represents preferences of an intent owner with respect to the options presented in a judgement request."@en ;
+  rdf:type rdfs:Class
+.
+
+pre:preference
+  rdfs:label "Preference Property"@en ;
+  rdfs:comment "The property pre:preference associates a preference provided by an intent owner to an intent."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain icm:Intent ;
+  rdfs:range pre:Preference
+.
+
+pre:preferenceDeadline
+  rdfs:label "Preference Deadline Property"@en ;
+  rdfs:comment "The property pre:preferenceDeadline states the point in time until the preference needs to be provided. The intent handler waits for a preference statement provided by the intent owner until this point in time. If until then none or incomplete preference statements are received, the intent handler will proceed and select a solution with the information available."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain pre:JudgementRequest ;
+  rdfs:range t:Instant
+.
+
+pre:PreferenceScore
+  rdfs:label "Preference Score Property"@en ;
+  rdfs:comment "An instance of class pre:PreferenceScore is added to the preference object within the intent by the intent owner to present its preferences regarding an option and quantify its preference with a numerical score."@en ;
+  rdf:type rdfs:Class
+.
+
+pre:preferred
+  rdfs:label "Preferred Property"@en ;
+  rdfs:comment "The property pre:preferred refers to an intent report the intent owner considers preferential. It is referring to an intent report presented by the judgement request."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain pre:Preference ;
+  rdfs:range icm:IntentReport
+.
+
+pre:preferredThreshold
+  rdfs:label "Preferred Threshold Property"@en ;
+  rdfs:comment "The property pre:preferredThreshold defines the minimum score value for preferred options. An option with at least this score is considered to be preferred."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain pre:ScoreInterpretation
+.
+
+pre:score
+  rdfs:label "Score Property"@en ;
+  rdfs:comment "The property pre:score associates a preference score to a preference."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain pre:Preference ;
+  rdfs:range pre:PreferenceScore
+.
+
+pre:ScoreInterpretation
+  rdfs:label "Score Interpretation Class"@en ;
+  rdfs:comment "An instance of class pre:ScoreInterpretation is added to the preference object within the intent by the intent owner to provide further information about the interpretation of scores used when specifying preferences."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf  rdfs:Container
+.
+
+pre:scoreInterpretation
+  rdfs:label "Score Interpretation Property"@en ;
+  rdfs:comment "A score interpretation is associated with a preference using the property pre:scoreInterpretation."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain pre:Preference ;
+  rdfs:range pre:ScoreInterpretation
+.
+
+pre:scoreValue
+  rdfs:label "Score Value Property"@en ;
+  rdfs:comment "The property pre:scoreValue assigns a numerical value to the preference score object. This is the numerical score associated with an option."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain pre:PreferenceScore
+.
+
+pre:Vocabulary
+  rdfs:label "Preference Of Handling Outcomes Vocabulary"@en ;
+  rdfs:comment "The object pre:Vocabulary is a container of all model elements."@en ;
+  rdf:type rdfs:Container ;
+  rdfs:member pre:about ,
+              pre:aboutOption ,
+              pre:JudgementRequest ,
+              pre:judgementRequest ,
+              pre:maxScore ,
+              pre:minScore ,
+              pre:neutral ,
+              pre:objected ,
+              pre:objectedThreshold ,
+              pre:Preference ,
+              pre:preference ,
+              pre:preferenceDeadline ,
+              pre:PreferenceScore ,
+              pre:preferred ,
+              pre:preferredThreshold ,
+              pre:score ,
+              pre:ScoreInterpretation ,
+              pre:scoreInterpretation ,
+              pre:scoreValue 
+.
+

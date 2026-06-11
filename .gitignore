@@ -1,0 +1,16 @@
+target/
+*.class
+*.jar
+*.war
+*.ear
+.idea/
+*.iml
+.vscode/
+.DS_Store
+*.swp
+tdb2-data/
+tdb2-access/
+tdb2-aggregation/
+logs/
+*.log
+application-local.yml

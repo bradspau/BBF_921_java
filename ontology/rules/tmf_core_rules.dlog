@@ -1,0 +1,17 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+@prefix fun:  <http://tio.models.tmforum.org/tio/v3.6.0/FunctionOntology/> .
+@prefix ig:   <http://tio.models.tmforum.org/tio/v3.6.0/IntentGuaranteeOntology/> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+@prefix ut:   <http://tio.models.tmforum.org/tio/v3.6.0/Utility/> .
+@prefix pro:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentProbing/> .
+
+[?Exp, icm:result, true] :- [?Exp, rdf:type, icm:DeliveryExpectation], [?Exp, icm:target, ?Target], [?Exp, icm:deliveryType, ?Class], [?Target, rdfs:member, ?Member], [?Member, rdf:type, ?Class] .
+[?Exp, icm:result, true] :- [?Exp, rdf:type, icm:DeliveryExpectation], [?Exp, icm:target, ?Target], [?Exp, icm:deliveryType, ?Class], [?Target, rdfs:member, ?Member], [?Member, rdf:type, ?Class] .
+[?E, icm:result, true] :- [?E, rdf:type, icm:Expectation], [?E, icm:target, ?T], [?T, rdfs:member, ?M], [?E, icm:deliveryType, ?C], [?M, rdf:type, ?C] .
+[?E, icm:result, true] :- [?E, rdf:type, icm:Expectation], [?E, icm:target, ?T], [?T, rdfs:member, ?M], [?E, icmdeliveryType, ?C], [?M, rdf:type, ?C] .
+[?E, icm:result, true] :- [?E, rdf:type, icm:Expectation], [?E, icm:target, ?T], [?T, rdfs:member, ?M], [?M, rdf:type, ?C], [?E, icm:deliveryType, ?C] .
+[?E, icm:result, true] :- [?E, rdf:type, icm:Expectation], [?E, icm:target, ?T], [?T, rdfs:member, ?M], [?M, rdf:type, ?C], [?E, icmdeliveryType, ?C] .

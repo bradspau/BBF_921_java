@@ -1,0 +1,171 @@
+# tmf_imo_eval.rules
+# IntentManagementOntology evaluation rules for Apache Jena GenericRuleReasoner.
+# Translated from: ontology/rules/tmf_imo_eval.dlog
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+
+# ── Event type hierarchy ──────────────────────────────────────────────────────
+
+[imoHandlingIsEvent:
+    (?E rdf:type imo:imoIntentHandlingEvent)
+    ->
+    (?E rdf:type imo:imoEvent)
+]
+
+[imoCompliesIsHandling:
+    (?E rdf:type imo:imoComplies)
+    ->
+    (?E rdf:type imo:imoIntentHandlingEvent)
+]
+
+[imoDegradeIsHandling:
+    (?E rdf:type imo:imoDegrades)
+    ->
+    (?E rdf:type imo:imoIntentHandlingEvent)
+]
+
+[imoReceivedIsHandling:
+    (?E rdf:type imo:imoIntentReceived)
+    ->
+    (?E rdf:type imo:imoIntentHandlingEvent)
+]
+
+[imoAcceptedIsHandling:
+    (?E rdf:type imo:imoIntentAccepted)
+    ->
+    (?E rdf:type imo:imoIntentHandlingEvent)
+]
+
+[imoRejectedIsHandling:
+    (?E rdf:type imo:imoIntentRejected)
+    ->
+    (?E rdf:type imo:imoIntentHandlingEvent)
+]
+
+[imoRemovalIsHandling:
+    (?E rdf:type imo:imoIntentRemoval)
+    ->
+    (?E rdf:type imo:imoIntentHandlingEvent)
+]
+
+[imoUpdateReceivedIsHandling:
+    (?E rdf:type imo:imoUpdateReceived)
+    ->
+    (?E rdf:type imo:imoIntentHandlingEvent)
+]
+
+[imoUpdateAcceptedIsHandling:
+    (?E rdf:type imo:imoUpdateAccepted)
+    ->
+    (?E rdf:type imo:imoIntentHandlingEvent)
+]
+
+[imoUpdateRejectedIsHandling:
+    (?E rdf:type imo:imoUpdateRejected)
+    ->
+    (?E rdf:type imo:imoIntentHandlingEvent)
+]
+
+[imoUpdateFinishedIsHandling:
+    (?E rdf:type imo:imoUpdateFinished)
+    ->
+    (?E rdf:type imo:imoIntentHandlingEvent)
+]
+
+[imoHandlingEndedIsHandling:
+    (?E rdf:type imo:imoHandlingEnded)
+    ->
+    (?E rdf:type imo:imoIntentHandlingEvent)
+]
+
+# ── Handling state derivation from events ─────────────────────────────────────
+
+[imoStateIntentReceived:
+    (?E rdf:type imo:imoIntentReceived)
+    (?E imo:imoeventIssuedFor ?I)
+    ->
+    (?I imo:imohandlingState imo:imoStateIntentReceived)
+]
+
+[imoStateCompliant:
+    (?E rdf:type imo:imoComplies)
+    (?E imo:imoeventIssuedFor ?I)
+    ->
+    (?I imo:imohandlingState imo:imoStateCompliant)
+]
+
+[imoStateDegraded:
+    (?E rdf:type imo:imoDegrades)
+    (?E imo:imoeventIssuedFor ?I)
+    ->
+    (?I imo:imohandlingState imo:imoStateDegraded)
+]
+
+# ── Update state derivation from events ───────────────────────────────────────
+
+[imoUpdateStateReceived:
+    (?E rdf:type imo:imoUpdateReceived)
+    (?E imo:imoeventIssuedFor ?I)
+    ->
+    (?I imo:imoupdateState imo:imoStateUpdateReceived)
+]
+
+[imoUpdateStateUpdating:
+    (?E rdf:type imo:imoUpdateAccepted)
+    (?E imo:imoeventIssuedFor ?I)
+    ->
+    (?I imo:imoupdateState imo:imoStateUpdating)
+]
+
+[imoUpdateStateNoUpdate:
+    (?E rdf:type imo:imoUpdateFinished)
+    (?E imo:imoeventIssuedFor ?I)
+    ->
+    (?I imo:imoupdateState imo:imoStateNoUpdate)
+]
+
+# ── IntentReport type from state properties ───────────────────────────────────
+
+[imoReportFromHandlingState:
+    (?R icm:icmintentHandlingState ?S)
+    ->
+    (?R rdf:type icm:icmIntentReport)
+]
+
+[imoReportFromUpdateState:
+    (?R icm:icmintentUpdateState ?S)
+    ->
+    (?R rdf:type icm:icmIntentReport)
+]
+
+# ── State lookup aliases ───────────────────────────────────────────────────────
+
+[imoHandlingStateOf:
+    (?I imo:imohandlingState ?S)
+    ->
+    (?I imo:imohandlingStateOf ?S)
+]
+
+[imoUpdateStateOf:
+    (?I imo:imoupdateState ?S)
+    ->
+    (?I imo:imoupdateStateOf ?S)
+]
+
+# ── Role propagation ──────────────────────────────────────────────────────────
+
+[imoManagerFromEvent:
+    (?E imo:imoeventIssuedBy ?M)
+    ->
+    (?M rdf:type imo:imoIntentManager)
+]
+
+[imoManagerFromHandler:
+    (?X imo:imohandler ?M)
+    ->
+    (?M rdf:type imo:imoIntentManager)
+]

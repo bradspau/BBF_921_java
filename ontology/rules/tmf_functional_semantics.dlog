@@ -1,0 +1,13 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+@prefix met:  <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix insp: <http://tio.models.tmforum.org/tio/v3.6.0/IntentSpecification/> .
+
+[?R, rdf:type, rdfs:Container] :- [?R, rdf:type, rdfs:Container] .
+[?R, rdf:type, rdfs:Container] :- [?X, rdf:type, rdfs:Container], [?X, rdfs:member, ?R] .
+[?Q, rdf:type, quan:quanQuantity] :- [?Q, rdf:type, quan:quanQuantity] .
+[?O, rdf:type, met:metObservation] :- [?O, rdf:type, met:metObservation] .
+[?X, rdf:type, insp:inspObjectTemplate] :- [?X, rdf:type, insp:inspObjectTemplate] .

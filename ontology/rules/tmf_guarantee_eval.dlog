@@ -1,0 +1,44 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+@prefix ig:   <http://tio.models.tmforum.org/tio/v3.6.0/IntentGuaranteeOntology/> .
+
+# ── igGuarantee is an icmContext  ─────────────────────────────────────────────
+[?G, rdf:type, icm:icmContext] :- [?G, rdf:type, ig:igGuarantee] .
+[?G, rdf:type, ig:igGuarantee] :- [?X, ig:ighasGuarantee, ?G] .
+
+# ── State subclass propagation ────────────────────────────────────────────────
+[?S, rdf:type, ig:igState] :- [?S, rdf:type, ig:igGuaranteeStateCompliant] .
+[?S, rdf:type, ig:igState] :- [?S, rdf:type, ig:igGuaranteeStateDegraded] .
+
+# ── Event subclass propagation ────────────────────────────────────────────────
+[?E, rdf:type, imo:imoEvent] :- [?E, rdf:type, ig:igGuaranteeAccepted] .
+[?E, rdf:type, imo:imoEvent] :- [?E, rdf:type, ig:igGuaranteeRejected] .
+[?E, rdf:type, imo:imoEvent] :- [?E, rdf:type, ig:igGuaranteePeriodUpdate] .
+
+# ── Reporting expectation subclass ────────────────────────────────────────────
+[?R, rdf:type, icm:icmReportingExpectation] :- [?R, rdf:type, ig:igGuaranteeReportingExpectation] .
+[?R, rdf:type, icm:icmExpectation] :- [?R, rdf:type, ig:igGuaranteeReportingExpectation] .
+
+# ── Reason subclass propagation ───────────────────────────────────────────────
+[?R, rdf:type, icm:icmReason] :- [?R, rdf:type, ig:igConfidenceLevelNotObtainable] .
+[?R, rdf:type, icm:icmReason] :- [?R, rdf:type, ig:igConfidenceLevelNotReached] .
+[?R, rdf:type, icm:icmReason] :- [?R, rdf:type, ig:igConflictingGuarantees] .
+[?R, rdf:type, icm:icmReason] :- [?R, rdf:type, ig:igGuaranteePeriodNotObtainable] .
+[?R, rdf:type, icm:icmReason] :- [?R, rdf:type, ig:igGuaranteePeriodTooLong] .
+[?R, rdf:type, icm:icmReason] :- [?R, rdf:type, ig:igGuaranteePeriodUpdateIntervalTooLong] .
+
+# ── igGuaranteeReport state binding ───────────────────────────────────────────
+[?R, ig:igstate, ig:igGuaranteeStateCompliant] :-
+    [?R, rdf:type, ig:igGuaranteeReport],
+    [?E, rdf:type, ig:igGuaranteeAccepted],
+    [?E, imo:imoeventIssuedFor, ?Intent],
+    [?R, icm:icmabout, ?Intent] .
+
+[?R, ig:igstate, ig:igGuaranteeStateDegraded] :-
+    [?R, rdf:type, ig:igGuaranteeReport],
+    [?E, rdf:type, ig:igGuaranteeRejected],
+    [?E, imo:imoeventIssuedFor, ?Intent],
+    [?R, icm:icmabout, ?Intent] .

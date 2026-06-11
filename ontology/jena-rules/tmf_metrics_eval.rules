@@ -1,0 +1,65 @@
+# tmf_metrics_eval.rules
+# MetricsAndObservations evaluation rules for Apache Jena GenericRuleReasoner.
+# Translated from: ontology/rules/tmf_metrics_eval.dlog
+#                  ontology/rules/tmf_metrics_rules.dlog (merged; duplicates dropped)
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix met:  <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+
+# ── Observation type from subject property ────────────────────────────────────
+
+[metObservationFromSubject:
+    (?S met:metobserved ?O)
+    ->
+    (?O rdf:type met:metObservation)
+]
+
+# ── Observation property propagation ─────────────────────────────────────────
+
+[metObservedMetricPropagation:
+    (?O rdf:type met:metObservation)
+    (?O met:metobservedMetric ?M)
+    ->
+    (?O met:metobservedMetric ?M)
+]
+
+[metObtainedAtPropagation:
+    (?O rdf:type met:metObservation)
+    (?O met:metobtainedAt ?T)
+    ->
+    (?O met:metobtainedAt ?T)
+]
+
+# ── metobservedValue: bind function result to observation value ───────────────
+
+[metObservedValue:
+    (?F rdf:type met:metobservedValue)
+    (?F rdf:first ?O)
+    (?O rdf:type met:metObservation)
+    (?O rdf:value ?V)
+    ->
+    (?F rdf:value ?V)
+]
+
+# ── metlastObserved: materialise metric link via observation ─────────────────
+
+[metLastObserved:
+    (?F rdf:type met:metlastObserved)
+    (?F rdfs:member ?M)
+    (?O met:metobservedMetric ?M)
+    ->
+    (?O met:metobservedMetric ?M)
+]
+
+# ── metlastValue: bind function result to value of last observation ───────────
+
+[metLastValue:
+    (?F rdf:type met:metlastValue)
+    (?F rdfs:member ?M)
+    (?O met:metobservedMetric ?M)
+    (?O rdf:value ?V)
+    ->
+    (?F rdf:value ?V)
+]

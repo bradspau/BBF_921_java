@@ -1,0 +1,41 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+
+# ── Subclass propagation ──────────────────────────────────────────────────────
+[?E, rdf:type, icm:Expectation] :- [?E, rdf:type, icm:DeliveryExpectation] .
+[?E, rdf:type, icm:Expectation] :- [?E, rdf:type, icm:PropertyExpectation] .
+[?E, rdf:type, icm:Expectation] :- [?E, rdf:type, icm:ReportingExpectation] .
+[?E, rdf:type, icm:Expectation] :- [?E, rdf:type, icm:ObservationReportingExpectation] .
+[?E, rdf:type, icm:IntentElement] :- [?E, rdf:type, icm:Expectation] .
+[?E, rdf:type, icm:IntentElement] :- [?E, rdf:type, icm:Intent] .
+[?E, rdf:type, icm:IntentElement] :- [?E, rdf:type, icm:Context] .
+[?E, rdf:type, icm:IntentElement] :- [?E, rdf:type, icm:Target] .
+[?E, rdf:type, icm:IntentElement] :- [?E, rdf:type, icm:Information] .
+[?T, rdf:type, rdfs:Container] :- [?T, rdf:type, icm:Target] .
+
+# ── DeliveryExpectation fulfilment ────────────────────────────────────────────
+[?E, icm:result, "true"^^xsd:boolean] :-
+    [?E, rdf:type, icm:DeliveryExpectation],
+    [?E, icm:target, ?T],
+    [?T, rdfs:member, ?M],
+    [?E, icm:deliveryType, ?C],
+    [?M, rdf:type, ?C] .
+
+# ── PropertyExpectation result propagation ────────────────────────────────────
+[?E, icm:result, "true"^^xsd:boolean] :-
+    [?E, rdf:type, icm:PropertyExpectation],
+    [?E, rdf:value, "true"^^xsd:boolean] .
+
+# ── Target type assertion ─────────────────────────────────────────────────────
+[?T, rdf:type, icm:Target] :- [?E, icm:target, ?T] .
+
+# ── ContextReport propagation ─────────────────────────────────────────────────
+[?R, rdf:type, icm:ContextReport] :- [?X, icm:contextReport, ?R] .
+[?R, rdf:type, icm:TargetReport]  :- [?X, icm:targetReport, ?R] .
+
+# ── Intent report completeness ────────────────────────────────────────────────
+[?R, rdf:type, icm:IntentReport] :- [?R, icm:reportGenerated, ?T] .
+[?R, rdf:type, icm:IntentReport] :- [?R, icm:reportNumber, ?N] .

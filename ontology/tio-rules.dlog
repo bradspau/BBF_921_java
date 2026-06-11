@@ -1,0 +1,25 @@
+% tio-rules.dlog
+% TIO v3.6.0 Datalog rules for RDFox
+% These implement the TIO function semantics for the Intent Handler layer.
+% The REST API layer does NOT invoke these rules directly.
+% RDFox evaluates these incrementally as intent expression triples are loaded.
+
+PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel#>
+PREFIX imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagmentOntology#>
+PREFIX log:  <http://tio.models.tmforum.org/tio/v3.6.0/ConditionsAndLogicOperators#>
+PREFIX tmf:  <http://tmforum.org/api/v5/>
+
+% ── Subclass propagation ──────────────────────────────────────────────────────
+% ProbeIntent instances are also Intent instances
+[?x, rdf:type, icm:Intent] :- [?x, rdf:type, tmf:ProbeIntent] .
+
+% ── Intent compliance rules ───────────────────────────────────────────────────
+% An intent complies if ALL its expectations comply (allOf semantics)
+% Placeholder — extend with real TIO evaluation logic for Intent Handler
+[?intent, imo:intentHandlingState, imo:Complies] :-
+    [?intent, rdf:type, icm:Intent],
+    FORALL(?exp) (
+        [?intent, icm:hasExpectation, ?exp] IMPLIES [?exp, imo:complies, "true"^^xsd:boolean]
+    ) .

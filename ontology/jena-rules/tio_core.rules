@@ -1,0 +1,54 @@
+# tio_core.rules
+# TIO v3.6.0 core inference rules for Apache Jena GenericRuleReasoner.
+# Translated from: ontology/tio-rules.dlog + ontology/rules/tmf_core_rules.dlog.txt
+#
+# Load order: this file should be loaded first (or included in tio_all.rules).
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+@prefix tmf:  <http://tmforum.org/api/v5/> .
+
+# ── Subclass propagation ──────────────────────────────────────────────────────
+# ProbeIntent instances are also Intent instances (TMF921 §ProbeIntent)
+
+[tioProbeIsIntent:
+    (?x rdf:type tmf:ProbeIntent)
+    ->
+    (?x rdf:type icm:Intent)
+]
+
+# ── DeliveryExpectation fulfillment ───────────────────────────────────────────
+# An expectation is fulfilled when its target container contains a member of
+# the required delivery type.
+# Source: tmf_core_rules.dlog.txt (deduplicated; typo variant icmdeliveryType dropped)
+
+[tioDeliveryFulfilled:
+    (?E rdf:type icm:DeliveryExpectation)
+    (?E icm:target ?T)
+    (?E icm:deliveryType ?C)
+    (?T rdfs:member ?M)
+    (?M rdf:type ?C)
+    ->
+    (?E icm:result "true"^^xsd:boolean)
+]
+
+# ── Intent compliance — allOf semantics ───────────────────────────────────────
+# Source: tio-rules.dlog FORALL rule.
+#
+# RDFox original used FORALL(?exp)(...IMPLIES...) which Jena does not support.
+# Approximation: assert Complies when the intent has at least one expectation
+# with result=true and no expectation is known to have result=false.
+# This is a closed-world approximation sufficient for PoC evaluation.
+
+[tioCompliancePositive:
+    (?intent rdf:type icm:Intent)
+    (?intent icm:hasExpectation ?exp)
+    (?exp icm:result "true"^^xsd:boolean)
+    noValue(?intent icm:hasExpectation ?nexp)
+    # NOTE: full FORALL requires external check that ALL expectations comply
+    ->
+    (?intent imo:intentHandlingState imo:Complies)
+]

@@ -1,0 +1,71 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+
+# ── Type propagation ──────────────────────────────────────────────────────────
+[?Q, rdf:type, quan:quanQuantity] :- [?Q, rdf:type, quan:quanMonetaryQuantity] .
+[?Q, quan:quanunit, ?U] :- [?Q, rdf:type, quan:quanQuantity], [?Q, quan:quanunit, ?U] .
+
+# ── quanatLeast: Exp result true if val >= bound  ─────────────────────────────
+[?F, rdf:value, "true"^^xsd:boolean] :-
+    [?F, rdf:type, quan:quanatLeast],
+    [?F, rdf:first, ?Val],
+    [?F, rdf:rest, ?R], [?R, rdf:first, ?Bound],
+    [?Val, rdf:value, ?V], [?Bound, rdf:value, ?B],
+    FILTER(?V >= ?B) .
+
+# ── quanatMost: Exp result true if val <= bound  ──────────────────────────────
+[?F, rdf:value, "true"^^xsd:boolean] :-
+    [?F, rdf:type, quan:quanatMost],
+    [?F, rdf:first, ?Val],
+    [?F, rdf:rest, ?R], [?R, rdf:first, ?Bound],
+    [?Val, rdf:value, ?V], [?Bound, rdf:value, ?B],
+    FILTER(?V <= ?B) .
+
+# ── quangreater: true if arg1 > arg2  ─────────────────────────────────────────
+[?F, rdf:value, "true"^^xsd:boolean] :-
+    [?F, rdf:type, quan:quangreater],
+    [?F, rdf:first, ?Q1],
+    [?F, rdf:rest, ?R], [?R, rdf:first, ?Q2],
+    [?Q1, rdf:value, ?V1], [?Q2, rdf:value, ?V2],
+    FILTER(?V1 > ?V2) .
+
+# ── quansmaller: true if arg1 < arg2  ─────────────────────────────────────────
+[?F, rdf:value, "true"^^xsd:boolean] :-
+    [?F, rdf:type, quan:quansmaller],
+    [?F, rdf:first, ?Q1],
+    [?F, rdf:rest, ?R], [?R, rdf:first, ?Q2],
+    [?Q1, rdf:value, ?V1], [?Q2, rdf:value, ?V2],
+    FILTER(?V1 < ?V2) .
+
+# ── quanexactly: true if all args equal  ──────────────────────────────────────
+[?F, rdf:value, "true"^^xsd:boolean] :-
+    [?F, rdf:type, quan:quanexactly],
+    [?F, rdf:first, ?Q1],
+    [?F, rdf:rest, ?R], [?R, rdf:first, ?Q2],
+    [?Q1, rdf:value, ?V], [?Q2, rdf:value, ?V] .
+
+# ── quaninRange: true if lower <= val <= upper  ───────────────────────────────
+[?F, rdf:value, "true"^^xsd:boolean] :-
+    [?F, rdf:type, quan:quaninRange],
+    [?F, rdf:first, ?QV],
+    [?F, rdf:rest, ?R1], [?R1, rdf:first, ?QL],
+    [?R1, rdf:rest, ?R2], [?R2, rdf:first, ?QU],
+    [?QV, rdf:value, ?V], [?QL, rdf:value, ?L], [?QU, rdf:value, ?U],
+    FILTER(?V >= ?L && ?V <= ?U) .
+
+# ── quansum / quansumOfSet: propagate member quantities for aggregation ────────
+[?X, rdf:type, quan:quanQuantity] :-
+    [?F, rdf:type, quan:quansum],
+    [?F, rdfs:member, ?X],
+    [?X, rdf:type, quan:quanQuantity] .
+
+[?X, rdf:type, quan:quanQuantity] :-
+    [?F, rdf:type, quan:quansumOfSet],
+    [?F, rdfs:member, ?C],
+    [?C, rdfs:member, ?X],
+    [?X, rdf:type, quan:quanQuantity] .
+
+# ── Subclass propagation ──────────────────────────────────────────────────────
+[?Q, rdf:type, quan:quanQuantity] :- [?Q, rdf:type, quan:quanQuantity] .

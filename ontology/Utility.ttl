@@ -1,0 +1,149 @@
+# Utility Model v3.6.0
+
+@prefix ut:   <http://tio.models.tmforum.org/tio/v3.6.0/Utility/> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+@prefix fun:  <http://tio.models.tmforum.org/tio/v3.6.0/FunctionOntology/> .
+@prefix dct:  <http://purl.org/dc/terms/> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+<http://tio.models.tmforum.org/tio/v3.6.0/Utility/>
+  rdf:type imo:IntentExtensionModel ;
+  rdfs:label "Utility Model"@en ;
+  rdfs:Comment "The utility intent extension model introduces utility information to be added into an intent."@en ;
+  dct:title "Utility Model"@en ;
+  dct:description "The utility intent extension model introduces utility information to be added into an intent."@en ;
+  dct:subject "intent utility"@en ,
+              "intent expression"@en ;
+  dct:identifier <http://tio.models.tmforum.org/tio/v3.6.0/Utility/> ;
+  # dct:isPartOf <http://tio.models.tmforum.org/tio/v3.6.0/TMForumIntentOntology> ;
+  dct:replaces <http://tio.models.tmforum.org/tio/v3.5.0/Utility/> ;
+  dct:contributor <mailto:joerg.niemoeller@ericsson.com> ;
+  dct:created "2024-10-16"^^xsd:date ;
+  dct:creator <mailto:joerg.niemoeller@ericsson.com> ;
+  dct:license <http://www.apache.org/licenses/LICENSE-2.0> ;
+  dct:license <https://github.com/tmforum-apis/Intent_Repository> ;
+  dct:modified "2024-10-16"^^xsd:date ;
+  dct:rights "Copyright © 2024 TM Forum"@en ;
+  dct:rightHolder "TM Forum" ;
+  dct:publisher "TM Forum" ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/how-to-guide/ig1253-intent-in-autonomous-networks-v1-3-0/> ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/introductory-guide/tr291i-utility-intent-extension-model-v3-6-0/> ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/standard/ig1358-intent-based-operation-user-guide-v1-0-0/> ;
+  skos:changeNote "2024-10-16 - initial draft of turtle file"@en 
+.
+
+ut:elevatedMaxUtility
+  rdfs:label "Elevated Max Utility Property"@en ;
+  rdfs:comment "The property ut:elevatedMaxUtility specifies the maximum elevated utility score provided by a utility function. This is the actual maximum utility score used including all implicit prioritization and score elevation."@en ;
+  rdf:type rdf:Property ;
+  rdfs:subPropertyOf icm:information ;
+  rdfs:range ut:UtilityProfile
+.
+
+ut:forMetric
+  rdfs:label "For Metric Property"@en ;
+  rdfs:comment "The property ut:forMetric maps function arguments to metrics. It contains a list representing a value pair. The first entry in this is the B-node used in the argument list provided by ut:withArguments. The second entry is the metric represented by this B-node. This specifies that values of this metric shall be used as argument of the function. This therefore also specifies for which metrics this utility function is supposed to be used."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain ut:UtilityInformation ;
+  rdfs:range rdf:List
+.
+
+ut:function
+  rdfs:label "Function Property"@en ;
+  rdfs:comment "The property ut:function assigns a function to utility information. This function shall be used as utility function to calculate a utility score. A function suitable as utility function provides a result with a numeric datatype, such as xsd:decimal or a quantity without unit."@en ;
+  rdf:type rdf:Property ;
+  rdfs:subPropertyOf icm:information ;
+  rdfs:domain ut:UtilityInformation ;
+  rdfs:range fun:Function
+.
+
+ut:maxUtility
+  rdfs:label "Max Utility Property"@en ;
+  rdfs:comment "The property ut:maxUtility is a property of utility profile information. It defines the upper boundary of the value range of utility scores used. In this range ut:maxUtility is interpreted as the maximum business value."@en ;
+  rdf:type rdf:Property ;
+  rdfs:subPropertyOf icm:information ;
+  rdfs:range ut:UtilityProfile
+.
+
+ut:minUtility
+  rdfs:label "Min Utility Property"@en ;
+  rdfs:comment "The property ut:minUtility is a property of utility profile information. It defines the lower boundary of the value range of utility scores used. In this range ut:minUtility corresponds to the utility score that marks the lowest business value."@en ;
+  rdf:type rdf:Property ;
+  rdfs:subPropertyOf icm:information ;
+  rdfs:range ut:UtilityProfile
+.
+
+ut:utility
+  rdfs:label "Utility Property"@en ;
+  rdfs:comment "The property ut:utility assigns utility information to an element of an intent."@en ;
+  rdf:type rdf:Property ;
+  rdfs:subPropertyOf icm:information ;
+  rdfs:range ut:UtilityInformation
+.
+
+ut:UtilityInformation
+  rdfs:label "Utility Information Class"@en ;
+  rdfs:comment "Utility information is expressed by instances of class ut:UtilityInformation."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf icm:Information
+.
+
+ut:UtilityProfile
+  rdfs:label "Utility Profile Class"@en ;
+  rdfs:comment "Instances of class ut:UtilityProfile contain information that explains the utility information provided."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf icm:Information
+.
+
+ut:utilityProfile
+  rdfs:label "Utility Profile Property"@en ;
+  rdfs:comment "The property ut:utilityProfile allows assigning utility profiles, for example to intent, other elements within an intent, such as expectations and conditions or utility information objects within an intent. It can also add utility profile information to intent manager capability profiles [TR298] or intent specifications [TR299]."@en ;
+  rdf:type rdf:Property ;
+  rdfs:subPropertyOf icm:information ;
+  rdfs:range ut:UtilityProfile
+.
+
+ut:utilityResult
+  rdfs:label "Utility Result Property"@en ;
+  rdfs:comment "The property ut:utilityResult allows assigning calculated utility scores. It is, for example, used in intent reports to state the utility score associated with a metric observation."@en ;
+  rdf:type rdf:Property ;
+  rdfs:range ut:UtilityProfile
+.
+
+ut:withArgument
+  rdfs:label "With Argument Property"@en ;
+  rdfs:comment "Utility information specifies the value assigned to an argument for the function using the property ut:withArgument. Its range contains a list with two entries. The first entry is a named argument of the function. The second entry is the value to be used."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain ut:UtilityInformation ;
+  rdfs:range rdf:List
+.
+
+ut:withArguments
+  rdfs:label "With Arguments Property"@en ;
+  rdfs:comment "Utility information specifies the argument list to be used with the function using the property ut:withArguments. Its range contains a list populated with values and objects that should match the argument specification of the function specified as utility function."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain ut:UtilityInformation ;
+  rdfs:range rdf:List
+.
+
+ut:Vocabulary
+  rdfs:label "Utility Vocabulary"@en ;
+  rdfs:comment "The object ut:Vocabulary is a container of all model elements."@en ;
+  rdf:type rdfs:Container ;
+  rdfs:member ut:elevatedMaxUtility ,
+              ut:forMetric ,
+              ut:function ,
+              ut:maxUtility ,
+              ut:minUtility ,
+              ut:utility ,
+              ut:UtilityInformation ,
+              ut:UtilityProfile ,
+              ut:utilityProfile ,
+              ut:utilityResult ,
+              ut:withArgument ,
+              ut:withArguments
+.

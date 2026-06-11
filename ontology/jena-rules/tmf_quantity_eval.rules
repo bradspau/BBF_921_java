@@ -1,0 +1,134 @@
+# tmf_quantity_eval.rules
+# QuantityOntology evaluation rules for Apache Jena GenericRuleReasoner.
+# Translated from: ontology/rules/tmf_quantity_eval.dlog
+#                  ontology/rules/tmf_quantity_rules.dlog (non-tautological rules only)
+#
+# Jena built-ins used:
+#   ge(x, y)  — x >= y (greaterThanOrEqual)
+#   le(x, y)  — x <= y (lessThanOrEqual)
+#   gt(x, y)  — x > y
+#   lt(x, y)  — x < y
+#   equal(x, y) — x == y (numeric)
+#
+# Note: builtins operate on the raw XSD numeric literal values.
+# Variables bound by (?X rdf:value ?V) must be typed numeric literals.
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix fun:  <http://tio.models.tmforum.org/tio/v3.6.0/FunctionOntology/> .
+
+# ── Type propagation ──────────────────────────────────────────────────────────
+
+[quanMonetaryIsQuantity:
+    (?Q rdf:type quan:quanMonetaryQuantity)
+    ->
+    (?Q rdf:type quan:quanQuantity)
+]
+
+# ── quanatLeast: result=true if value >= bound ────────────────────────────────
+
+[quanAtLeast:
+    (?F rdf:type quan:quanatLeast)
+    (?F rdf:first ?Val)
+    (?F rdf:rest ?R)
+    (?R rdf:first ?Bound)
+    (?Val rdf:value ?V)
+    (?Bound rdf:value ?B)
+    ge(?V, ?B)
+    ->
+    (?F rdf:value "true"^^xsd:boolean)
+]
+
+# ── quanatMost: result=true if value <= bound ─────────────────────────────────
+
+[quanAtMost:
+    (?F rdf:type quan:quanatMost)
+    (?F rdf:first ?Val)
+    (?F rdf:rest ?R)
+    (?R rdf:first ?Bound)
+    (?Val rdf:value ?V)
+    (?Bound rdf:value ?B)
+    le(?V, ?B)
+    ->
+    (?F rdf:value "true"^^xsd:boolean)
+]
+
+# ── quangreater: result=true if arg1 > arg2 ───────────────────────────────────
+
+[quanGreater:
+    (?F rdf:type quan:quangreater)
+    (?F rdf:first ?Q1)
+    (?F rdf:rest ?R)
+    (?R rdf:first ?Q2)
+    (?Q1 rdf:value ?V1)
+    (?Q2 rdf:value ?V2)
+    gt(?V1, ?V2)
+    ->
+    (?F rdf:value "true"^^xsd:boolean)
+]
+
+# ── quansmaller: result=true if arg1 < arg2 ───────────────────────────────────
+
+[quanSmaller:
+    (?F rdf:type quan:quansmaller)
+    (?F rdf:first ?Q1)
+    (?F rdf:rest ?R)
+    (?R rdf:first ?Q2)
+    (?Q1 rdf:value ?V1)
+    (?Q2 rdf:value ?V2)
+    lt(?V1, ?V2)
+    ->
+    (?F rdf:value "true"^^xsd:boolean)
+]
+
+# ── quanexactly: result=true if all args are equal ────────────────────────────
+
+[quanExactly:
+    (?F rdf:type quan:quanexactly)
+    (?F rdf:first ?Q1)
+    (?F rdf:rest ?R)
+    (?R rdf:first ?Q2)
+    (?Q1 rdf:value ?V)
+    (?Q2 rdf:value ?V)
+    ->
+    (?F rdf:value "true"^^xsd:boolean)
+]
+
+# ── quaninRange: result=true if lower <= value <= upper ───────────────────────
+
+[quanInRange:
+    (?F rdf:type quan:quaninRange)
+    (?F rdf:first ?QV)
+    (?F rdf:rest ?R1)
+    (?R1 rdf:first ?QL)
+    (?R1 rdf:rest ?R2)
+    (?R2 rdf:first ?QU)
+    (?QV rdf:value ?V)
+    (?QL rdf:value ?L)
+    (?QU rdf:value ?U)
+    ge(?V, ?L)
+    le(?V, ?U)
+    ->
+    (?F rdf:value "true"^^xsd:boolean)
+]
+
+# ── quansum / quansumOfSet: propagate member quantities ───────────────────────
+
+[quanSumMember:
+    (?F rdf:type quan:quansum)
+    (?F rdfs:member ?X)
+    (?X rdf:type quan:quanQuantity)
+    ->
+    (?X rdf:type quan:quanQuantity)
+]
+
+[quanSumOfSetMember:
+    (?F rdf:type quan:quansumOfSet)
+    (?F rdfs:member ?C)
+    (?C rdfs:member ?X)
+    (?X rdf:type quan:quanQuantity)
+    ->
+    (?X rdf:type quan:quanQuantity)
+]

@@ -1,0 +1,130 @@
+# tmf_guarantee_eval.rules
+# IntentGuaranteeOntology evaluation rules for Apache Jena GenericRuleReasoner.
+# Translated from: ontology/rules/tmf_guarantee_eval.dlog
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+@prefix ig:   <http://tio.models.tmforum.org/tio/v3.6.0/IntentGuaranteeOntology/> .
+
+# ── Guarantee type propagation ────────────────────────────────────────────────
+
+[igGuaranteeIsContext:
+    (?G rdf:type ig:igGuarantee)
+    ->
+    (?G rdf:type icm:icmContext)
+]
+
+[igGuaranteeFromProperty:
+    (?X ig:ighasGuarantee ?G)
+    ->
+    (?G rdf:type ig:igGuarantee)
+]
+
+# ── State subclass propagation ────────────────────────────────────────────────
+
+[igCompliantIsState:
+    (?S rdf:type ig:igGuaranteeStateCompliant)
+    ->
+    (?S rdf:type ig:igState)
+]
+
+[igDegradedIsState:
+    (?S rdf:type ig:igGuaranteeStateDegraded)
+    ->
+    (?S rdf:type ig:igState)
+]
+
+# ── Event subclass propagation ────────────────────────────────────────────────
+
+[igAcceptedIsEvent:
+    (?E rdf:type ig:igGuaranteeAccepted)
+    ->
+    (?E rdf:type imo:imoEvent)
+]
+
+[igRejectedIsEvent:
+    (?E rdf:type ig:igGuaranteeRejected)
+    ->
+    (?E rdf:type imo:imoEvent)
+]
+
+[igPeriodUpdateIsEvent:
+    (?E rdf:type ig:igGuaranteePeriodUpdate)
+    ->
+    (?E rdf:type imo:imoEvent)
+]
+
+# ── Reporting expectation subclass ────────────────────────────────────────────
+
+[igGuaranteeReportingIsReporting:
+    (?R rdf:type ig:igGuaranteeReportingExpectation)
+    ->
+    (?R rdf:type icm:icmReportingExpectation)
+]
+
+[igGuaranteeReportingIsExpectation:
+    (?R rdf:type ig:igGuaranteeReportingExpectation)
+    ->
+    (?R rdf:type icm:icmExpectation)
+]
+
+# ── Reason subclass propagation ───────────────────────────────────────────────
+
+[igConfidenceLevelNotObtainableIsReason:
+    (?R rdf:type ig:igConfidenceLevelNotObtainable)
+    ->
+    (?R rdf:type icm:icmReason)
+]
+
+[igConfidenceLevelNotReachedIsReason:
+    (?R rdf:type ig:igConfidenceLevelNotReached)
+    ->
+    (?R rdf:type icm:icmReason)
+]
+
+[igConflictingGuaranteesIsReason:
+    (?R rdf:type ig:igConflictingGuarantees)
+    ->
+    (?R rdf:type icm:icmReason)
+]
+
+[igPeriodNotObtainableIsReason:
+    (?R rdf:type ig:igGuaranteePeriodNotObtainable)
+    ->
+    (?R rdf:type icm:icmReason)
+]
+
+[igPeriodTooLongIsReason:
+    (?R rdf:type ig:igGuaranteePeriodTooLong)
+    ->
+    (?R rdf:type icm:icmReason)
+]
+
+[igPeriodUpdateIntervalTooLongIsReason:
+    (?R rdf:type ig:igGuaranteePeriodUpdateIntervalTooLong)
+    ->
+    (?R rdf:type icm:icmReason)
+]
+
+# ── GuaranteeReport state binding ─────────────────────────────────────────────
+
+[igReportStateCompliant:
+    (?R rdf:type ig:igGuaranteeReport)
+    (?E rdf:type ig:igGuaranteeAccepted)
+    (?E imo:imoeventIssuedFor ?Intent)
+    (?R icm:icmabout ?Intent)
+    ->
+    (?R ig:igstate ig:igGuaranteeStateCompliant)
+]
+
+[igReportStateDegraded:
+    (?R rdf:type ig:igGuaranteeReport)
+    (?E rdf:type ig:igGuaranteeRejected)
+    (?E imo:imoeventIssuedFor ?Intent)
+    (?R icm:icmabout ?Intent)
+    ->
+    (?R ig:igstate ig:igGuaranteeStateDegraded)
+]

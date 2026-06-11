@@ -1,0 +1,426 @@
+{
+  "info": {
+    "name": "TMF921 Intent Management API v5.0.0",
+    "description": "TM Forum TMF921 Intent Management REST API — Intent, IntentReport, IntentSpecification, Hub.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "api_base",
+      "value": "{{base_url}}/tmf-api/intentManagement/v5",
+      "type": "string"
+    },
+    {
+      "key": "intent_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "spec_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "hub_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/health",
+            "description": "Returns service and Fuseki graph store status."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status is UP', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('UP');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Intent",
+      "item": [
+        {
+          "name": "POST /intent — Create Intent",
+          "request": {
+            "method": "POST",
+            "url": "{{api_base}}/intent",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"@type\": \"Intent\",\n  \"@baseType\": \"Intent\",\n  \"name\": \"High-Availability Network Slice\",\n  \"description\": \"Ensure 99.99% availability for network slice A1.\",\n  \"lifecycleStatus\": \"Active\",\n  \"priority\": \"1\",\n  \"context\": \"5G-Core\",\n  \"expression\": {\n    \"@type\": \"JsonLdExpression\",\n    \"expressionValue\": \"{\\\"@context\\\":\\\"https://tmforum.org/intent/v5\\\",\\\"availability\\\":\\\"99.99%\\\"}\"\n  }\n}"
+            },
+            "description": "Create a new Intent. Server assigns id, href, creationDate, lastUpdate."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('has id', () => pm.expect(body.id).to.be.a('string'));",
+                  "pm.collectionVariables.set('intent_id', body.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /intent — Create ProbeIntent",
+          "request": {
+            "method": "POST",
+            "url": "{{api_base}}/intent",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"@type\": \"ProbeIntent\",\n  \"@baseType\": \"ProbeIntent\",\n  \"name\": \"Bandwidth Probe — Link B2\",\n  \"description\": \"Probe available bandwidth on backbone link B2.\",\n  \"lifecycleStatus\": \"Active\",\n  \"priority\": \"3\",\n  \"expression\": {\n    \"@type\": \"JsonLdExpression\",\n    \"expressionValue\": \"{\\\"probe\\\":\\\"bandwidth\\\",\\\"link\\\":\\\"B2\\\"}\"\n  }\n}"
+            },
+            "description": "Create a ProbeIntent (subtype of Intent)."
+          }
+        },
+        {
+          "name": "GET /intent — List Intents",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{api_base}}/intent?limit=10&offset=0",
+              "host": ["{{api_base}}"],
+              "path": ["intent"],
+              "query": [
+                { "key": "limit", "value": "10" },
+                { "key": "offset", "value": "0" }
+              ]
+            },
+            "description": "List intents with pagination. Supports ?fields=id,name for sparse fieldsets."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('is array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /intent/:id — Get Intent",
+          "request": {
+            "method": "GET",
+            "url": "{{api_base}}/intent/{{intent_id}}",
+            "description": "Retrieve a single intent by ID."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('intent_id')));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /intent/:id — Update Intent",
+          "request": {
+            "method": "PATCH",
+            "url": "{{api_base}}/intent/{{intent_id}}",
+            "header": [
+              { "key": "Content-Type", "value": "application/merge-patch+json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated description.\",\n  \"priority\": \"2\"\n}"
+            },
+            "description": "RFC 7386 merge patch. id, href, creationDate are non-patchable."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /intent/:id — Status Transition (Active → Terminated)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{api_base}}/intent/{{intent_id}}",
+            "header": [
+              { "key": "Content-Type", "value": "application/merge-patch+json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lifecycleStatus\": \"Terminated\"\n}"
+            },
+            "description": "Trigger a lifecycle status transition."
+          }
+        },
+        {
+          "name": "DELETE /intent/:id — Delete Intent",
+          "request": {
+            "method": "DELETE",
+            "url": "{{api_base}}/intent/{{intent_id}}",
+            "description": "Delete an intent. Returns 204 No Content."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IntentReport",
+      "item": [
+        {
+          "name": "GET /intent/:id/intentReport — List Reports",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{api_base}}/intent/{{intent_id}}/intentReport?limit=10&offset=0",
+              "host": ["{{api_base}}"],
+              "path": ["intent", "{{intent_id}}", "intentReport"],
+              "query": [
+                { "key": "limit", "value": "10" },
+                { "key": "offset", "value": "0" }
+              ]
+            },
+            "description": "List all IntentReports for the given intent."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('is array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /intent/:id/intentReport/:reportId — Get Report",
+          "request": {
+            "method": "GET",
+            "url": "{{api_base}}/intent/{{intent_id}}/intentReport/{{report_id}}",
+            "description": "Retrieve a single IntentReport by ID."
+          }
+        }
+      ]
+    },
+    {
+      "name": "IntentSpecification",
+      "item": [
+        {
+          "name": "POST /intentSpecification — Create Spec",
+          "request": {
+            "method": "POST",
+            "url": "{{api_base}}/intentSpecification",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"@type\": \"IntentSpecification\",\n  \"@baseType\": \"IntentSpecification\",\n  \"name\": \"Network Slice Availability Spec v1\",\n  \"description\": \"Specification for availability-based network slice intents.\",\n  \"lifecycleStatus\": \"Active\",\n  \"version\": \"1.0.0\"\n}"
+            },
+            "description": "Create a new IntentSpecification."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('has id', () => pm.expect(body.id).to.be.a('string'));",
+                  "pm.collectionVariables.set('spec_id', body.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /intentSpecification — List Specs",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{api_base}}/intentSpecification?limit=10&offset=0",
+              "host": ["{{api_base}}"],
+              "path": ["intentSpecification"],
+              "query": [
+                { "key": "limit", "value": "10" },
+                { "key": "offset", "value": "0" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('is array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /intentSpecification/:id — Get Spec",
+          "request": {
+            "method": "GET",
+            "url": "{{api_base}}/intentSpecification/{{spec_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /intentSpecification/:id — Update Spec",
+          "request": {
+            "method": "PATCH",
+            "url": "{{api_base}}/intentSpecification/{{spec_id}}",
+            "header": [
+              { "key": "Content-Type", "value": "application/merge-patch+json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated specification description.\",\n  \"version\": \"1.1.0\"\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE /intentSpecification/:id — Delete Spec",
+          "request": {
+            "method": "DELETE",
+            "url": "{{api_base}}/intentSpecification/{{spec_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Event Hub",
+      "item": [
+        {
+          "name": "POST /hub — Subscribe",
+          "request": {
+            "method": "POST",
+            "url": "{{api_base}}/hub",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callback\": \"http://localhost:9000/listener\",\n  \"query\": \"eventType=intentCreateEvent\"\n}"
+            },
+            "description": "Register a callback URL for event notifications."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('has id', () => pm.expect(body.id).to.be.a('string'));",
+                  "pm.collectionVariables.set('hub_id', body.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /hub/:id — Unsubscribe",
+          "request": {
+            "method": "DELETE",
+            "url": "{{api_base}}/hub/{{hub_id}}",
+            "description": "Remove an event subscription."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

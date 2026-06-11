@@ -1,0 +1,100 @@
+# Proposal Best Intent v3.6.0
+
+@prefix pbi:  <http://tio.models.tmforum.org/tio/v3.6.0/ProposalBestIntent/> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+@prefix fun:  <http://tio.models.tmforum.org/tio/v3.6.0/FunctionOntology/> .
+@prefix dct:  <http://purl.org/dc/terms/> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+<http://tio.models.tmforum.org/tio/v3.6.0/ProposalBestIntent/>
+  rdf:type imo:IntentExtensionModel ;
+  rdfs:label "Proposal Best Intent Model"@en ;
+  rdfs:Comment "This model introduces the vocabulary for requesting and providing proposals for intent requirements."@en ;
+  dct:title "Proposal Best Intent Model"@en ;
+  dct:description "This model introduces the vocabulary for requesting and providing proposals for intent requirements."@en ;
+  dct:subject "intent proposal"@en ,
+              "intent expression"@en ;
+  dct:identifier <http://tio.models.tmforum.org/tio/v3.6.0/ProposalBestIntent/> ;
+  # dct:isPartOf <http://tio.models.tmforum.org/tio/v3.6.0/TMForumIntentOntology> ;
+  dct:replaces <http://tio.models.tmforum.org/tio/v3.5.0/ProposalBestIntent/> ;
+  dct:contributor <mailto:joerg.niemoeller@ericsson.com> ;
+  dct:created "2024-10-16"^^xsd:date ;
+  dct:creator <mailto:joerg.niemoeller@ericsson.com> ;
+  dct:license <http://www.apache.org/licenses/LICENSE-2.0> ;
+  dct:license <https://github.com/tmforum-apis/Intent_Repository> ;
+  dct:modified "2024-10-16"^^xsd:date ;
+  dct:rights "Copyright © 2024 TM Forum"@en ;
+  dct:rightHolder "TM Forum" ;
+  dct:publisher "TM Forum" ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/how-to-guide/ig1253-intent-in-autonomous-networks-v1-3-0/> ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/introductory-guide/tr291c-proposal-of-best-intent-intent-extension-model-v3-6-0/> ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/standard/ig1358-intent-based-operation-user-guide-v1-0-0/> ;
+  skos:changeNote "2024-10-16 - initial draft of turtle file"@en 
+.
+
+pbi:BestProposalExpectation
+  rdfs:label "Best Proposal Expectation Class"@en ;
+  rdfs:comment "The class pbi:BestProposalExpectation is used to request proposals of best intent. It is a subclass of icm:ReportingExpectation, which also implies that the proposal is communicated through an intent report."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf icm:ReportingExpectation
+.
+
+pbi:BestProposalReport
+  rdfs:label "Best Proposal Report Class"@en ;
+  rdfs:comment "The class pbi:BestProposalReport is used to provide the proposals corresponding to a best proposal expectation in the intent. It is a subclass of icm:ExpectationReport."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf icm:ExpectationReport
+.
+
+pbi:Proposal
+  rdfs:label "Proposal Class"@en ;
+  rdfs:comment "The class pbi:Proposal is used to provide an individual proposal. Typically, there a proposal created for every requirement in scope of a best proposal expectation as stated by its target."@en ;
+  rdf:type rdfs:Class
+.
+
+pbi:proposal
+  rdfs:label "Proposal Property"@en ;
+  rdfs:comment "The property pbi:Proposal refers to the best intent proposals contained in the intent report."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain icm:IntentReport ;
+  rdfs:range pbi:BestProposalReport
+.
+
+pbi:proposed
+  rdfs:label "Proposed Property"@en ;
+  rdfs:comment "The property pbi:proposed is used in the domain of a best proposal report to refer to an individual proposal."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain pbi:BestProposalReport ;
+  rdfs:range pbi:Proposal
+.
+
+pbi:proposedFor
+  rdfs:label "Proposed For Property"@en ;
+  rdfs:comment "The property pbi:proposedFor is used to state what requirement object from the intent the proposal is made for."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain pbi:Proposal
+.
+
+pbi:proposedBest
+  rdfs:label "Proposed Best"@en ;
+  rdfs:comment "The property pbi:proposedBest refers to an object that states the proposed values."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain pbi:Proposal
+.
+
+pbi:Vocabulary
+  rdfs:label "Proposal Best Intent Vocabulary"@en ;
+  rdfs:comment "The object pbi:Vocabulary is a container of all model elements."@en ;
+  rdf:type rdfs:Container ;
+  rdfs:member pbi:BestProposalExpectation ,
+              pbi:BestProposalReport ,
+              pbi:Proposal ,
+              pbi:proposal ,
+              pbi:proposed ,
+              pbi:proposedFor ,
+              pbi:proposedBest
+.

@@ -1,0 +1,139 @@
+# Mathematical Functions Definition and Collection Ontology version 3.6.0
+
+@prefix mf:   <http://tio.models.tmforum.org/tio/v3.6.0/MathFunctions/> .
+@prefix fun:  <http://tio.models.tmforum.org/tio/v3.6.0/FunctionOntology/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix dct:  <http://purl.org/dc/terms/> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+
+<http://tio.models.tmforum.org/tio/v3.6.0/MathFunctions/>
+  rdf:type imo:BaseOntologyModel ;
+  rdfs:label "Mathematical Functions Definition and Collection Ontology"@en ;
+  rdfs:Comment "This ontology model defines a set of mathematical functions and vocabulary to manage value ranges and composite functions."@en ;
+  dct:title "Mathematical Functions Definition and Collection Ontology"@en ;
+  dct:description "This ontology model defines a set of mathematical functions and vocabulary to manage value ranges and composite functions."@en ;
+  dct:subject "functions"@en ,
+              "mathematical functions"@en ,
+              "intent expression"@en ;
+  dct:identifier <http://tio.models.tmforum.org/tio/v3.6.0/MathFunctions/> ;
+  # dct:isPartOf <http://tio.models.tmforum.org/tio/v3.6.0/TMForumIntentOntology> ;
+  dct:replaces <http://tio.models.tmforum.org/tio/v3.5.0/MathFunctions/> ;
+  dct:contributor <mailto:joerg.niemoeller@ericsson.com> ;
+  dct:created "2024-10-09"^^xsd:date ;
+  dct:creator <mailto:joerg.niemoeller@ericsson.com> ;
+  dct:license <http://www.apache.org/licenses/LICENSE-2.0> ;
+  dct:license <https://github.com/tmforum-apis/Intent_Repository> ;
+  dct:modified "2024-10-09"^^xsd:date ;
+  dct:rights "Copyright © 2024 TM Forum"@en ;
+  dct:rightHolder "TM Forum" ;
+  dct:publisher "TM Forum" ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/how-to-guide/ig1253-intent-in-autonomous-networks-v1-3-0/> ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/introductory-guide/tr292h-mathematical-functions-definition-and-collection-v3-6-0/> ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/standard/ig1358-intent-based-operation-user-guide-v1-0-0/> ;
+  skos:changeNote "2024-10-09 - initial draft of turtle file"@en 
+.
+
+mf:c
+  rdfs:label "Vertical Offset Parameter"@en ;
+  rdfs:comment "The property mf:c assigns a vertical offset to a function."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain fun:Function ;
+  rdfs:range quan:Quantity
+.
+
+mf:coefficients
+  rdfs:label "Coefficients Parameter"@en ;
+  rdfs:comment "The property mf:coefficients specifies the list of coefficients that define a polynomial function."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain fun:Function ;
+  rdfs:range quan:Quantity
+.
+
+mf:input
+  rdfs:label "Function Input"@en ;
+  rdfs:comment "The property mf:input specifies the input value within a function argument."@en ; 
+  rdf:type rdf:Property ;
+  rdfs:domain fun:Function
+.
+
+mf:k
+  rdfs:label "Logistic Growth Parameter"@en ;
+  rdfs:comment "The property mf:k specifies the logistic growth of a logistic function."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain fun:Function ;
+  rdfs:range quan:Quantity
+.
+
+mf:l
+  rdfs:label "Vertical Stretch Parameter"@en ;
+  rdfs:comment "The property mf:l assigns a vertical stretch to a function."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain fun:Function ;
+  rdfs:range quan:Quantity
+.
+
+mf:logistic
+  rdfs:label "Logistic Function"@en ;
+  rdfs:comment "The property mf:logistic represents a logistic function."@en ;
+  rdf:type fun:Function ;
+  fun:argumentNames ( mf:input mf:k mf:l mf:c ) ;
+  fun:argumentTypes ( quan:Quantity ) ;
+  fun:resultType quan:Quantity ;
+  fun:arityMin 1 
+.
+
+mf:map
+  rdfs:label "Value Mapping Parameter"@en ;
+  rdfs:comment "The property mf:map defines the mapping of input to result values applied in a mapping function. The range is a list with entries that are lists as well which represent individual mapping. The individual mapping lists have the result value as first entry and all other entries are values that are supposed to be mapped into this result."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain fun:Function ;
+  rdfs:range rdf:List
+.
+
+mf:mapping
+  rdfs:label "Mapping Function"@en ;
+  rdfs:comment "The property mf:mapping represents a mapping function."@en ;
+  rdf:type fun:Function ;
+  fun:argumentNames ( mf:input mf:map ) ;
+  fun:argumentTypes ( rdf:Resource rdf:List ) ;
+  fun:resultType rdf:Resource ;
+  fun:arityMin 1 
+.
+
+mf:poly
+  rdfs:label "Polynomial Function"@en ;
+  rdfs:comment "The property mf:poly represents a polynomial function."@en ;
+  rdf:type fun:Function ;
+  fun:argumentNames ( mf:input mf:coefficients mf:l mf:c ) ;
+  fun:argumentTypes ( quan:Quantity ) ;
+  fun:resultType quan:Quantity ;
+  fun:arityMin 1 
+.
+
+mf:Vocabulary
+  rdfs:label "Math Function Vocabulary"@en ;
+  rdfs:comment "The object mf:Vocabulary is a container of all model elements."@en ;
+  rdf:type rdfs:Container ;
+  rdfs:member mf:c ,
+              mf:coefficients ,
+              mf:input ,
+              mf:k ,
+              mf:l ,
+              mf:logistic ,
+              mf:map ,
+              mf:mapping ,
+              mf:poly ,
+              mf:x0
+.
+
+mf:x0
+  rdfs:label "Horizontal Shift Parameter"@en ;
+  rdfs:comment "The property mf:x0 assigns a horizontal shift to a function."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain fun:Function ;
+  rdfs:range quan:Quantity
+.

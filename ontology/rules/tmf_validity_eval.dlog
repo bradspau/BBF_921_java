@@ -1,0 +1,30 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix iv:   <http://tio.models.tmforum.org/tio/v3.6.0/IntentValidityOntology/> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix t:    <http://www.w3.org/2006/time#> .
+
+[?V, rdf:type, iv:ivValidity] :- [?X, iv:ivvalidIf, ?V] .
+[?V, rdf:type, t:TemporalEntity] :- [?V, rdf:type, iv:ivValidity] .
+
+# ── ivisValid: copy validity status to report ────────────────────────────────
+[?R, iv:ivvalidityStatus, "true"^^xsd:boolean] :-
+    [?R, rdf:type, icm:icmExpectationReport],
+    [?R, icm:icmabout, ?E],
+    [?E, iv:ivisValid, "true"^^xsd:boolean] .
+
+# ── ivsameValidityAs: propagate validity ─────────────────────────────────────
+[?X, iv:ivisValid, ?B] :-
+    [?X, iv:ivsameValidityAs, ?Y],
+    [?Y, iv:ivisValid, ?B] .
+
+# ── ivvalidityOf: propagate to report result  ────────────────────────────────
+[?F, rdf:value, "true"^^xsd:boolean] :-
+    [?F, rdf:type, iv:ivvalidityOf],
+    [?F, rdfs:member, ?R],
+    [?R, iv:ivisValid, "true"^^xsd:boolean] .
+
+# ── ivValidityChange events: type propagation ────────────────────────────────
+[?E, rdf:type, iv:ivValidityChange] :- [?E, rdf:type, iv:ivValidityChangeValid] .
+[?E, rdf:type, iv:ivValidityChange] :- [?E, rdf:type, iv:ivValidityChangeInvalid] .

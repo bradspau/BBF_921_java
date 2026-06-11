@@ -1,0 +1,77 @@
+# tmf_ext_eval.rules
+# Extensions (Utility, Preference, Proposal) evaluation rules for Apache Jena.
+# Translated from: ontology/rules/tmf_ext_eval.dlog
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix ut:   <http://tio.models.tmforum.org/tio/v3.6.0/Utility/> .
+@prefix pre:  <http://tio.models.tmforum.org/tio/v3.6.0/PreferenceOfHandlingOutcomes/> .
+@prefix pbi:  <http://tio.models.tmforum.org/tio/v3.6.0/ProposalBestIntent/> .
+
+# ── Utility type propagation ──────────────────────────────────────────────────
+
+[utUtilityInfoFromProperty:
+    (?X ut:ututility ?U)
+    ->
+    (?U rdf:type ut:utUtilityInformation)
+]
+
+[utUtilityProfileFromProperty:
+    (?X ut:ututilityProfile ?P)
+    ->
+    (?P rdf:type ut:utUtilityProfile)
+]
+
+[utUtilityInfoIsInformation:
+    (?U rdf:type ut:utUtilityInformation)
+    ->
+    (?U rdf:type icm:icmInformation)
+]
+
+# ── Preference type propagation ───────────────────────────────────────────────
+
+[prePreferenceFromProperty:
+    (?X pre:prepreference ?P)
+    ->
+    (?P rdf:type pre:prePreference)
+]
+
+[preJudgementRequestFromProperty:
+    (?X pre:prejudgementRequest ?J)
+    ->
+    (?J rdf:type pre:preJudgementRequest)
+]
+
+[preJudgementRequestIsContainer:
+    (?J rdf:type pre:preJudgementRequest)
+    ->
+    (?J rdf:type rdfs:Container)
+]
+
+# ── Proposal type propagation ─────────────────────────────────────────────────
+
+[pbiBestProposalReportFromProperty:
+    (?X pbi:pbiproposal ?R)
+    ->
+    (?R rdf:type pbi:pbiBestProposalReport)
+]
+
+[pbiBestProposalReportIsExpectationReport:
+    (?R rdf:type pbi:pbiBestProposalReport)
+    ->
+    (?R rdf:type icm:icmExpectationReport)
+]
+
+[pbiProposalFromProperty:
+    (?R pbi:pbiproposed ?P)
+    ->
+    (?P rdf:type pbi:pbiProposal)
+]
+
+[pbiBestProposalExpectationIsReporting:
+    (?R rdf:type pbi:pbiBestProposalExpectation)
+    ->
+    (?R rdf:type icm:icmReportingExpectation)
+]

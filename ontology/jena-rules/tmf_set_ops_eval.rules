@@ -1,0 +1,150 @@
+# tmf_set_ops_eval.rules
+# SetOperators evaluation rules for Apache Jena GenericRuleReasoner.
+# Translated from: ontology/rules/tmf_set_ops_eval.dlog
+#
+# Notes:
+#   setdifference: cannot be expressed in Jena forward rules (requires NAF with
+#     universal quantification). Use SPARQL NOT EXISTS in the query layer instead.
+#   setempty: evaluated by absence — no rule emitted; query with ASK/NOT EXISTS.
+#   logoneOf (XOR): use SPARQL COUNT in query layer.
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+
+# ── setunion: members of any input container appear in result ─────────────────
+
+[setUnion:
+    (?S set:setunion ?ArgList)
+    (?ArgList rdfs:member ?C)
+    (?C rdfs:member ?X)
+    (?R set:setunion ?ArgList)
+    ->
+    (?R rdfs:member ?X)
+]
+
+# ── setintersection: members present in BOTH input containers ─────────────────
+# (two-container case)
+
+[setIntersection:
+    (?S set:setintersection ?ArgList)
+    (?ArgList rdf:first ?C1)
+    (?ArgList rdf:rest ?Rest)
+    (?Rest rdf:first ?C2)
+    (?C1 rdfs:member ?X)
+    (?C2 rdfs:member ?X)
+    (?R set:setintersection ?ArgList)
+    ->
+    (?R rdfs:member ?X)
+]
+
+# ── setisMember: result=true if resource is a member of ANY listed container ──
+
+[setIsMember:
+    (?F rdf:type set:setisMember)
+    (?F rdf:first ?Res)
+    (?F rdf:rest ?Containers)
+    (?Containers rdfs:member ?C)
+    (?C rdfs:member ?Res)
+    ->
+    (?F rdf:value "true"^^xsd:boolean)
+]
+
+# ── setresourcesOfType: collect all individuals of the given class ─────────────
+
+[setResourcesOfType:
+    (?F rdf:type set:setresourcesOfType)
+    (?F rdfs:member ?Class)
+    (?X rdf:type ?Class)
+    (?R set:setresourcesOfType ?F)
+    ->
+    (?R rdfs:member ?X)
+]
+
+# ── setresourcesWithProperty: collect subjects using a given property ──────────
+
+[setResourcesWithProperty:
+    (?F rdf:type set:setresourcesWithProperty)
+    (?F rdfs:member ?P)
+    (?X ?P ?Any)
+    (?R set:setresourcesWithProperty ?F)
+    ->
+    (?R rdfs:member ?X)
+]
+
+# ── setresourcesWithPropertyObject: resources linked to a given object ─────────
+
+[setResourcesWithPropertyObject:
+    (?F rdf:type set:setresourcesWithPropertyObject)
+    (?F rdf:first ?P)
+    (?F rdf:rest ?ObjList)
+    (?ObjList rdfs:member ?Obj)
+    (?X ?P ?Obj)
+    (?R set:setresourcesWithPropertyObject ?F)
+    ->
+    (?R rdfs:member ?X)
+]
+
+# ── setvaluesOfObjectProperty: objects of property for given subjects ──────────
+
+[setValuesOfObjectProperty:
+    (?F rdf:type set:setvaluesOfObjectProperty)
+    (?F rdf:first ?P)
+    (?F rdf:rest ?SubjList)
+    (?SubjList rdfs:member ?Subj)
+    (?Subj ?P ?V)
+    (?R set:setvaluesOfObjectProperty ?F)
+    ->
+    (?R rdfs:member ?V)
+]
+
+# ── settypesOfMembers: collect rdf:type of all container members ───────────────
+
+[setTypesOfMembers:
+    (?F rdf:type set:settypesOfMembers)
+    (?F rdfs:member ?C)
+    (?C rdfs:member ?X)
+    (?X rdf:type ?T)
+    (?R set:settypesOfMembers ?F)
+    ->
+    (?R rdfs:member ?T)
+]
+
+# ── setintersectsWith: result=true if any member of C1 is also in C2 ──────────
+
+[setIntersectsWith:
+    (?F rdf:type set:setintersectsWith)
+    (?F rdf:first ?C1)
+    (?F rdf:rest ?Rest)
+    (?Rest rdf:first ?C2)
+    (?C1 rdfs:member ?X)
+    (?C2 rdfs:member ?X)
+    ->
+    (?F rdf:value "true"^^xsd:boolean)
+]
+
+# ── setincludedIn: materialise member typing from first container ─────────────
+# (full evaluation — is every member of C1 in C2? — handled in query layer)
+
+[setIncludedIn:
+    (?F rdf:type set:setincludedIn)
+    (?F rdf:first ?C1)
+    (?C1 rdfs:member ?X)
+    ->
+    (?X rdf:type rdfs:Resource)
+]
+
+# ── setforAll: ground iteration members ───────────────────────────────────────
+
+[setForAll:
+    (?F rdf:type set:setforAll)
+    (?F rdf:rest ?Rest)
+    (?Rest rdf:first ?C)
+    (?C rdfs:member ?X)
+    ->
+    (?X rdf:type rdfs:Resource)
+]
+
+# setdifference — NOT EXPRESSIBLE in Jena forward rules.
+# Use SPARQL:  SELECT ?x WHERE { ?c1 rdfs:member ?x . FILTER NOT EXISTS { ?c2 rdfs:member ?x } }

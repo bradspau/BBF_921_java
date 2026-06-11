@@ -1,0 +1,23 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix ut:   <http://tio.models.tmforum.org/tio/v3.6.0/Utility/> .
+@prefix pre:  <http://tio.models.tmforum.org/tio/v3.6.0/PreferenceOfHandlingOutcomes/> .
+@prefix pbi:  <http://tio.models.tmforum.org/tio/v3.6.0/ProposalBestIntent/> .
+
+# ── Utility type propagation ──────────────────────────────────────────────────
+[?U, rdf:type, ut:utUtilityInformation] :- [?X, ut:ututility, ?U] .
+[?P, rdf:type, ut:utUtilityProfile] :- [?X, ut:ututilityProfile, ?P] .
+[?U, rdf:type, icm:icmInformation] :- [?U, rdf:type, ut:utUtilityInformation] .
+
+# ── Preference type propagation ───────────────────────────────────────────────
+[?P, rdf:type, pre:prePreference] :- [?X, pre:prepreference, ?P] .
+[?J, rdf:type, pre:preJudgementRequest] :- [?X, pre:prejudgementRequest, ?J] .
+[?J, rdf:type, rdfs:Container] :- [?J, rdf:type, pre:preJudgementRequest] .
+
+# ── Proposal type propagation ────────────────────────────────────────────────
+[?R, rdf:type, pbi:pbiBestProposalReport] :- [?X, pbi:pbiproposal, ?R] .
+[?R, rdf:type, icm:icmExpectationReport] :- [?R, rdf:type, pbi:pbiBestProposalReport] .
+[?P, rdf:type, pbi:pbiProposal] :- [?R, pbi:pbiproposed, ?P] .
+[?R, rdf:type, icm:icmReportingExpectation] :- [?R, rdf:type, pbi:pbiBestProposalExpectation] .

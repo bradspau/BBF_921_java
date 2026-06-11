@@ -1,0 +1,56 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+
+# ── logCondition: propagate type ──────────────────────────────────────────────
+[?C, rdf:type, log:logCondition] :- [?C, rdf:type, log:logCondition] .
+
+# ── loganyOf: true if any argument is true (OR)  ──────────────────────────────
+[?F, rdf:value, "true"^^xsd:boolean] :-
+    [?F, rdf:type, log:loganyOf],
+    [?F, rdfs:member, ?Arg],
+    [?Arg, rdf:value, "true"^^xsd:boolean] .
+
+# ── logallOf: propagate false if any arg is false (AND) – true is default ─────
+# True case: ground via query; false case emitted as NAF in query layer.
+
+# ── lognoneOf: true if no argument is true (NOR) – materialised by absence ───
+
+# ── logoneOf: true if exactly one arg is true (XOR) – query-layer check ───────
+
+# ── logmatch: bind statement triple truth to result ───────────────────────────
+[?F, rdf:value, "true"^^xsd:boolean] :-
+    [?F, rdf:type, log:logmatch],
+    [?F, rdf:first,  ?S],
+    [?F, rdf:rest,   ?R1], [?R1, rdf:first, ?P],
+    [?R1, rdf:rest,  ?R2], [?R2, rdf:first, ?O],
+    [?S, ?P, ?O] .
+
+# ── logmatchAll: true if EVERY member of container holds predicate/object ──────
+[?F, rdf:value, "true"^^xsd:boolean] :-
+    [?F, rdf:type, log:logmatchAll],
+    [?F, rdf:first, ?Container],
+    [?F, rdf:rest, ?R1], [?R1, rdf:first, ?P],
+    [?R1, rdf:rest, ?R2], [?R2, rdf:first, ?Obj],
+    [?Container, rdfs:member, ?M],
+    [?M, ?P, ?Obj] .
+
+# ── logmatchAny: true if ANY member holds the predicate/object ────────────────
+[?F, rdf:value, "true"^^xsd:boolean] :-
+    [?F, rdf:type, log:logmatchAny],
+    [?F, rdf:first, ?Container],
+    [?F, rdf:rest, ?R1], [?R1, rdf:first, ?P],
+    [?R1, rdf:rest, ?R2], [?R2, rdf:first, ?Obj],
+    [?Container, rdfs:member, ?M],
+    [?M, ?P, ?Obj] .
+
+# ── logmatchStatement: true if statement (reified) is true ───────────────────
+[?F, rdf:value, "true"^^xsd:boolean] :-
+    [?F, rdf:type, log:logmatchStatement],
+    [?F, rdfs:member, ?Stmt],
+    [?Stmt, rdf:type, rdf:Statement],
+    [?Stmt, rdf:subject, ?S],
+    [?Stmt, rdf:predicate, ?P],
+    [?Stmt, rdf:object, ?O],
+    [?S, ?P, ?O] .

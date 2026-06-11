@@ -1,0 +1,87 @@
+# tmf_logops_eval.rules
+# Logical operators evaluation rules for Apache Jena GenericRuleReasoner.
+# Translated from: ontology/rules/tmf_logops_eval.dlog
+#
+# Notes:
+#   logallOf (AND): true by default when all args are true; negation case
+#     must be handled in the query layer with SPARQL NOT EXISTS / FILTER.
+#   lognoneOf (NOR): evaluated by absence of true members — no rule needed;
+#     query with SPARQL NOT EXISTS instead.
+#   logoneOf (XOR): requires counting true args — use SPARQL query layer.
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+
+# ── logCondition: tautological type rule ──────────────────────────────────────
+# DROPPED: [?C, rdf:type, log:logCondition] :- [?C, rdf:type, log:logCondition]
+# Tautology — adds no inference.
+
+# ── loganyOf: result=true if ANY argument is true (OR semantics) ──────────────
+
+[logAnyOf:
+    (?F rdf:type log:loganyOf)
+    (?F rdfs:member ?Arg)
+    (?Arg rdf:value "true"^^xsd:boolean)
+    ->
+    (?F rdf:value "true"^^xsd:boolean)
+]
+
+# ── logmatch: true if the referenced triple holds in the graph ────────────────
+
+[logMatch:
+    (?F rdf:type log:logmatch)
+    (?F rdf:first ?S)
+    (?F rdf:rest ?R1)
+    (?R1 rdf:first ?P)
+    (?R1 rdf:rest ?R2)
+    (?R2 rdf:first ?O)
+    (?S ?P ?O)
+    ->
+    (?F rdf:value "true"^^xsd:boolean)
+]
+
+# ── logmatchAll: true if EVERY member of the container holds predicate/object ─
+
+[logMatchAll:
+    (?F rdf:type log:logmatchAll)
+    (?F rdf:first ?Container)
+    (?F rdf:rest ?R1)
+    (?R1 rdf:first ?P)
+    (?R1 rdf:rest ?R2)
+    (?R2 rdf:first ?Obj)
+    (?Container rdfs:member ?M)
+    (?M ?P ?Obj)
+    ->
+    (?F rdf:value "true"^^xsd:boolean)
+]
+
+# ── logmatchAny: true if ANY member holds the predicate/object ────────────────
+
+[logMatchAny:
+    (?F rdf:type log:logmatchAny)
+    (?F rdf:first ?Container)
+    (?F rdf:rest ?R1)
+    (?R1 rdf:first ?P)
+    (?R1 rdf:rest ?R2)
+    (?R2 rdf:first ?Obj)
+    (?Container rdfs:member ?M)
+    (?M ?P ?Obj)
+    ->
+    (?F rdf:value "true"^^xsd:boolean)
+]
+
+# ── logmatchStatement: true if the reified statement holds ───────────────────
+
+[logMatchStatement:
+    (?F rdf:type log:logmatchStatement)
+    (?F rdfs:member ?Stmt)
+    (?Stmt rdf:type rdf:Statement)
+    (?Stmt rdf:subject ?S)
+    (?Stmt rdf:predicate ?P)
+    (?Stmt rdf:object ?O)
+    (?S ?P ?O)
+    ->
+    (?F rdf:value "true"^^xsd:boolean)
+]

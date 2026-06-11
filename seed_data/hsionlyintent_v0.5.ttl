@@ -1,0 +1,149 @@
+@prefix pon:  <http://broadband-forum.org/ont/pon-resource#> .
+@prefix bbf:  <http://broadband-forum.org/Intent#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix t:    <http://www.w3.org/2006/time#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+############################################################
+# Contexts
+############################################################
+bbf:NorthRegionContext  a icm:Context ;
+    rdfs:label "North region" .
+
+bbf:SubscriberContext   a icm:Context ;
+    bbf:subscriberId "BBF_SUB_12345"^^xsd:string .
+
+############################################################
+# Main intent
+############################################################
+bbf:HSIIntent  a icm:Intent ;
+    rdfs:comment "Provision HSI service on a UNI with BBF subscriber association" ;
+    icm:expectation  bbf:HSICompositeExpectation ;
+    icm:context      bbf:NorthRegionContext ,
+                     bbf:SubscriberContext .
+
+############################################################
+# Composite expectation
+############################################################
+bbf:HSICompositeExpectation  a icm:Expectation ;
+    log:allOf ( bbf:HSIServiceProvisioningExpectation
+                bbf:HSICTAGProvisioningExpectation
+                bbf:HSIPerformanceExpectation
+                bbf:HSIMonitoringExpectation ) .
+
+############################################################
+# Service provisioning expectation
+############################################################
+bbf:HSIServiceProvisioningExpectation  a icm:DeliveryExpectation ;
+    icm:target            bbf:SelectedUNIInterface ;
+    icm:deliveryType      pon:HSIService ;
+    icm:deliveryDescription bbf:HSIServiceSpecification ;
+    icm:chooseFrom        bbf:AvailableUNIInterfaces .
+
+############################################################
+# Targets
+############################################################
+bbf:SelectedUNIInterface  a icm:Target .
+
+bbf:AvailableUNIInterfaces  a icm:Target ;
+    set:resourcesOfType              pon:UNIPort ;
+    set:resourcesWithPropertyObject ( pon:inUse             false ) ;
+    set:resourcesWithPropertyObject ( pon:operationalState  pon:Up ) ;
+    set:resourcesWithPropertyObject ( pon:provisioningState pon:Ready ) .
+
+bbf:SelectedCTAGAllocation  a icm:Target .
+
+bbf:AvailableCTAGAllocations  a icm:Target ;
+    set:resourcesOfType              pon:CTAGAllocation ;
+    set:resourcesWithPropertyObject ( pon:inUse  false ) .
+
+############################################################
+# CTAG provisioning expectation
+############################################################
+bbf:HSICTAGProvisioningExpectation  a icm:DeliveryExpectation ;
+    icm:target      bbf:SelectedCTAGAllocation ;
+    icm:deliveryType  pon:HSIService ;
+    icm:chooseFrom  bbf:AvailableCTAGAllocations .
+
+############################################################
+# Performance expectation
+############################################################
+bbf:HSIPerformanceExpectation  a icm:PropertyExpectation ;
+    icm:target bbf:HSIServiceTarget ;
+    log:allOf ( bbf:HSI_DownstreamBandwidthCondition
+                bbf:HSI_UpstreamBandwidthCondition
+                bbf:HSI_LatencyCondition
+                bbf:HSI_JitterCondition
+                bbf:HSI_PacketLossCondition ) .
+
+bbf:HSIServiceTarget  a icm:Target ;
+    rdfs:member bbf:HSIServiceInstance .
+
+############################################################
+# Performance conditions (TIO QuantityOntology v3.6.0)
+# Functions applied as predicates: subject quan:fn ( arg1 arg2 )
+############################################################
+
+# Downstream bandwidth >= 100 Mbps
+bbf:HSI_DownstreamBandwidthCondition  a icm:Condition ;
+    quan:atLeast ( bbf:DownstreamBandwidthMetric
+                   [ rdf:value "100"^^xsd:decimal ; quan:unit "Mbps"^^xsd:string ] ) .
+
+# Upstream bandwidth >= 20 Mbps
+bbf:HSI_UpstreamBandwidthCondition  a icm:Condition ;
+    quan:atLeast ( bbf:UpstreamBandwidthMetric
+                   [ rdf:value "20"^^xsd:decimal ; quan:unit "Mbps"^^xsd:string ] ) .
+
+# Latency < 25 ms
+bbf:HSI_LatencyCondition  a icm:Condition ;
+    quan:smaller ( bbf:LatencyMetric
+                   [ rdf:value "25"^^xsd:decimal ; quan:unit "ms"^^xsd:string ] ) .
+
+# Jitter < 3 ms
+bbf:HSI_JitterCondition  a icm:Condition ;
+    quan:smaller ( bbf:JitterMetric
+                   [ rdf:value "3"^^xsd:decimal ; quan:unit "ms"^^xsd:string ] ) .
+
+# Packet loss < 0.1 %
+bbf:HSI_PacketLossCondition  a icm:Condition ;
+    quan:smaller ( bbf:PacketLossMetric
+                   [ rdf:value "0.1"^^xsd:decimal ; quan:unit "percent"^^xsd:string ] ) .
+
+############################################################
+# Monitoring & reporting expectation
+############################################################
+bbf:Periodic15m a imo:Event ;
+    t:hasDuration "PT15M"^^xsd:duration .
+
+bbf:HSIMonitoringTarget a icm:Target ;
+    rdfs:member bbf:HSIServiceTarget ;
+    rdfs:member bbf:HSIIntent .
+
+bbf:HSIMonitoringExpectation a icm:ReportingExpectation ;
+    icm:target bbf:HSIMonitoringTarget ;
+    icm:reportDestination bbf:HSIServiceManager ;
+    icm:reportTriggers [ a rdfs:Container ;
+                         rdfs:member imo:IntentAccepted ;
+                         rdfs:member imo:IntentRemoved ;
+                         rdfs:member imo:IntentRejected ;
+                         rdfs:member imo:Degrades ;
+                         rdfs:member bbf:Periodic15m ] .
+
+############################################################
+# Metrics & simple resources
+############################################################
+bbf:DownstreamBandwidthMetric  a icm:Metric .
+bbf:UpstreamBandwidthMetric    a icm:Metric .
+bbf:LatencyMetric              a icm:Metric .
+bbf:JitterMetric               a icm:Metric .
+bbf:PacketLossMetric           a icm:Metric .
+
+bbf:HSIServiceSpecification  a rdfs:Resource .
+bbf:HSIServiceInstance       a rdfs:Resource .
+bbf:HSIServiceManager        a rdfs:Resource .

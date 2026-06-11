@@ -1,0 +1,61 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix insp: <http://tio.models.tmforum.org/tio/v3.6.0/IntentSpecification/> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix met:  <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+
+# ── Template type hierarchy ───────────────────────────────────────────────────
+[?T, rdf:type, insp:inspTemplate] :- [?T, rdf:type, insp:inspContentTemplate] .
+[?T, rdf:type, insp:inspTemplate] :- [?T, rdf:type, insp:inspObjectTemplate] .
+[?T, rdf:type, insp:inspTemplate] :- [?T, rdf:type, insp:inspVocabularyTemplate] .
+[?T, rdf:type, rdfs:Container] :- [?T, rdf:type, insp:inspVocabularyTemplate] .
+
+# ── Intent specification: mandatory content materialised ─────────────────────
+[?C, rdf:type, insp:inspContentTemplate] :- [?S, insp:inspmandatory, ?C] .
+[?C, rdf:type, insp:inspContentTemplate] :- [?S, inspalternative, ?C] .
+[?C, rdf:type, insp:inspContentTemplate] :- [?S, insp:inspoption, ?C] .
+
+# ── Object template allowed values ────────────────────────────────────────────
+[?V, rdf:type, rdfs:Container] :- [?OT, insp:inspallowedValues, ?V] .
+
+# ── inspvalueSelected: true if chosen object is in allowed container ──────────
+[?F, rdf:value, "true"^^xsd:boolean] :-
+    [?F, rdf:type, insp:inspvalueSelected],
+    [?F, rdf:first, ?OT],
+    [?F, rdf:rest, ?Rest],
+    [?Rest, rdfs:member, ?AllowedContainer],
+    [?OT, insp:inspallowedValues, ?Vals],
+    [?Vals, rdfs:member, ?Chosen],
+    [?AllowedContainer, rdfs:member, ?Chosen] .
+
+# ── inspchosenAny / inspchosenAll: flag chosen templates  ────────────────────
+[?F, rdf:value, "true"^^xsd:boolean] :-
+    [?F, rdf:type, insp:inspchosenAny],
+    [?F, rdfs:member, ?CT],
+    [?CT, rdf:type, insp:inspContentTemplate],
+    [?CT, insp:inspcontent, ?Any] .
+
+# ── inspusedVocabularyFor: check vocabulary membership  ───────────────────────
+[?F, rdf:value, "true"^^xsd:boolean] :-
+    [?F, rdf:type, insp:inspusedVocabularyFor],
+    [?F, rdf:first, ?IntentElem],
+    [?F, rdf:rest, ?VocabList],
+    [?VocabList, rdfs:member, ?VocabContainer],
+    [?VocabContainer, rdfs:member, ?Term],
+    [?IntentElem, ?Term, ?Any] .
+
+# ── inspselectValues: ground the selection container  ────────────────────────
+[?R, rdfs:member, ?V] :-
+    [?F, rdf:type, insp:inspselectValues],
+    [?F, rdf:first, ?Var],
+    [?F, rdf:rest, ?CondList],
+    [?CondList, rdfs:member, ?Cond],
+    [?Cond, rdf:value, "true"^^xsd:boolean],
+    [?Var, rdf:value, ?V],
+    [?R, insp:inspselectValues, ?F] .
+
+# ── Met metric sub-property propagation for insp  ────────────────────────────
+[?P, rdf:type, rdf:Property] :- [?P, rdf:type, insp:inspchosenHandlingDomain] .
+[?P, rdf:type, rdf:Property] :- [?P, rdf:type, insp:inspchosenIntentHandler] .

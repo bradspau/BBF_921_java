@@ -1,0 +1,67 @@
+# tmf_validity_eval.rules
+# IntentValidityOntology evaluation rules for Apache Jena GenericRuleReasoner.
+# Translated from: ontology/rules/tmf_validity_eval.dlog
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix iv:   <http://tio.models.tmforum.org/tio/v3.6.0/IntentValidityOntology/> .
+@prefix t:    <http://www.w3.org/2006/time#> .
+
+# ── Validity type propagation ─────────────────────────────────────────────────
+
+[ivValidityFromProperty:
+    (?X iv:ivvalidIf ?V)
+    ->
+    (?V rdf:type iv:ivValidity)
+]
+
+[ivValidityIsTemporalEntity:
+    (?V rdf:type iv:ivValidity)
+    ->
+    (?V rdf:type t:TemporalEntity)
+]
+
+# ── Validity status copied to report ─────────────────────────────────────────
+
+[ivValidityStatusToReport:
+    (?R rdf:type icm:icmExpectationReport)
+    (?R icm:icmabout ?E)
+    (?E iv:ivisValid "true"^^xsd:boolean)
+    ->
+    (?R iv:ivvalidityStatus "true"^^xsd:boolean)
+]
+
+# ── sameValidityAs propagation ────────────────────────────────────────────────
+
+[ivSameValidityAs:
+    (?X iv:ivsameValidityAs ?Y)
+    (?Y iv:ivisValid ?B)
+    ->
+    (?X iv:ivisValid ?B)
+]
+
+# ── validityOf function result ────────────────────────────────────────────────
+
+[ivValidityOf:
+    (?F rdf:type iv:ivvalidityOf)
+    (?F rdfs:member ?R)
+    (?R iv:ivisValid "true"^^xsd:boolean)
+    ->
+    (?F rdf:value "true"^^xsd:boolean)
+]
+
+# ── ValidityChange event subclass propagation ─────────────────────────────────
+
+[ivValidityChangeValid:
+    (?E rdf:type iv:ivValidityChangeValid)
+    ->
+    (?E rdf:type iv:ivValidityChange)
+]
+
+[ivValidityChangeInvalid:
+    (?E rdf:type iv:ivValidityChangeInvalid)
+    ->
+    (?E rdf:type iv:ivValidityChange)
+]

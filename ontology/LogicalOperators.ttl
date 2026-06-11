@@ -1,0 +1,153 @@
+# Conditions and Logic Operators Ontology version 3.6.0
+
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix fun:  <http://tio.models.tmforum.org/tio/v3.6.0/FunctionOntology/> .
+@prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+@prefix dct:  <http://purl.org/dc/terms/> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+
+<http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/>
+  rdf:type imo:BaseOntologyModel ;
+  rdfs:label "Conditions and Logical Operators Ontology"@en ;
+  rdfs:Comment "The conditions and logical operators ontology model introduces a set of logical operators available for expressing logical relationships in intent modeling."@en ;
+  dct:title "Conditions and Logical Operators Ontology"@en ;
+  dct:description "The conditions and logical operators ontology model introduces a set of logical operators available for expressing logical relationships in intent modeling."@en ;
+  dct:subject "logical operators"@en ,
+              "condition expression"@en ,
+              "intent expression"@en ;
+  dct:identifier <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> ;
+  # dct:isPartOf <http://tio.models.tmforum.org/tio/v3.6.0/TMForumIntentOntology> ;
+  dct:replaces <http://tio.models.tmforum.org/tio/v3.5.0/LogicalOperators/> ;
+  dct:contributor <mailto:joerg.niemoeller@ericsson.com> ;
+  dct:created "2024-10-09"^^xsd:date ;
+  dct:creator <mailto:joerg.niemoeller@ericsson.com> ;
+  dct:license <http://www.apache.org/licenses/LICENSE-2.0> ;
+  dct:license <https://github.com/tmforum-apis/Intent_Repository> ;
+  dct:modified "2024-10-09"^^xsd:date ;
+  dct:rights "Copyright © 2024 TM Forum"@en ;
+  dct:rightHolder "TM Forum" ;
+  dct:publisher "TM Forum" ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/how-to-guide/ig1253-intent-in-autonomous-networks-v1-3-0/> ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/introductory-guide/tr292e-logical-operators-v3-6-0/> ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/standard/ig1358-intent-based-operation-user-guide-v1-0-0/> ;
+  skos:changeNote "2024-10-09 - initial draft of turtle file"@en ;
+  skos:changeNote "2024-10-09 - Correcting an error in the vocabulary reference of the specificaion document: In the defintion of the log:oneOf function the property that assigns a subclass is removed."@en ;
+.
+
+log:allOf
+  rdfs:label "All Of Function"@en ;
+  rdfs:comment "The function log:allOf represents a logical conjunction also known as AND logical operator. It evaluates to boolean true if all arguments are individually true, otherwise the result is false. If the list of arguments is empty the result is also false."@en ;
+  rdf:type fun:Function ;
+  fun:resultType xsd:boolean ;
+  fun:argumentTypes ( xsd:boolean )
+.
+
+log:anyOf
+  rdfs:label "Any Of Function"@en ;
+  rdfs:comment "The function log:anyOf represents a logical disjunction also known as OR logical operator if there are only two arguments. It evaluates to boolean true if any (at least one) of the arguments are true, otherwise the result is false. If the list of arguments is empty the result is also false."@en ;
+  rdf:type fun:Function ;
+  fun:resultType xsd:boolean ;
+  fun:argumentTypes ( xsd:boolean )
+.
+
+log:Condition
+  rdfs:label "Condition Class"@en ;
+  rdfs:comment "The class log:Condition expresses that its instance is specifying a condition statement with a boolean result."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf icm:IntentElement
+.
+
+log:match
+  rdfs:label "Match Function"@en ;
+  rdfs:comment "The function log:match represents the boolean truth value of the statement triple in the function arguments. The first argument represents the subject, the second argument represents the predicate and the third argument represents the object of a statement. It is true, if and only if the statement represented by this triple is true in the current knowledge base. Closed world assumption applies. If no statement is given as arguments or if it is incomplete, the result is false."@en ;
+  rdf:type fun:Function ;
+  fun:resultType xsd:boolean ;
+  fun:arityMin 3 ;
+  fun:arityMax 3 ;
+  fun:argumentTypes ( rdfs:Resource rdf:Property rdfs:Resource )
+.
+
+log:matchAll
+  rdfs:label "Match All Function"@en ;
+  rdfs:comment "The function log:matchAll represents a boolean truth value from multiple statement triples. A constituent statement is formed by using a member of the container in the first function argument as subject. The constituent statement is completed with the predicate from the second argument and the resource from the third argument. Therefore, the function needs to evaluate as many statements as there are members in the subject container. The function is evaluated with a logical conjunction of constituent statements. The result is boolean true, if all the constituent statements is true. Closed world assumption applies. If no complete statement is given by the function arguments, the result is false. This is also the case if the subject container in the first argument is empty, thus no subject is specified."@en ;
+  rdf:type fun:Function ;
+  fun:resultType xsd:boolean ;
+  fun:arityMin 3 ;
+  fun:arityMax 3 ;
+  fun:argumentTypes ( rdfs:Container rdf:Property rdfs:Resource )
+.
+
+log:matchAny
+  rdfs:label "Match Any Function"@en ;
+  rdfs:comment "The function log:matchAny represents a boolean truth value from multiple statement triples. A constituent statement is formed by using a member of the container in the first function argument as subject. The constituent statement is completed with the predicate from the second argument and the resource from the third argument. Therefore, the function needs to evaluate as many statements as there are members in the subject container. The function is evaluated with a logical disjunction of constituent statements. The result is boolean true, if any of the constituent statements is true. Closed world assumption applies. If no complete statement is given by the function arguments, the result is false. This is also the case if the subject container in the first argument is empty, thus no subject is specified."@en ;
+  rdf:type fun:Function ;
+  fun:resultType xsd:boolean ;
+  fun:arityMin 3 ;
+  fun:arityMax 3 ;
+  fun:argumentTypes ( rdfs:Container rdf:Property rdfs:Resource )
+.
+
+log:matchNone
+  rdfs:label "Match None Function"@en ;
+  rdfs:comment "The function log:matchNone represents a boolean truth value from multiple statement triples. A constituent statement is formed by using a member of the container in the first function argument as subject. The constituent statement is completed with the predicate from the second argument and the resource from the third argument. Therefore, the function needs to evaluate as many statements as there are members in the subject container. The function is evaluated with a logical negation of constituent statements. The result is boolean true, if none of the constituent statements are true. Closed world assumption applies. If no complete statement is given by the function arguments, the result is false. This is also the case if the subject container in the first argument is empty, thus no subject is specified."@en ;
+  rdf:type fun:Function ;
+  fun:resultType xsd:boolean ;
+  fun:arityMin 3 ;
+  fun:arityMax 3 ;
+  fun:argumentTypes ( rdfs:Container rdf:Property rdfs:Resource )
+.
+
+log:matchOne
+  rdfs:label "Match One Function"@en ;
+  rdfs:comment "The function log:matchOne represents a boolean truth value from multiple statement triples. A constituent statement is formed by using a member of the container in the first function argument as subject. The constituent statement is completed with the predicate from the second argument and the resource from the third argument. Therefore, the function needs to evaluate as many statements as there are members in the subject container. The function is evaluated with a logical exclusive disjunction of constituent statements. The result is boolean true, if exactly one of the constituent statements is true. Closed world assumption applies. If no complete statement is given by the function arguments, the result is false. This is also the case if the subject container in the first argument is empty, thus no subject is specified."@en ;
+  rdf:type fun:Function ;
+  fun:resultType xsd:boolean ;
+  fun:arityMin 3 ;
+  fun:arityMax 3 ;
+  fun:argumentTypes ( rdfs:Container rdf:Property rdfs:Resource )
+.
+
+log:matchStatement
+  rdfs:label "Match Statement Function"@en ;
+  rdfs:comment "The function log:matchStatement represents the boolean truth value of the statement in the function argument. It is true, if and only if all statements in its arguments are true in the current knowledge base. Closed world assumption applies. If no statement is given as argument, the result is false."@en ;
+  rdf:type fun:Function ;
+  fun:resultType xsd:boolean ;
+  fun:argumentTypes ( rdf:Statement )
+.
+
+log:noneOf
+  rdfs:label "None Of Function"@en ;
+  rdfs:comment "The function log:noneOf represents an evaluation similar to logical negation. It evaluates to boolean true if all the arguments are false and to false is any of the arguments are true. If the list of arguments is empty the result is true."@en ;
+  rdf:type fun:Function ;
+  fun:resultType xsd:boolean ;
+  fun:argumentTypes ( xsd:boolean )
+.
+
+log:oneOf
+  rdfs:label "One Of Function"@en ;
+  rdfs:comment "The function log:oneOf represents an exclusive disjunction also known as XOR logical operator if there are only two arguments. It evaluates to boolean true if exactly one of the arguments is true, otherwise the result is false. If the list of arguments is empty the result is also false."@en ;
+  rdf:type fun:Function ;
+  fun:resultType xsd:boolean ;
+  fun:argumentTypes ( xsd:boolean )
+.
+
+log:Vocabulary
+  rdfs:label "Logical Operators Vocabulary"@en ;
+  rdfs:comment "The object log:Vocabulary is a container of all model elements."@en ;
+  rdf:type rdfs:Container ;
+  rdfs:member log:allOf ,
+              log:anyOf ,
+              log:Condition ,
+              log:match ,
+              log:matchAll ,
+              log:matchAny ,
+              log:matchNone ,
+              log:matchOne ,
+              log:matchStatement ,
+              log:noneOf ,
+              log:oneOf
+ .

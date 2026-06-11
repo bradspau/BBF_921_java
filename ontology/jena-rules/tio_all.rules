@@ -1,0 +1,466 @@
+# tio_all.rules
+# Master flat rule file — TIO v3.6.0 for Apache Jena GenericRuleReasoner.
+# All prefixes and rules from the individual .rules files concatenated here.
+#
+# Load with:
+#   Rule.rulesFromURL("file:ontology/jena-rules/tio_all.rules")
+# or reference in Fuseki assembler:
+#   ja:rulesFrom <file:ontology/jena-rules/tio_all.rules>
+#
+# Individual files in this directory may be loaded separately or selectively.
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+@prefix ig:   <http://tio.models.tmforum.org/tio/v3.6.0/IntentGuaranteeOntology/> .
+@prefix iv:   <http://tio.models.tmforum.org/tio/v3.6.0/IntentValidityOntology/> .
+@prefix insp: <http://tio.models.tmforum.org/tio/v3.6.0/IntentSpecification/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+@prefix met:  <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix mf:   <http://tio.models.tmforum.org/tio/v3.6.0/MathFunctions/> .
+@prefix fun:  <http://tio.models.tmforum.org/tio/v3.6.0/FunctionOntology/> .
+@prefix ut:   <http://tio.models.tmforum.org/tio/v3.6.0/Utility/> .
+@prefix pre:  <http://tio.models.tmforum.org/tio/v3.6.0/PreferenceOfHandlingOutcomes/> .
+@prefix pbi:  <http://tio.models.tmforum.org/tio/v3.6.0/ProposalBestIntent/> .
+@prefix t:    <http://www.w3.org/2006/time#> .
+@prefix tmf:  <http://tmforum.org/api/v5/> .
+
+# ════════════════════════════════════════════════════════════════════════════════
+# tio_core.rules — ProbeIntent, delivery expectation, compliance
+# ════════════════════════════════════════════════════════════════════════════════
+
+[tioProbeIsIntent:
+    (?x rdf:type tmf:ProbeIntent)
+    ->
+    (?x rdf:type icm:Intent)
+]
+
+[tioDeliveryFulfilled:
+    (?E rdf:type icm:DeliveryExpectation)
+    (?E icm:target ?T)
+    (?E icm:deliveryType ?C)
+    (?T rdfs:member ?M)
+    (?M rdf:type ?C)
+    ->
+    (?E icm:result "true"^^xsd:boolean)
+]
+
+[tioCompliancePositive:
+    (?intent rdf:type icm:Intent)
+    (?intent icm:hasExpectation ?exp)
+    (?exp icm:result "true"^^xsd:boolean)
+    noValue(?intent icm:hasExpectation ?nexp)
+    ->
+    (?intent imo:intentHandlingState imo:Complies)
+]
+
+# ════════════════════════════════════════════════════════════════════════════════
+# tmf_icm_eval.rules — IntentCommonModel subclass chains and report types
+# ════════════════════════════════════════════════════════════════════════════════
+
+[icmDeliveryIsExpectation:
+    (?E rdf:type icm:DeliveryExpectation) -> (?E rdf:type icm:Expectation)]
+[icmPropertyIsExpectation:
+    (?E rdf:type icm:PropertyExpectation) -> (?E rdf:type icm:Expectation)]
+[icmReportingIsExpectation:
+    (?E rdf:type icm:ReportingExpectation) -> (?E rdf:type icm:Expectation)]
+[icmObsReportingIsExpectation:
+    (?E rdf:type icm:ObservationReportingExpectation) -> (?E rdf:type icm:Expectation)]
+[icmExpectationIsElement:
+    (?E rdf:type icm:Expectation) -> (?E rdf:type icm:IntentElement)]
+[icmIntentIsElement:
+    (?E rdf:type icm:Intent) -> (?E rdf:type icm:IntentElement)]
+[icmContextIsElement:
+    (?E rdf:type icm:Context) -> (?E rdf:type icm:IntentElement)]
+[icmTargetIsElement:
+    (?E rdf:type icm:Target) -> (?E rdf:type icm:IntentElement)]
+[icmInformationIsElement:
+    (?E rdf:type icm:Information) -> (?E rdf:type icm:IntentElement)]
+[icmTargetIsContainer:
+    (?T rdf:type icm:Target) -> (?T rdf:type rdfs:Container)]
+[icmDeliveryFulfilled:
+    (?E rdf:type icm:DeliveryExpectation)
+    (?E icm:target ?T) (?T rdfs:member ?M)
+    (?E icm:deliveryType ?C) (?M rdf:type ?C)
+    -> (?E icm:result "true"^^xsd:boolean)]
+[icmPropertyResult:
+    (?E rdf:type icm:PropertyExpectation)
+    (?E rdf:value "true"^^xsd:boolean)
+    -> (?E icm:result "true"^^xsd:boolean)]
+[icmTargetType:
+    (?E icm:target ?T) -> (?T rdf:type icm:Target)]
+[icmContextReport:
+    (?X icm:contextReport ?R) -> (?R rdf:type icm:ContextReport)]
+[icmTargetReport:
+    (?X icm:targetReport ?R) -> (?R rdf:type icm:TargetReport)]
+[icmIntentReportFromGenerated:
+    (?R icm:reportGenerated ?T) -> (?R rdf:type icm:IntentReport)]
+[icmIntentReportFromNumber:
+    (?R icm:reportNumber ?N) -> (?R rdf:type icm:IntentReport)]
+
+# ════════════════════════════════════════════════════════════════════════════════
+# tmf_imo_eval.rules — Event hierarchy, handling/update state derivation
+# ════════════════════════════════════════════════════════════════════════════════
+
+[imoHandlingIsEvent:
+    (?E rdf:type imo:imoIntentHandlingEvent) -> (?E rdf:type imo:imoEvent)]
+[imoCompliesIsHandling:
+    (?E rdf:type imo:imoComplies) -> (?E rdf:type imo:imoIntentHandlingEvent)]
+[imoDegradeIsHandling:
+    (?E rdf:type imo:imoDegrades) -> (?E rdf:type imo:imoIntentHandlingEvent)]
+[imoReceivedIsHandling:
+    (?E rdf:type imo:imoIntentReceived) -> (?E rdf:type imo:imoIntentHandlingEvent)]
+[imoAcceptedIsHandling:
+    (?E rdf:type imo:imoIntentAccepted) -> (?E rdf:type imo:imoIntentHandlingEvent)]
+[imoRejectedIsHandling:
+    (?E rdf:type imo:imoIntentRejected) -> (?E rdf:type imo:imoIntentHandlingEvent)]
+[imoRemovalIsHandling:
+    (?E rdf:type imo:imoIntentRemoval) -> (?E rdf:type imo:imoIntentHandlingEvent)]
+[imoUpdateReceivedIsHandling:
+    (?E rdf:type imo:imoUpdateReceived) -> (?E rdf:type imo:imoIntentHandlingEvent)]
+[imoUpdateAcceptedIsHandling:
+    (?E rdf:type imo:imoUpdateAccepted) -> (?E rdf:type imo:imoIntentHandlingEvent)]
+[imoUpdateRejectedIsHandling:
+    (?E rdf:type imo:imoUpdateRejected) -> (?E rdf:type imo:imoIntentHandlingEvent)]
+[imoUpdateFinishedIsHandling:
+    (?E rdf:type imo:imoUpdateFinished) -> (?E rdf:type imo:imoIntentHandlingEvent)]
+[imoHandlingEndedIsHandling:
+    (?E rdf:type imo:imoHandlingEnded) -> (?E rdf:type imo:imoIntentHandlingEvent)]
+
+[imoStateIntentReceived:
+    (?E rdf:type imo:imoIntentReceived) (?E imo:imoeventIssuedFor ?I)
+    -> (?I imo:imohandlingState imo:imoStateIntentReceived)]
+[imoStateCompliant:
+    (?E rdf:type imo:imoComplies) (?E imo:imoeventIssuedFor ?I)
+    -> (?I imo:imohandlingState imo:imoStateCompliant)]
+[imoStateDegraded:
+    (?E rdf:type imo:imoDegrades) (?E imo:imoeventIssuedFor ?I)
+    -> (?I imo:imohandlingState imo:imoStateDegraded)]
+[imoUpdateStateReceived:
+    (?E rdf:type imo:imoUpdateReceived) (?E imo:imoeventIssuedFor ?I)
+    -> (?I imo:imoupdateState imo:imoStateUpdateReceived)]
+[imoUpdateStateUpdating:
+    (?E rdf:type imo:imoUpdateAccepted) (?E imo:imoeventIssuedFor ?I)
+    -> (?I imo:imoupdateState imo:imoStateUpdating)]
+[imoUpdateStateNoUpdate:
+    (?E rdf:type imo:imoUpdateFinished) (?E imo:imoeventIssuedFor ?I)
+    -> (?I imo:imoupdateState imo:imoStateNoUpdate)]
+[imoReportFromHandlingState:
+    (?R icm:icmintentHandlingState ?S) -> (?R rdf:type icm:icmIntentReport)]
+[imoReportFromUpdateState:
+    (?R icm:icmintentUpdateState ?S) -> (?R rdf:type icm:icmIntentReport)]
+[imoHandlingStateOf:
+    (?I imo:imohandlingState ?S) -> (?I imo:imohandlingStateOf ?S)]
+[imoUpdateStateOf:
+    (?I imo:imoupdateState ?S) -> (?I imo:imoupdateStateOf ?S)]
+[imoManagerFromEvent:
+    (?E imo:imoeventIssuedBy ?M) -> (?M rdf:type imo:imoIntentManager)]
+[imoManagerFromHandler:
+    (?X imo:imohandler ?M) -> (?M rdf:type imo:imoIntentManager)]
+
+# ════════════════════════════════════════════════════════════════════════════════
+# tmf_guarantee_eval.rules — Guarantee type propagation, report state binding
+# ════════════════════════════════════════════════════════════════════════════════
+
+[igGuaranteeIsContext:
+    (?G rdf:type ig:igGuarantee) -> (?G rdf:type icm:icmContext)]
+[igGuaranteeFromProperty:
+    (?X ig:ighasGuarantee ?G) -> (?G rdf:type ig:igGuarantee)]
+[igCompliantIsState:
+    (?S rdf:type ig:igGuaranteeStateCompliant) -> (?S rdf:type ig:igState)]
+[igDegradedIsState:
+    (?S rdf:type ig:igGuaranteeStateDegraded) -> (?S rdf:type ig:igState)]
+[igAcceptedIsEvent:
+    (?E rdf:type ig:igGuaranteeAccepted) -> (?E rdf:type imo:imoEvent)]
+[igRejectedIsEvent:
+    (?E rdf:type ig:igGuaranteeRejected) -> (?E rdf:type imo:imoEvent)]
+[igPeriodUpdateIsEvent:
+    (?E rdf:type ig:igGuaranteePeriodUpdate) -> (?E rdf:type imo:imoEvent)]
+[igGuaranteeReportingIsReporting:
+    (?R rdf:type ig:igGuaranteeReportingExpectation) -> (?R rdf:type icm:icmReportingExpectation)]
+[igGuaranteeReportingIsExpectation:
+    (?R rdf:type ig:igGuaranteeReportingExpectation) -> (?R rdf:type icm:icmExpectation)]
+[igConfidenceLevelNotObtainableIsReason:
+    (?R rdf:type ig:igConfidenceLevelNotObtainable) -> (?R rdf:type icm:icmReason)]
+[igConfidenceLevelNotReachedIsReason:
+    (?R rdf:type ig:igConfidenceLevelNotReached) -> (?R rdf:type icm:icmReason)]
+[igConflictingGuaranteesIsReason:
+    (?R rdf:type ig:igConflictingGuarantees) -> (?R rdf:type icm:icmReason)]
+[igPeriodNotObtainableIsReason:
+    (?R rdf:type ig:igGuaranteePeriodNotObtainable) -> (?R rdf:type icm:icmReason)]
+[igPeriodTooLongIsReason:
+    (?R rdf:type ig:igGuaranteePeriodTooLong) -> (?R rdf:type icm:icmReason)]
+[igPeriodUpdateIntervalTooLongIsReason:
+    (?R rdf:type ig:igGuaranteePeriodUpdateIntervalTooLong) -> (?R rdf:type icm:icmReason)]
+[igReportStateCompliant:
+    (?R rdf:type ig:igGuaranteeReport)
+    (?E rdf:type ig:igGuaranteeAccepted)
+    (?E imo:imoeventIssuedFor ?Intent)
+    (?R icm:icmabout ?Intent)
+    -> (?R ig:igstate ig:igGuaranteeStateCompliant)]
+[igReportStateDegraded:
+    (?R rdf:type ig:igGuaranteeReport)
+    (?E rdf:type ig:igGuaranteeRejected)
+    (?E imo:imoeventIssuedFor ?Intent)
+    (?R icm:icmabout ?Intent)
+    -> (?R ig:igstate ig:igGuaranteeStateDegraded)]
+
+# ════════════════════════════════════════════════════════════════════════════════
+# tmf_validity_eval.rules — Validity propagation and report status
+# ════════════════════════════════════════════════════════════════════════════════
+
+[ivValidityFromProperty:
+    (?X iv:ivvalidIf ?V) -> (?V rdf:type iv:ivValidity)]
+[ivValidityIsTemporalEntity:
+    (?V rdf:type iv:ivValidity) -> (?V rdf:type t:TemporalEntity)]
+[ivValidityStatusToReport:
+    (?R rdf:type icm:icmExpectationReport)
+    (?R icm:icmabout ?E)
+    (?E iv:ivisValid "true"^^xsd:boolean)
+    -> (?R iv:ivvalidityStatus "true"^^xsd:boolean)]
+[ivSameValidityAs:
+    (?X iv:ivsameValidityAs ?Y) (?Y iv:ivisValid ?B)
+    -> (?X iv:ivisValid ?B)]
+[ivValidityOf:
+    (?F rdf:type iv:ivvalidityOf) (?F rdfs:member ?R)
+    (?R iv:ivisValid "true"^^xsd:boolean)
+    -> (?F rdf:value "true"^^xsd:boolean)]
+[ivValidityChangeValid:
+    (?E rdf:type iv:ivValidityChangeValid) -> (?E rdf:type iv:ivValidityChange)]
+[ivValidityChangeInvalid:
+    (?E rdf:type iv:ivValidityChangeInvalid) -> (?E rdf:type iv:ivValidityChange)]
+
+# ════════════════════════════════════════════════════════════════════════════════
+# tmf_logops_eval.rules — Logical operators
+# ════════════════════════════════════════════════════════════════════════════════
+
+[logAnyOf:
+    (?F rdf:type log:loganyOf) (?F rdfs:member ?Arg)
+    (?Arg rdf:value "true"^^xsd:boolean)
+    -> (?F rdf:value "true"^^xsd:boolean)]
+[logMatch:
+    (?F rdf:type log:logmatch)
+    (?F rdf:first ?S) (?F rdf:rest ?R1)
+    (?R1 rdf:first ?P) (?R1 rdf:rest ?R2)
+    (?R2 rdf:first ?O) (?S ?P ?O)
+    -> (?F rdf:value "true"^^xsd:boolean)]
+[logMatchAll:
+    (?F rdf:type log:logmatchAll)
+    (?F rdf:first ?Container) (?F rdf:rest ?R1)
+    (?R1 rdf:first ?P) (?R1 rdf:rest ?R2)
+    (?R2 rdf:first ?Obj)
+    (?Container rdfs:member ?M) (?M ?P ?Obj)
+    -> (?F rdf:value "true"^^xsd:boolean)]
+[logMatchAny:
+    (?F rdf:type log:logmatchAny)
+    (?F rdf:first ?Container) (?F rdf:rest ?R1)
+    (?R1 rdf:first ?P) (?R1 rdf:rest ?R2)
+    (?R2 rdf:first ?Obj)
+    (?Container rdfs:member ?M) (?M ?P ?Obj)
+    -> (?F rdf:value "true"^^xsd:boolean)]
+[logMatchStatement:
+    (?F rdf:type log:logmatchStatement) (?F rdfs:member ?Stmt)
+    (?Stmt rdf:type rdf:Statement)
+    (?Stmt rdf:subject ?S) (?Stmt rdf:predicate ?P) (?Stmt rdf:object ?O)
+    (?S ?P ?O)
+    -> (?F rdf:value "true"^^xsd:boolean)]
+
+# ════════════════════════════════════════════════════════════════════════════════
+# tmf_quantity_eval.rules — Numeric comparison built-ins
+# ════════════════════════════════════════════════════════════════════════════════
+
+[quanMonetaryIsQuantity:
+    (?Q rdf:type quan:quanMonetaryQuantity) -> (?Q rdf:type quan:quanQuantity)]
+[quanAtLeast:
+    (?F rdf:type quan:quanatLeast)
+    (?F rdf:first ?Val) (?F rdf:rest ?R) (?R rdf:first ?Bound)
+    (?Val rdf:value ?V) (?Bound rdf:value ?B) ge(?V, ?B)
+    -> (?F rdf:value "true"^^xsd:boolean)]
+[quanAtMost:
+    (?F rdf:type quan:quanatMost)
+    (?F rdf:first ?Val) (?F rdf:rest ?R) (?R rdf:first ?Bound)
+    (?Val rdf:value ?V) (?Bound rdf:value ?B) le(?V, ?B)
+    -> (?F rdf:value "true"^^xsd:boolean)]
+[quanGreater:
+    (?F rdf:type quan:quangreater)
+    (?F rdf:first ?Q1) (?F rdf:rest ?R) (?R rdf:first ?Q2)
+    (?Q1 rdf:value ?V1) (?Q2 rdf:value ?V2) gt(?V1, ?V2)
+    -> (?F rdf:value "true"^^xsd:boolean)]
+[quanSmaller:
+    (?F rdf:type quan:quansmaller)
+    (?F rdf:first ?Q1) (?F rdf:rest ?R) (?R rdf:first ?Q2)
+    (?Q1 rdf:value ?V1) (?Q2 rdf:value ?V2) lt(?V1, ?V2)
+    -> (?F rdf:value "true"^^xsd:boolean)]
+[quanExactly:
+    (?F rdf:type quan:quanexactly)
+    (?F rdf:first ?Q1) (?F rdf:rest ?R) (?R rdf:first ?Q2)
+    (?Q1 rdf:value ?V) (?Q2 rdf:value ?V)
+    -> (?F rdf:value "true"^^xsd:boolean)]
+[quanInRange:
+    (?F rdf:type quan:quaninRange)
+    (?F rdf:first ?QV) (?F rdf:rest ?R1) (?R1 rdf:first ?QL)
+    (?R1 rdf:rest ?R2) (?R2 rdf:first ?QU)
+    (?QV rdf:value ?V) (?QL rdf:value ?L) (?QU rdf:value ?U)
+    ge(?V, ?L) le(?V, ?U)
+    -> (?F rdf:value "true"^^xsd:boolean)]
+
+# ════════════════════════════════════════════════════════════════════════════════
+# tmf_set_ops_eval.rules — Set operations
+# ════════════════════════════════════════════════════════════════════════════════
+
+[setUnion:
+    (?S set:setunion ?ArgList) (?ArgList rdfs:member ?C) (?C rdfs:member ?X)
+    (?R set:setunion ?ArgList)
+    -> (?R rdfs:member ?X)]
+[setIntersection:
+    (?S set:setintersection ?ArgList)
+    (?ArgList rdf:first ?C1) (?ArgList rdf:rest ?Rest) (?Rest rdf:first ?C2)
+    (?C1 rdfs:member ?X) (?C2 rdfs:member ?X)
+    (?R set:setintersection ?ArgList)
+    -> (?R rdfs:member ?X)]
+[setIsMember:
+    (?F rdf:type set:setisMember)
+    (?F rdf:first ?Res) (?F rdf:rest ?Containers)
+    (?Containers rdfs:member ?C) (?C rdfs:member ?Res)
+    -> (?F rdf:value "true"^^xsd:boolean)]
+[setResourcesOfType:
+    (?F rdf:type set:setresourcesOfType) (?F rdfs:member ?Class)
+    (?X rdf:type ?Class) (?R set:setresourcesOfType ?F)
+    -> (?R rdfs:member ?X)]
+[setResourcesWithProperty:
+    (?F rdf:type set:setresourcesWithProperty) (?F rdfs:member ?P)
+    (?X ?P ?Any) (?R set:setresourcesWithProperty ?F)
+    -> (?R rdfs:member ?X)]
+[setResourcesWithPropertyObject:
+    (?F rdf:type set:setresourcesWithPropertyObject)
+    (?F rdf:first ?P) (?F rdf:rest ?ObjList) (?ObjList rdfs:member ?Obj)
+    (?X ?P ?Obj) (?R set:setresourcesWithPropertyObject ?F)
+    -> (?R rdfs:member ?X)]
+[setValuesOfObjectProperty:
+    (?F rdf:type set:setvaluesOfObjectProperty)
+    (?F rdf:first ?P) (?F rdf:rest ?SubjList) (?SubjList rdfs:member ?Subj)
+    (?Subj ?P ?V) (?R set:setvaluesOfObjectProperty ?F)
+    -> (?R rdfs:member ?V)]
+[setTypesOfMembers:
+    (?F rdf:type set:settypesOfMembers) (?F rdfs:member ?C)
+    (?C rdfs:member ?X) (?X rdf:type ?T)
+    (?R set:settypesOfMembers ?F)
+    -> (?R rdfs:member ?T)]
+[setIntersectsWith:
+    (?F rdf:type set:setintersectsWith)
+    (?F rdf:first ?C1) (?F rdf:rest ?Rest) (?Rest rdf:first ?C2)
+    (?C1 rdfs:member ?X) (?C2 rdfs:member ?X)
+    -> (?F rdf:value "true"^^xsd:boolean)]
+[setIncludedIn:
+    (?F rdf:type set:setincludedIn) (?F rdf:first ?C1) (?C1 rdfs:member ?X)
+    -> (?X rdf:type rdfs:Resource)]
+[setForAll:
+    (?F rdf:type set:setforAll) (?F rdf:rest ?Rest) (?Rest rdf:first ?C)
+    (?C rdfs:member ?X)
+    -> (?X rdf:type rdfs:Resource)]
+
+# ════════════════════════════════════════════════════════════════════════════════
+# tmf_ext_eval.rules — Utility, Preference, Proposal
+# ════════════════════════════════════════════════════════════════════════════════
+
+[utUtilityInfoFromProperty:
+    (?X ut:ututility ?U) -> (?U rdf:type ut:utUtilityInformation)]
+[utUtilityProfileFromProperty:
+    (?X ut:ututilityProfile ?P) -> (?P rdf:type ut:utUtilityProfile)]
+[utUtilityInfoIsInformation:
+    (?U rdf:type ut:utUtilityInformation) -> (?U rdf:type icm:icmInformation)]
+[prePreferenceFromProperty:
+    (?X pre:prepreference ?P) -> (?P rdf:type pre:prePreference)]
+[preJudgementRequestFromProperty:
+    (?X pre:prejudgementRequest ?J) -> (?J rdf:type pre:preJudgementRequest)]
+[preJudgementRequestIsContainer:
+    (?J rdf:type pre:preJudgementRequest) -> (?J rdf:type rdfs:Container)]
+[pbiBestProposalReportFromProperty:
+    (?X pbi:pbiproposal ?R) -> (?R rdf:type pbi:pbiBestProposalReport)]
+[pbiBestProposalReportIsExpectationReport:
+    (?R rdf:type pbi:pbiBestProposalReport) -> (?R rdf:type icm:icmExpectationReport)]
+[pbiProposalFromProperty:
+    (?R pbi:pbiproposed ?P) -> (?P rdf:type pbi:pbiProposal)]
+[pbiBestProposalExpectationIsReporting:
+    (?R rdf:type pbi:pbiBestProposalExpectation) -> (?R rdf:type icm:icmReportingExpectation)]
+
+# ════════════════════════════════════════════════════════════════════════════════
+# tmf_insp_eval.rules — Intent specification template hierarchy
+# ════════════════════════════════════════════════════════════════════════════════
+
+[inspContentIsTemplate:
+    (?T rdf:type insp:inspContentTemplate) -> (?T rdf:type insp:inspTemplate)]
+[inspObjectIsTemplate:
+    (?T rdf:type insp:inspObjectTemplate) -> (?T rdf:type insp:inspTemplate)]
+[inspVocabularyIsTemplate:
+    (?T rdf:type insp:inspVocabularyTemplate) -> (?T rdf:type insp:inspTemplate)]
+[inspVocabularyIsContainer:
+    (?T rdf:type insp:inspVocabularyTemplate) -> (?T rdf:type rdfs:Container)]
+[inspMandatoryContent:
+    (?S insp:inspmandatory ?C) -> (?C rdf:type insp:inspContentTemplate)]
+[inspAlternativeContent:
+    (?S insp:inspalternative ?C) -> (?C rdf:type insp:inspContentTemplate)]
+[inspOptionContent:
+    (?S insp:inspoption ?C) -> (?C rdf:type insp:inspContentTemplate)]
+[inspAllowedValuesContainer:
+    (?OT insp:inspallowedValues ?V) -> (?V rdf:type rdfs:Container)]
+[inspValueSelected:
+    (?F rdf:type insp:inspvalueSelected)
+    (?F rdf:first ?OT) (?F rdf:rest ?Rest) (?Rest rdfs:member ?AllowedContainer)
+    (?OT insp:inspallowedValues ?Vals) (?Vals rdfs:member ?Chosen)
+    (?AllowedContainer rdfs:member ?Chosen)
+    -> (?F rdf:value "true"^^xsd:boolean)]
+[inspChosenAny:
+    (?F rdf:type insp:inspchosenAny) (?F rdfs:member ?CT)
+    (?CT rdf:type insp:inspContentTemplate) (?CT insp:inspcontent ?Any)
+    -> (?F rdf:value "true"^^xsd:boolean)]
+[inspUsedVocabularyFor:
+    (?F rdf:type insp:inspusedVocabularyFor)
+    (?F rdf:first ?IntentElem) (?F rdf:rest ?VocabList)
+    (?VocabList rdfs:member ?VocabContainer) (?VocabContainer rdfs:member ?Term)
+    (?IntentElem ?Term ?Any)
+    -> (?F rdf:value "true"^^xsd:boolean)]
+[inspSelectValues:
+    (?F rdf:type insp:inspselectValues)
+    (?F rdf:first ?Var) (?F rdf:rest ?CondList)
+    (?CondList rdfs:member ?Cond) (?Cond rdf:value "true"^^xsd:boolean)
+    (?Var rdf:value ?V) (?R insp:inspselectValues ?F)
+    -> (?R rdfs:member ?V)]
+[inspChosenHandlingDomainIsProperty:
+    (?P rdf:type insp:inspchosenHandlingDomain) -> (?P rdf:type rdf:Property)]
+[inspChosenIntentHandlerIsProperty:
+    (?P rdf:type insp:inspchosenIntentHandler) -> (?P rdf:type rdf:Property)]
+
+# ════════════════════════════════════════════════════════════════════════════════
+# tmf_metrics_eval.rules — Observations and metric links
+# ════════════════════════════════════════════════════════════════════════════════
+
+[metObservationFromSubject:
+    (?S met:metobserved ?O) -> (?O rdf:type met:metObservation)]
+[metObservedValue:
+    (?F rdf:type met:metobservedValue) (?F rdf:first ?O)
+    (?O rdf:type met:metObservation) (?O rdf:value ?V)
+    -> (?F rdf:value ?V)]
+[metLastObserved:
+    (?F rdf:type met:metlastObserved) (?F rdfs:member ?M)
+    (?O met:metobservedMetric ?M)
+    -> (?O met:metobservedMetric ?M)]
+[metLastValue:
+    (?F rdf:type met:metlastValue) (?F rdfs:member ?M)
+    (?O met:metobservedMetric ?M) (?O rdf:value ?V)
+    -> (?F rdf:value ?V)]
+
+# ════════════════════════════════════════════════════════════════════════════════
+# tmf_mathfn_eval.rules — Math function type propagation
+# ════════════════════════════════════════════════════════════════════════════════
+
+[mfLogisticIsFunction:
+    (?F rdf:type mf:mflogistic) -> (?F rdf:type fun:funFunction)]
+[mfPolyIsFunction:
+    (?F rdf:type mf:mfpoly) -> (?F rdf:type fun:funFunction)]
+[mfMappingIsFunction:
+    (?F rdf:type mf:mfmapping) -> (?F rdf:type fun:funFunction)]

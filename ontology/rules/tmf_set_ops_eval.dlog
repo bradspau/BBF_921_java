@@ -1,0 +1,109 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+
+# ── setunion: members of any input container appear in the result ──────────────
+[?R, rdfs:member, ?X] :-
+    [?S, set:setunion, ?ArgList],
+    [?ArgList, rdfs:member, ?C],
+    [?C, rdfs:member, ?X],
+    [?R, set:setunion, ?ArgList] .
+
+# ── setintersection: members present in ALL input containers ───────────────────
+# Two-container case expressed via membership check
+[?R, rdfs:member, ?X] :-
+    [?S, set:setintersection, ?ArgList],
+    [?ArgList, rdf:first, ?C1],
+    [?ArgList, rdf:rest, ?Rest],
+    [?Rest, rdf:first, ?C2],
+    [?C1, rdfs:member, ?X],
+    [?C2, rdfs:member, ?X],
+    [?R, set:setintersection, ?ArgList] .
+
+# ── setdifference: members in first container NOT in second ────────────────────
+# (closed-world: if ?X is in ?C1 and NOT in ?C2, add to result)
+# RDFox supports negation-as-failure via SKOLEM; emitted as comment only.
+# Users should implement setdifference via SPARQL NOT EXISTS in queries.
+
+# ── setelementOf: true if resource is member of ALL listed containers ──────────
+[?F, rdf:type, xsd:boolean] :-
+    [?F, rdf:type, set:setelementOf],
+    [?F, rdf:first, ?Res],
+    [?F, rdf:rest, ?Containers],
+    [?Containers, rdfs:member, ?C],
+    [?C, rdfs:member, ?Res] .
+
+# ── setisMember: true if resource is a member of ANY listed container ──────────
+[?F, rdf:value, "true"^^xsd:boolean] :-
+    [?F, rdf:type, set:setisMember],
+    [?F, rdf:first, ?Res],
+    [?F, rdf:rest, ?Containers],
+    [?Containers, rdfs:member, ?C],
+    [?C, rdfs:member, ?Res] .
+
+# ── setincludedIn: all members of first are in second ─────────────────────────
+# (materialise membership from first into result; evaluation in query layer)
+[?X, rdf:type, rdfs:Resource] :-
+    [?F, rdf:type, set:setincludedIn],
+    [?F, rdf:first, ?C1],
+    [?C1, rdfs:member, ?X] .
+
+# ── setintersectsWith: true if any member of first is in second ────────────────
+[?F, rdf:value, "true"^^xsd:boolean] :-
+    [?F, rdf:type, set:setintersectsWith],
+    [?F, rdf:first, ?C1],
+    [?F, rdf:rest, ?Rest],
+    [?Rest, rdf:first, ?C2],
+    [?C1, rdfs:member, ?X],
+    [?C2, rdfs:member, ?X] .
+
+# ── setresourcesOfType: collect all individuals of given class ─────────────────
+[?R, rdfs:member, ?X] :-
+    [?F, rdf:type, set:setresourcesOfType],
+    [?F, rdfs:member, ?Class],
+    [?X, rdf:type, ?Class],
+    [?R, set:setresourcesOfType, ?F] .
+
+# ── setresourcesWithProperty: collect subjects using given property ────────────
+[?R, rdfs:member, ?X] :-
+    [?F, rdf:type, set:setresourcesWithProperty],
+    [?F, rdfs:member, ?P],
+    [?X, ?P, ?Any],
+    [?R, set:setresourcesWithProperty, ?F] .
+
+# ── setresourcesWithPropertyObject: resources linked to given object ───────────
+[?R, rdfs:member, ?X] :-
+    [?F, rdf:type, set:setresourcesWithPropertyObject],
+    [?F, rdf:first, ?P],
+    [?F, rdf:rest, ?ObjList],
+    [?ObjList, rdfs:member, ?Obj],
+    [?X, ?P, ?Obj],
+    [?R, set:setresourcesWithPropertyObject, ?F] .
+
+# ── setvaluesOfObjectProperty: objects of property for given subjects ──────────
+[?R, rdfs:member, ?V] :-
+    [?F, rdf:type, set:setvaluesOfObjectProperty],
+    [?F, rdf:first, ?P],
+    [?F, rdf:rest, ?SubjList],
+    [?SubjList, rdfs:member, ?Subj],
+    [?Subj, ?P, ?V],
+    [?R, set:setvaluesOfObjectProperty, ?F] .
+
+# ── settypesOfMembers: collect rdf:type of all container members ───────────────
+[?R, rdfs:member, ?T] :-
+    [?F, rdf:type, set:settypesOfMembers],
+    [?F, rdfs:member, ?C],
+    [?C, rdfs:member, ?X],
+    [?X, rdf:type, ?T],
+    [?R, set:settypesOfMembers, ?F] .
+
+# ── setempty: result is true if no member exists in any arg container ──────────
+# (no fact will be derived from an empty container – evaluated by absence)
+
+# ── setforAll: propagate member typing for iteration (loop grounding) ──────────
+[?X, rdf:type, rdfs:Resource] :-
+    [?F, rdf:type, set:setforAll],
+    [?F, rdf:rest, ?Rest],
+    [?Rest, rdf:first, ?C],
+    [?C, rdfs:member, ?X] .

@@ -1,0 +1,38 @@
+server:
+  port: 8000
+
+intent:
+  tdb2-path: tdb2-data
+  rules-path: classpath:rules/tio_all.rules
+  base-url: http://localhost:${server.port}/tmf-api/intentManagement/v5
+
+spring:
+  task:
+    execution:
+      pool:
+        core-size: 4
+        max-size: 16
+        queue-capacity: 100
+
+---
+spring:
+  config:
+    activate:
+      on-profile: access
+server:
+  port: 8001
+intent:
+  tdb2-path: tdb2-access
+  resource-graph: http://tmforum.org/api/v5/resources
+  resource-inventory: BBF_access/pon_resource_data.ttl
+  resource-ontology: BBF_access/pon_resource_onto.ttl
+
+---
+spring:
+  config:
+    activate:
+      on-profile: aggregation
+server:
+  port: 8000
+intent:
+  tdb2-path: tdb2-aggregation

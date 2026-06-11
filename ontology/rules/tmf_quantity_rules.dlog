@@ -1,0 +1,10 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix fun:  <http://tio.models.tmforum.org/tio/v3.6.0/FunctionOntology/> .
+
+[?Q, rdf:type, quan:quanQuantity] :- [?Q, rdf:type, quan:quanQuantity] .
+[?Q, rdf:type, quan:quanMonetaryQuantity] :- [?Q, rdf:type, quan:quanMonetaryQuantity] .
+[?Q, quan:quanunit, ?U] :- [?Q, rdf:type, quan:quanQuantity], [?Q, quan:quanunit, ?U] .
+[?F, rdf:type, fun:funFunction] :- [?F, rdf:type, fun:funFunction] .

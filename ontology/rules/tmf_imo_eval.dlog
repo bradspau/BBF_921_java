@@ -1,0 +1,61 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+
+# ── Type propagation for all imo:Event subclasses ─────────────────────────────
+[?E, rdf:type, imo:imoEvent] :- [?E, rdf:type, imo:imoIntentHandlingEvent] .
+[?E, rdf:type, imo:imoIntentHandlingEvent] :- [?E, rdf:type, imo:imoComplies] .
+[?E, rdf:type, imo:imoIntentHandlingEvent] :- [?E, rdf:type, imo:imoDegrades] .
+[?E, rdf:type, imo:imoIntentHandlingEvent] :- [?E, rdf:type, imo:imoIntentReceived] .
+[?E, rdf:type, imo:imoIntentHandlingEvent] :- [?E, rdf:type, imo:imoIntentAccepted] .
+[?E, rdf:type, imo:imoIntentHandlingEvent] :- [?E, rdf:type, imo:imoIntentRejected] .
+[?E, rdf:type, imo:imoIntentHandlingEvent] :- [?E, rdf:type, imo:imoIntentRemoval] .
+[?E, rdf:type, imo:imoIntentHandlingEvent] :- [?E, rdf:type, imo:imoUpdateReceived] .
+[?E, rdf:type, imo:imoIntentHandlingEvent] :- [?E, rdf:type, imo:imoUpdateAccepted] .
+[?E, rdf:type, imo:imoIntentHandlingEvent] :- [?E, rdf:type, imo:imoUpdateRejected] .
+[?E, rdf:type, imo:imoIntentHandlingEvent] :- [?E, rdf:type, imo:imoUpdateFinished] .
+[?E, rdf:type, imo:imoIntentHandlingEvent] :- [?E, rdf:type, imo:imoHandlingEnded] .
+
+# ── Handling state: derive imoStateIntentReceived on receipt  ─────────────────
+[?I, imo:imohandlingState, imo:imoStateIntentReceived] :-
+    [?E, rdf:type, imo:imoIntentReceived],
+    [?E, imo:imoeventIssuedFor, ?I] .
+
+# ── Handling state: derive imoStateCompliant on compliance event  ─────────────
+[?I, imo:imohandlingState, imo:imoStateCompliant] :-
+    [?E, rdf:type, imo:imoComplies],
+    [?E, imo:imoeventIssuedFor, ?I] .
+
+# ── Handling state: derive imoStateDegraded on degrade event  ─────────────────
+[?I, imo:imohandlingState, imo:imoStateDegraded] :-
+    [?E, rdf:type, imo:imoDegrades],
+    [?E, imo:imoeventIssuedFor, ?I] .
+
+# ── Update state: derive imoStateUpdateReceived  ──────────────────────────────
+[?I, imo:imoupdateState, imo:imoStateUpdateReceived] :-
+    [?E, rdf:type, imo:imoUpdateReceived],
+    [?E, imo:imoeventIssuedFor, ?I] .
+
+# ── Update state: derive imoStateUpdating  ────────────────────────────────────
+[?I, imo:imoupdateState, imo:imoStateUpdating] :-
+    [?E, rdf:type, imo:imoUpdateAccepted],
+    [?E, imo:imoeventIssuedFor, ?I] .
+
+# ── Update state: derive imoStateNoUpdate after finish  ───────────────────────
+[?I, imo:imoupdateState, imo:imoStateNoUpdate] :-
+    [?E, rdf:type, imo:imoUpdateFinished],
+    [?E, imo:imoeventIssuedFor, ?I] .
+
+# ── Intent report: link report back to its intent via owner  ──────────────────
+[?R, rdf:type, icm:icmIntentReport] :- [?R, icm:icmintentHandlingState, ?S] .
+[?R, rdf:type, icm:icmIntentReport] :- [?R, icm:icmintentUpdateState, ?S] .
+
+# ── imohandlingStateOf / imoupdateStateOf lookups  ────────────────────────────
+[?I, imo:imohandlingStateOf, ?S] :- [?I, imo:imohandlingState, ?S] .
+[?I, imo:imoupdateStateOf, ?S] :- [?I, imo:imoupdateState, ?S] .
+
+# ── Role propagation  ─────────────────────────────────────────────────────────
+[?M, rdf:type, imo:imoIntentManager] :- [?E, imo:imoeventIssuedBy, ?M] .
+[?M, rdf:type, imo:imoIntentManager] :- [?X, imo:imohandler, ?M] .

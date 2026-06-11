@@ -1,0 +1,32 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix met:  <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+
+# ── Type propagation ──────────────────────────────────────────────────────────
+[?O, rdf:type, met:metObservation] :- [?O, rdf:type, met:metObservation] .
+[?O, met:metobservedMetric, ?M] :- [?O, rdf:type, met:metObservation], [?O, met:metobservedMetric, ?M] .
+[?O, met:metobtainedAt, ?T] :- [?O, rdf:type, met:metObservation], [?O, met:metobtainedAt, ?T] .
+
+# ── metobserved: propagate observation to subject  ─────────────────────────────
+[?O, rdf:type, met:metObservation] :- [?S, met:metobserved, ?O] .
+
+# ── metobservedValue: link observation to its observed value  ─────────────────
+[?F, rdf:value, ?V] :-
+    [?F, rdf:type, met:metobservedValue],
+    [?F, rdf:first, ?O],
+    [?O, rdf:type, met:metObservation],
+    [?O, rdf:value, ?V] .
+
+# ── metlastObserved/metlastValue: ground observation via metric ───────────────
+# Materialise the metric link so consumers can query
+[?O, met:metobservedMetric, ?M] :-
+    [?F, rdf:type, met:metlastObserved],
+    [?F, rdfs:member, ?M],
+    [?O, met:metobservedMetric, ?M] .
+
+[?F, rdf:value, ?V] :-
+    [?F, rdf:type, met:metlastValue],
+    [?F, rdfs:member, ?M],
+    [?O, met:metobservedMetric, ?M],
+    [?O, rdf:value, ?V] .

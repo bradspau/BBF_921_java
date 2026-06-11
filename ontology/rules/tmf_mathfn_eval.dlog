@@ -1,0 +1,18 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mf:   <http://tio.models.tmforum.org/tio/v3.6.0/MathFunctions/> .
+@prefix fun:  <http://tio.models.tmforum.org/tio/v3.6.0/FunctionOntology/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+
+[?F, rdf:type, fun:funFunction] :- [?F, rdf:type, mf:mflogistic] .
+[?F, rdf:type, fun:funFunction] :- [?F, rdf:type, mf:mfpoly] .
+[?F, rdf:type, fun:funFunction] :- [?F, rdf:type, mf:mfmapping] .
+
+[?F, mf:mfinput, ?I] :- [?F, rdf:type, fun:funFunction], [?F, mf:mfinput, ?I] .
+[?F, mf:mfcoefficients, ?C] :- [?F, mf:mfcoefficients, ?C] .
+[?F, mf:mfmap, ?M] :- [?F, mf:mfmap, ?M] .
+[?F, mf:mfk, ?K] :- [?F, mf:mfk, ?K], [?K, rdf:type, quan:quanQuantity] .
+[?F, mf:mfl, ?L] :- [?F, mf:mfl, ?L], [?L, rdf:type, quan:quanQuantity] .
+[?F, mf:mfc, ?C] :- [?F, mf:mfc, ?C], [?C, rdf:type, quan:quanQuantity] .
+[?F, mf:mfx0, ?X] :- [?F, mf:mfx0, ?X], [?X, rdf:type, quan:quanQuantity] .

@@ -1,0 +1,413 @@
+# Intent Management Ontology version 3.6.0
+
+@prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+@prefix dct:  <http://purl.org/dc/terms/> .
+@prefix fun:  <http://tio.models.tmforum.org/tio/v3.6.0/FunctionOntology/> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix t:    <http://www.w3.org/2006/time#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+
+<http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/>
+  rdf:type imo:BaseOntologyModel ;
+  rdfs:label "Intent Managment Ontology"@en ;
+  rdfs:Comment "This is the Intent Management Ontology model within the TM Forum Intent Ontology (TIO)"@en ;
+  dct:title "Intent Managment Ontology"@en ;
+  dct:description "This is the Intent Management Ontology model within the TM Forum Intent Ontology (TIO)"@en ;
+  dct:subject "intent managment elements"@en,
+              "intent managment state machines"@en ;
+  dct:identifier <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagmentOntology/> ;
+  # dct:isPartOf <http://tio.models.tmforum.org/tio/v3.6.0/TMForumIntentOntology> ;
+  dct:replaces <http://tio.models.tmforum.org/tio/v3.5.0/IntentManagmentOntology/> ;
+  dct:contributor <mailto:joerg.niemoeller@ericsson.com> ;
+  dct:created "2024-10-09"^^xsd:date ;
+  dct:creator <mailto:joerg.niemoeller@ericsson.com> ;
+  dct:license <http://www.apache.org/licenses/LICENSE-2.0> ;
+  dct:license <https://github.com/tmforum-apis/Intent_Repository> ;
+  dct:modified "2024-10-09"^^xsd:date ;
+  dct:rights "Copyright © 2024 TM Forum"@en ;
+  dct:rightHolder "TM Forum" ;
+  dct:publisher "TM Forum" ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/how-to-guide/ig1253-intent-in-autonomous-networks-v1-3-0/> ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/introductory-guide/tr292a-intent-management-elements-v3-6-0/> ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/introductory-guide/tr292b-intent-management-state-machines-v3-6-0/> ;
+  rdfs:seeAlso <https://www.tmforum.org/resources/standard/ig1358-intent-based-operation-user-guide-v1-0-0/> ;
+  skos:changeNote "2024-10-09 - initial draft of turtle file"@en ;
+.
+
+imo:associatedValueCombination
+  rdfs:label "Associated Value Combination Property"@en ;
+  rdfs:comment "The property imo:associatedValueCombination specifies the combination function to be applied if multiple contributors to the associated value of an instance a class are used."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain rdfs:Class ;
+  rdfs:range fun:Function
+.
+
+imo:associatedValueType
+  rdfs:label "Associated Value Type Property"@en ;
+  rdfs:comment "The property imo:associatedValueType specifies the type of the associated value of instances of a class. If this property is used in the definition of a class, instances of this class have associated values."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain rdfs:Class
+.
+
+imo:BaseOntologyModel
+  rdfs:label "Base Ontology Model Class"@en ;
+  rdfs:comment "The class imo:BaseOntologyModel is a subclass of imo:TIOmodel. Its instances are models within the TM Forum Intent Ontology. Intent common models and intent extension models rely on the fundamental vocabulary and semantics defined by a base ontology model."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf imo:TIOmodel
+.
+
+imo:Complies
+  rdfs:label "Complies Class"@en ;
+  rdfs:comment "The class imo:Complies represents a state transition event in the intent handling state machine. It indicates that the system got compliant to the requirements expressed by the Intent."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf imo:IntentHandlingEvent
+.
+
+imo:Degrades
+  rdfs:label "Degrades Class"@en ;
+  rdfs:comment "The class imo:Degrades represents a state transition event in the intent handling state machine. It indicates that the system lost its compliance to the requirements expressed by the Intent."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf imo:IntentHandlingEvent
+.
+
+imo:Event
+  rdfs:label "Event Class"@en ;
+  rdfs:comment "The class imo:Event represents an event of intent management within an intent management function. An event is also a subclass of t:Instance from the time ontology. This means it represents the point in time the event instance was issued by the intent manager."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf t:Instant
+.
+
+imo:event
+  rdfs:label "Event Property"@en ;
+  rdfs:comment "The property imo:event can be used to assign an intent handling event."@en ;
+  rdf:type rdf:Property ;
+  rdfs:range imo:IntentHandlingEvent
+.
+
+imo:eventFor
+  rdfs:label "Event For Property"@en ;
+  rdfs:comment "The property imo:eventFor is used in the class definition of subclasses of imo:Event. It is therefore part of the defintion of new event types. It specifies the Intent instance the event of this class is supposed to be issued for. This intent instance will be reflected by the imo:eventIssuedFor property used with event instances."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain imo:Event ;
+  rdfs:range rdf:Resource
+.
+
+imo:eventIssuedBy
+  rdfs:label "Event Issued By Property"@en ;
+  rdfs:comment "The property imo:eventIssuedBy refers to the instance of the intent management function that has issued the intent."@en ; 
+  rdf:type rdf:Property ;
+  rdfs:domain imo:Event ;	
+  rdfs:range imo:IntentManager
+.
+
+imo:eventIssuedFor
+  rdfs:label "Event Issued For Property"@en ;
+  rdfs:comment "The property imo:eventIssuedFor refers to the resource the event is generated for. This can for example be the intent instance the event was issued from the handling procedure for this intent and because of a situation reached concerning this intent."@en ;
+  rdf:type rdf:Property ;
+  rdfs:domain imo:Event ;
+  rdfs:range rdf:Resource
+.
+
+imo:Handler
+  rdfs:label "Handler Class"@en ;
+  rdfs:comment "The class imo:Handler expresses that its instance has the role of intent handler in intent life-cycle management."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf imo:LCMrole
+.
+
+imo:handler
+  rdfs:label "Handler Property"@en ;
+  rdfs:comment "The property imo:handler expresses that the resource of type imo:IntentManager in its object has the role of an intent handler for the subject. The subject is typically an intent or associated intent report."@en ;
+  rdf:type rdf:Property ;
+  rdfs:range imo:IntentManager
+.
+
+imo:HandlingEnded
+  rdfs:label "Handling Ended Event"@en ;
+  rdfs:comment "The class imo:HandlingEnded represents a state transition event in the intent handling state machine. It indicates that the intent handler has finished all tasks associated with the removal of the intent. This is typically the last event generated for an intent."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf imo:IntentHandlingEvent
+.
+
+imo:handlingState
+  rdfs:label "Handling State Property"@en ;
+  rdfs:comment "The property imo:handlingState can be used to assign an intent handling state."@en ;
+  rdf:type rdf:Property ;
+  rdfs:range imo:IntentHandlingState
+.
+
+imo:handlingStateOf
+  rdfs:label "Handling State Of Function"@en ;
+  rdfs:comment "The function imo:handlingStateOf represents the current state in the intent handling state machine for the handling of the intent in the function argument."@en ;
+  rdf:type fun:Function ;
+  fun:resultType imo:IntentHandlingState ;
+  fun:arityMin 1 ;
+  fun:arityMax 1 ;
+  fun:argumentTypes ( icm:Intent )
+.
+
+imo:IntentAccepted
+  rdfs:label "Intent Accepted Event"@en ;
+  rdfs:comment "The class imo:IntentAccepted represents a state transition event in the intent handling state machine. It indicates that the intent is accepted by the intent handler."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf imo:IntentHandlingEvent
+.
+
+imo:IntentCommonModel
+  rdfs:label "Intent Common Model Class"@en ;
+  rdfs:comment "The class imo:IntentCommonModel is a subclass of imo:TIOmodel. Its instances are intent common models within the TM Forum Intent Ontology."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf imo:TIOmodel
+.
+
+imo:IntentExtensionModel
+  rdfs:label "Intent Extension Model Class"@en ;
+  rdfs:comment "The class imo:IntentExtensionModel is a subclass of imo:TIOmodel. Its instances are an intent extension model within the TM Forum Intent Ontology."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf imo:TIOmodel
+.
+
+imo:IntentHandlingEvent
+  rdfs:label "Intent Handling Event Class"@en ;
+  rdfs:comment "The class imo:intentHandlingEvent represents events of the intent handling and intent update state machines."@en ; 
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf imo:Event
+.
+
+imo:IntentHandlingState
+  rdfs:label "Intent Handling State Class"@en ;
+  rdfs:comment "The class imo:IntentHandlingState is the class of all individuals that represent states of the intent handler."@en ;
+  rdf:type rdfs:Class ;
+.
+
+imo:IntentManager
+  rdfs:label "Intent Manager Class"@en ;
+  rdfs:comment "The class imo:IntentManager expresses that its instance is an Intent Management Function."@en ;
+  rdf:type rdfs:Class ;
+.
+
+imo:IntentReceived
+  rdfs:label "Intent Received Event"@en ;
+  rdfs:comment "The class imo:IntentReceived represents a state transition event in the intent handling state machine. It indicates that a new intent was received and that handling of this intent is starting."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf imo:IntentHandlingEvent
+.
+
+imo:IntentRejected
+  rdfs:label "Intent Rejected Event"@en ;
+  rdfs:comment "The class imo:IntentRejected represents a state transition event in the intent handling state machine. It indicates that the intent handler has rejected the intent."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf imo:IntentHandlingEvent
+.
+
+imo:IntentRemoval
+  rdfs:label "Intent Removal Event"@en ;
+  rdfs:comment "The class imo:IntentRemoval represents a state transition event in the intent handling state machine. It indicates that the intent owner has ordered a removal of the intent."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf imo:IntentHandlingEvent
+.
+
+imo:LCMrole
+  rdfs:label "LCM Role Class"@en ;
+  rdfs:comment "The class imo:LCMrole expresses that its instance has a role in intent life-cycle management. Its subclasses specify which role that is."@en ;
+  rdf:type rdfs:Class
+.
+
+imo:Now
+  rdfs:label "Now"@en ;
+  rdfs:comment "The property imo:now is an instance of class t:Instant specified in the Time Ontology in OWL [owltime]. It represents the current date and time."@en ;
+  rdf:type t:Instant
+.
+
+imo:Owner
+  rdfs:label "Owner Class"@en ;
+  rdfs:comment "The class imo:Owner expresses that its instance has the role of intent owner in intent life-cycle management."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf imo:LCMrole
+.
+
+imo:owner
+  rdfs:label "Owner Property"@en ;
+  rdfs:comment "The property imo:owner expresses that the resource of type imo:IntentManager in its object has the role of an intent owner for the subject. The subject is typically an intent or associated intent report."@en ;
+  rdf:type rdf:Property ;
+  rdfs:range imo:IntentManager
+.
+
+imo:StateCompliant
+  rdfs:label "Compliant State"@en ;
+  rdfs:comment "The individual imo:StateCompliant represents a state in the intent handling state machine. It indicates that the system is currently compliant to all requirements in the intent."@en ;
+  rdf:type imo:IntentHandlingState
+.
+
+imo:StateDegraded
+  rdfs:label "Degraded State"@en ;
+  rdfs:comment "The individual imo:StateDegraded represents a state in the intent handling state machine. It indicates that the system is currently not compliant to all requirements in the intent."@en ;
+  rdf:type imo:IntentHandlingState
+.
+
+imo:StateFinalizing
+  rdfs:label "Finalizing State"@en ;
+  rdfs:comment "The individual imo:StateFinalizing represents a state in the intent handling state machine. It indicates that the intent handler has stopped operating with the intent and is performing final clean-up tasks. This typically happens after the intent owner has ordered a removal of the intent."@en ;
+  rdf:type imo:IntentHandlingState
+.
+
+imo:StateIntentReceived
+  rdfs:label "Intent Received State"@en ;
+  rdfs:comment "The individual imo:StateIntentReceived represents a state in the intent handling state machine. It indicates that a new intent has been received, and the intent handler is considering its acceptance."@en ;
+  rdf:type imo:IntentHandlingState
+.
+
+imo:StateNoUpdate
+  rdfs:label "No Update State"@en ;
+  rdfs:comment "The individual imo:StateNoUpdate represents a state in the intent update state machine. The intent handler assumes this state while there is no update ongoing. It is a waiting state indicating an idle update state machine."@en ;
+  rdf:type imo:IntentHandlingState
+.
+
+imo:StateUpdateReceived
+  rdfs:label "Update Received State"@en ;
+  rdfs:comment "The individual imo:StateUpdateReceived represents a state in the intent update state machine. This state indicates that the intent handler has received an update and is assessing if it can accept it or not."@en ;
+  rdf:type imo:IntentHandlingState
+.
+
+imo:TIOmodel
+  rdfs:label "TIO Model Class"@en ;
+  rdfs:comment "The class imo:TIOmodel expresses that its instance is an ontology model within the TM Forum Intent Ontology"@en ;
+  rdf:type rdfs:Class
+.
+
+imo:StateUpdating
+  rdfs:label "Updateing State"@en ;
+  rdfs:comment "The individual imo:StateUpdating represents a state in the intent update state machine. This state indicates that the intent handler has accepted the update and is replacing the requirements to be considered with the new version. "@en ;
+  rdf:type imo:IntentHandlingState
+.
+
+imo:timeOfLastEventFor
+  rdfs:label "Time Of Last Event Function"@en ;
+  rdfs:comment "The function imo:timeOfLastEventFor represents the point in time when the last event of the specified event type was generated for an intent. The first argument specifies the event type and the second argument specifies the event instance. If no event of this type was issued yet for the intent, the reception of the intent is used as last event time. This means there is always a time provided. "@en ;
+  rdf:type fun:Function ;
+  fun:resultType t:Instant ;
+  fun:arityMin 2 ;
+  fun:arityMax 2 ;
+  fun:argumentTypes ( imo:Event icm:Intent )
+.
+
+imo:timeOfLastEventsFor
+  rdfs:label "Time Of Last Events For Function"@en ;
+  rdfs:comment "The function imo:timeOfLastEventsFor represents the point in time when the last event of the specified event types was generated for an intent. The first argument specifies a container. Its members represent the event types to be considered. The second argument specifies the intent instance for which the events were issued. If no event of these types was issued yet for the intent, the reception of the intent is used as last event time. This means there is always a time provided."@en ;
+  rdf:type fun:Function ;
+  fun:resultType t:Instant ;
+  fun:arityMin 2 ;
+  fun:arityMax 2 ;
+  fun:argumentTypes ( imo:Container icm:Intent )
+.
+
+imo:timeOfLastReportFor
+  rdfs:label "Time Of Last Report For Function"@en ;
+  rdfs:comment "The function imo:timeOfLastReportFor represents the point in time when the last intent report was generated for the intent specified in the function argument. If no report was issued yet, the reception of the intent is used as last report time. This means there is always a time provided."@en ;
+  rdf:type fun:Function ;
+  fun:resultType t:Instant ;
+  fun:arityMin 1 ;
+  fun:arityMax 1 ;
+  fun:argumentTypes ( icm:Intent )
+.
+
+imo:UpdateAccepted
+  rdfs:label "Update Accepted Event"@en ;
+  rdfs:comment "The class imo:UpdateAccepted represents a state transition event in the intent update state machine. This event indicates that the update was accepted and the intent handler proceeds with replacing the intent content. The update state imo:StateUpdating is reached."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf imo:IntentHandlingEvent
+.
+
+imo:UpdateFinished
+  rdfs:label "Update Finished Event"@en ;
+  rdfs:comment "The class imo:UpdateFinished represents a state transition event in the intent update state machine. This event indicates that the intent handler has finished executing a successful update. The update state machine returns to its waiting state imo:StateNoUpdate."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf imo:IntentHandlingEvent
+
+.
+
+imo:UpdateReceived
+  rdfs:label "Update Received Event"@en ;
+  rdfs:comment "The class imo:UpdateReceived represents a state transition event in the intent update state machine. This event indicates that update handling is initiated, and the intent handler is assessing if it can accept the update. The update state machine has entered the state imo:StateUpdateReceived."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf imo:IntentHandlingEvent
+.
+
+imo:UpdateRejected
+  rdfs:label "Update Received Event"@en ;
+  rdfs:comment "The class imo:UpdateRejected represents a state transition event in the intent update state machine. This event indicates that the update was rejected, and the intent handler continues with the previous version of the intent. The new version of the intent is discarded and the update state returns to imo:StateNoUpdate."@en ;
+  rdf:type rdfs:Class ;
+  rdfs:subClassOf imo:IntentHandlingEvent
+.
+
+imo:updateState
+  rdfs:label "update State Property"@en ;
+  rdfs:comment "The property imo:updateState can be used to assign an intent update state"@en ;
+  rdf:type rdf:Property ;
+  rdfs:range imo:IntentHandlingState
+.
+
+imo:updateStateOf
+  rdfs:label "Update State Of Function"@en ;
+  rdfs:comment "The function imo:updateStateOf represents the current state in the intent handling state machine for the handling of an update of the intent in the function argument"@en ;
+  rdf:type fun:Function ;
+  fun:resultType imo:IntentHandlingState ;
+  fun:arityMin 1 ;
+  fun:arityMax 1 ;
+  fun:argumentTypes ( icm:Intent ) 
+.
+
+imo:Vocabulary
+  rdfs:label "Intent Managment Vocabulary"@en ;
+  rdfs:comment "The object imo:Vocabulary is a container of all model elements"@en ;
+  rdf:type rdfs:Container ;
+  rdfs:member imo:associatedValueCombination ,
+              imo:associatedValueType ,
+              imo:BaseOntologyModel ,
+              imo:Complies ,
+              imo:Degrades ,
+              imo:Event ,
+              imo:event ,
+              imo:eventFor ,
+              imo:eventIssuedBy ,
+              imo:eventIssuedFor ,
+              imo:Handler ,
+              imo:handler ,
+              imo:HandlingEnded ,
+              imo:handlingState ,
+              imo:handlingStateOf ,
+              imo:IntentAccepted ,
+              imo:IntentCommonModel ,
+              imo:IntentExtensionModel ,
+              imo:IntentHandlingEvent ,
+              imo:IntentHandlingState ,
+              imo:IntentManager ,
+              imo:IntentReceived ,
+              imo:IntentRejected ,
+              imo:IntentRemoval ,
+              imo:LCMrole ,
+              imo:Now ,
+              imo:Owner ,
+              imo:owner ,
+              imo:StateCompliant ,
+              imo:StateDegraded ,
+              imo:StateFinalizing ,
+              imo:StateIntentReceived ,
+              imo:StateNoUpdate ,
+              imo:StateUpdateReceived ,
+              imo:TIOmodel ,
+              imo:StateUpdating ,
+              imo:timeOfLastEventFor ,
+              imo:timeOfLastEventsFor ,
+              imo:timeOfLastReportFor ,
+              imo:UpdateAccepted ,
+              imo:UpdateFinished ,
+              imo:UpdateReceived ,
+              imo:UpdateRejected ,
+              imo:updateState ,
+              imo:updateStateOf
+.
+

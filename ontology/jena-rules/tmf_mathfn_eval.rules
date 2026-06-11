@@ -1,0 +1,42 @@
+# tmf_mathfn_eval.rules
+# MathFunctions evaluation rules for Apache Jena GenericRuleReasoner.
+# Translated from: ontology/rules/tmf_mathfn_eval.dlog
+#
+# Note: most source rules are parameter identity rules of the form
+#   [?F, p, ?X] :- [?F, p, ?X]
+# which are tautological and produce no new inferences. Only the meaningful
+# subclass propagation rules are retained here.
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix mf:   <http://tio.models.tmforum.org/tio/v3.6.0/MathFunctions/> .
+@prefix fun:  <http://tio.models.tmforum.org/tio/v3.6.0/FunctionOntology/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+
+# ── Math function type propagation ────────────────────────────────────────────
+
+[mfLogisticIsFunction:
+    (?F rdf:type mf:mflogistic)
+    ->
+    (?F rdf:type fun:funFunction)
+]
+
+[mfPolyIsFunction:
+    (?F rdf:type mf:mfpoly)
+    ->
+    (?F rdf:type fun:funFunction)
+]
+
+[mfMappingIsFunction:
+    (?F rdf:type mf:mfmapping)
+    ->
+    (?F rdf:type fun:funFunction)
+]
+
+# DROPPED (tautological identity rules from source):
+#   [?F, mf:mfinput, ?I] :- [?F, rdf:type, fun:funFunction], [?F, mf:mfinput, ?I]
+#   [?F, mf:mfcoefficients, ?C] :- [?F, mf:mfcoefficients, ?C]
+#   [?F, mf:mfmap, ?M] :- [?F, mf:mfmap, ?M]
+#   [?F, mf:mfk/mfl/mfc/mfx0, ?X] :- [..., ?X, rdf:type, quan:quanQuantity]
+# These assert only what is already present in the graph.

@@ -1,0 +1,72 @@
+@prefix bbf:  <http://broadband-forum.org/Intent#> .
+@prefix fun:  <http://tio.models.tmforum.org/tio/v3.6.0/FunctionOntology/> .
+@prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix ig:   <http://tio.models.tmforum.org/tio/v3.6.0/IntentGuaranteeOntology/> .
+@prefix pro:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentProbing/> .
+@prefix insp: <http://tio.models.tmforum.org/tio/v3.6.0/IntentSpecification/> .
+@prefix met:  <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix iv:   <http://tio.models.tmforum.org/tio/v3.6.0/IntentValidityOntology/> .
+@prefix mf:   <http://tio.models.tmforum.org/tio/v3.6.0/MathFunctions/> .
+@prefix pre:  <http://tio.models.tmforum.org/tio/v3.6.0/PreferenceOfHandlingOutcomes/> .
+@prefix pbi:  <http://tio.models.tmforum.org/tio/v3.6.0/ProposalBestIntent/> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+@prefix ut:   <http://tio.models.tmforum.org/tio/v3.6.0/Utility/> .
+@prefix dct:  <http://purl.org/dc/terms/> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix t:    <http://www.w3.org/2006/time#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix dct:  <http://purl.org/dc/terms/> .
+
+# Class definitions
+bbf:UNIInterface a rdfs:Class ;
+    rdfs:label "UNI Interface" .
+
+# Resource definitions  
+bbf:OperationalUp a rdfs:Resource ;
+    rdfs:label "Operational Up State" .
+
+bbf:NorthRegion a rdfs:Resource ;
+    rdfs:label "North Region" .
+    
+bbf:Ready a rdfs:Resource ;
+    rdfs:label "Ready Provisioning State" .
+
+# Property definitions
+bbf:inUse a rdf:Property ;
+    rdfs:range xsd:boolean .
+    
+bbf:operationalState a rdf:Property .
+bbf:region a rdf:Property .
+
+bbf:UNI1 a bbf:UNIInterface ;
+         bbf:inUse false ;
+         bbf:operationalState bbf:OperationalUp;
+         bbf:provisioningState bbf:Ready ;
+         bbf:region bbf:NorthRegion .
+bbf:UNI2 a bbf:UNIInterface ;
+         bbf:inUse false ;
+         bbf:operationalState bbf:OperationalUp;
+         bbf:provisioningState bbf:Ready ;
+         bbf:region bbf:SouthRegion .
+bbf:UNI3 a bbf:UNIInterface ;
+         bbf:inUse false ;
+         bbf:operationalState bbf:OperationalUp;
+         bbf:provisioningState bbf:Ready ;
+         bbf:region bbf:NorthRegion .         
+bbf:UNI4 a bbf:UNIInterface ;
+         bbf:inUse false ;
+         bbf:operationalState bbf:OperationalUp;
+         bbf:provisioningState bbf:Ready ;
+         bbf:region bbf:NorthRegion .
+bbf:UNI5 a bbf:UNIInterface ;
+         bbf:inUse false ;
+         bbf:operationalState bbf:OperationalUp;
+         bbf:provisioningState bbf:Ready ;
+         bbf:region bbf:SouthRegion .
+
+

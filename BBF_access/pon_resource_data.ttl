@@ -1,0 +1,396 @@
+@prefix pon:  <http://broadband-forum.org/ont/pon-resource#> .
+@prefix bbf:  <http://broadband-forum.org/Intent#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  BBF PON Access Network — Resource Instance Data                            ║
+# ║  Ontology: pon_resource_onto.ttl                                            ║
+# ║                                                                             ║
+# ║  Topology:                                                                  ║
+# ║    OLT-001 (North CO)  ──PON-001-1──► ONT-001 (UNI-001-1, UNI-001-2)      ║
+# ║                         ──PON-001-1──► ONT-002 (UNI-002-1 [in use],        ║
+# ║                         │                       UNI-002-2)                 ║
+# ║                         ──PON-001-2──► ONT-003 (UNI-003-1, UNI-003-2)     ║
+# ║                         ──UPL-001-1──► SVLAN HSI  s-tag:100 c-tags:200-299 ║
+# ║                                        SVLAN VoIP s-tag:200 c-tags:300-399 ║
+# ║                                                                             ║
+# ║    OLT-002 (South CO)  ──PON-002-1──► ONT-004 (UNI-004-1, UNI-004-2)      ║
+# ║                         ──PON-002-1──► ONT-005 (UNI-005-1 [Down],          ║
+# ║                         │                       UNI-005-2)                 ║
+# ║                         ──UPL-002-1──► SVLAN HSI  s-tag:100 c-tags:200-299 ║
+# ║                                                                             ║
+# ║  inUse legend:                                                              ║
+# ║    UNI-002-1  in use  — assigned to service CTAG-N-002                     ║
+# ║    CTAG-N-002 in use  — subscriber BBF_SUB_10001                           ║
+# ║    All others free                                                          ║
+# ║                                                                             ║
+# ║  ALIGNED: hsionlyintent_v0.5.ttl uses pon: namespace throughout —           ║
+# ║  set:resourcesOfType pon:UNIPort / pon:CTAGAllocation, pon:inUse,           ║
+# ║  pon:operationalState, and pon:provisioningState are consistent with this   ║
+# ║  data.  Handler write-back sets pon:inUse true/false on both the selected   ║
+# ║  UNI and CTAG and records pon:assignedToService <intent-uuid>.              ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+
+############################################################
+# OLT-001  —  North Central Office
+############################################################
+pon:OLT-001
+    a pon:OLT ;
+    pon:neId          "OLT-001" ;
+    pon:uuid          "a1b2c3d4-0001-0001-0001-000000000001" ;
+    pon:name          "North-CO-OLT-01" ;
+    pon:serialNumber  "FNTT00000001" ;
+    pon:productName   "FiberNode 8000" ;
+    pon:mfgName       "ExampleVendor" ;
+    pon:operationalState pon:Up ;
+    pon:administrativeState pon:Enabled ;
+    pon:region        bbf:NorthRegion ;
+    pon:location      "North Central Office, Building A, Rack 3" ;
+    pon:hasPONPort    pon:PON-001-1 , pon:PON-001-2 ;
+    pon:hasUplinkPort pon:UPL-001-1 .
+
+############################################################
+# OLT-001 PON Ports (Channel Terminations)
+############################################################
+pon:PON-001-1
+    a pon:PONPort ;
+    pon:componentId   "pon-0/0/1" ;
+    pon:name          "PON-001-1" ;
+    pon:belongsToOLT  pon:OLT-001 ;
+    pon:operationalState pon:Up ;
+    pon:administrativeState pon:Enabled .
+
+pon:PON-001-2
+    a pon:PONPort ;
+    pon:componentId   "pon-0/0/2" ;
+    pon:name          "PON-001-2" ;
+    pon:belongsToOLT  pon:OLT-001 ;
+    pon:operationalState pon:Up ;
+    pon:administrativeState pon:Enabled .
+
+############################################################
+# OLT-001 Uplink Port
+############################################################
+pon:UPL-001-1
+    a pon:UplinkPort ;
+    pon:componentId   "uplink-0/1/1" ;
+    pon:name          "UPL-001-1" ;
+    pon:operationalState pon:Up ;
+    pon:administrativeState pon:Enabled .
+
+############################################################
+# ONT-001  (North, PON-001-1)  —  both UNIs free
+############################################################
+pon:ONT-001
+    a pon:ONT ;
+    pon:neId          "ONT-001" ;
+    pon:uuid          "a1b2c3d4-0001-0001-0002-000000000001" ;
+    pon:name          "ONT-001" ;
+    pon:serialNumber  "ONTVENDOR001" ;
+    pon:productName   "HomeGateway 500" ;
+    pon:mfgName       "ExampleVendor" ;
+    pon:operationalState pon:Up ;
+    pon:administrativeState pon:Enabled ;
+    pon:provisioningState pon:Ready ;
+    pon:connectedToPONPort pon:PON-001-1 ;
+    pon:region        bbf:NorthRegion ;
+    pon:hasUNIPort    pon:UNI-001-1 , pon:UNI-001-2 .
+
+pon:UNI-001-1
+    a pon:UNIPort ;
+    pon:componentId   "uni-0/0/1/1" ;
+    pon:name          "UNI-001-1" ;
+    pon:belongsToONT  pon:ONT-001 ;
+    pon:operationalState pon:Up ;
+    pon:provisioningState pon:Ready ;
+    pon:inUse         false ;
+    pon:region        bbf:NorthRegion .
+
+pon:UNI-001-2
+    a pon:UNIPort ;
+    pon:componentId   "uni-0/0/1/2" ;
+    pon:name          "UNI-001-2" ;
+    pon:belongsToONT  pon:ONT-001 ;
+    pon:operationalState pon:Up ;
+    pon:provisioningState pon:Ready ;
+    pon:inUse         false ;
+    pon:region        bbf:NorthRegion .
+
+############################################################
+# ONT-002  (North, PON-001-1)  —  UNI-002-1 already in use
+############################################################
+pon:ONT-002
+    a pon:ONT ;
+    pon:neId          "ONT-002" ;
+    pon:uuid          "a1b2c3d4-0001-0001-0002-000000000002" ;
+    pon:name          "ONT-002" ;
+    pon:serialNumber  "ONTVENDOR002" ;
+    pon:productName   "HomeGateway 500" ;
+    pon:mfgName       "ExampleVendor" ;
+    pon:operationalState pon:Up ;
+    pon:administrativeState pon:Enabled ;
+    pon:provisioningState pon:Ready ;
+    pon:connectedToPONPort pon:PON-001-1 ;
+    pon:region        bbf:NorthRegion ;
+    pon:hasUNIPort    pon:UNI-002-1 , pon:UNI-002-2 .
+
+pon:UNI-002-1
+    a pon:UNIPort ;
+    pon:componentId   "uni-0/0/2/1" ;
+    pon:name          "UNI-002-1" ;
+    pon:belongsToONT  pon:ONT-002 ;
+    pon:operationalState pon:Up ;
+    pon:provisioningState pon:Ready ;
+    pon:inUse         true ;
+    pon:assignedToService "existing-service-placeholder" ;
+    pon:region        bbf:NorthRegion .
+
+pon:UNI-002-2
+    a pon:UNIPort ;
+    pon:componentId   "uni-0/0/2/2" ;
+    pon:name          "UNI-002-2" ;
+    pon:belongsToONT  pon:ONT-002 ;
+    pon:operationalState pon:Up ;
+    pon:provisioningState pon:Ready ;
+    pon:inUse         false ;
+    pon:region        bbf:NorthRegion .
+
+############################################################
+# ONT-003  (North, PON-001-2)  —  both UNIs free
+############################################################
+pon:ONT-003
+    a pon:ONT ;
+    pon:neId          "ONT-003" ;
+    pon:uuid          "a1b2c3d4-0001-0001-0002-000000000003" ;
+    pon:name          "ONT-003" ;
+    pon:serialNumber  "ONTVENDOR003" ;
+    pon:productName   "HomeGateway 500" ;
+    pon:mfgName       "ExampleVendor" ;
+    pon:operationalState pon:Up ;
+    pon:administrativeState pon:Enabled ;
+    pon:provisioningState pon:Ready ;
+    pon:connectedToPONPort pon:PON-001-2 ;
+    pon:region        bbf:NorthRegion ;
+    pon:hasUNIPort    pon:UNI-003-1 , pon:UNI-003-2 .
+
+pon:UNI-003-1
+    a pon:UNIPort ;
+    pon:componentId   "uni-0/0/3/1" ;
+    pon:name          "UNI-003-1" ;
+    pon:belongsToONT  pon:ONT-003 ;
+    pon:operationalState pon:Up ;
+    pon:provisioningState pon:Ready ;
+    pon:inUse         false ;
+    pon:region        bbf:NorthRegion .
+
+pon:UNI-003-2
+    a pon:UNIPort ;
+    pon:componentId   "uni-0/0/3/2" ;
+    pon:name          "UNI-003-2" ;
+    pon:belongsToONT  pon:ONT-003 ;
+    pon:operationalState pon:Up ;
+    pon:provisioningState pon:Ready ;
+    pon:inUse         false ;
+    pon:region        bbf:NorthRegion .
+
+############################################################
+# SVLAN Allocations for OLT-001
+############################################################
+pon:SVLAN-N-HSI
+    a pon:SVLANAllocation ;
+    pon:name          "North-HSI-SVLAN" ;
+    pon:sTag          100 ;
+    pon:serviceType   pon:HSIService ;
+    pon:appliesTo     pon:OLT-001 ;
+    pon:cTagMin       200 ;
+    pon:cTagMax       299 .
+
+pon:SVLAN-N-VoIP
+    a pon:SVLANAllocation ;
+    pon:name          "North-VoIP-SVLAN" ;
+    pon:sTag          200 ;
+    pon:serviceType   pon:VoIPService ;
+    pon:appliesTo     pon:OLT-001 ;
+    pon:cTagMin       300 ;
+    pon:cTagMax       399 .
+
+############################################################
+# C-TAG Allocations for OLT-001 HSI pool
+############################################################
+pon:CTAG-N-001
+    a pon:CTAGAllocation ;
+    pon:cTag          200 ;
+    pon:fromSVLAN     pon:SVLAN-N-HSI ;
+    pon:inUse         false .
+
+pon:CTAG-N-002
+    a pon:CTAGAllocation ;
+    pon:cTag          201 ;
+    pon:fromSVLAN     pon:SVLAN-N-HSI ;
+    pon:inUse         true ;
+    pon:subscriberId  "BBF_SUB_10001" ;
+    pon:assignedToService "existing-service-placeholder" .
+
+pon:CTAG-N-003
+    a pon:CTAGAllocation ;
+    pon:cTag          202 ;
+    pon:fromSVLAN     pon:SVLAN-N-HSI ;
+    pon:inUse         false .
+
+pon:CTAG-N-004
+    a pon:CTAGAllocation ;
+    pon:cTag          203 ;
+    pon:fromSVLAN     pon:SVLAN-N-HSI ;
+    pon:inUse         false .
+
+
+############################################################
+# OLT-002  —  South Central Office
+############################################################
+pon:OLT-002
+    a pon:OLT ;
+    pon:neId          "OLT-002" ;
+    pon:uuid          "a1b2c3d4-0002-0001-0001-000000000001" ;
+    pon:name          "South-CO-OLT-01" ;
+    pon:serialNumber  "FNTT00000002" ;
+    pon:productName   "FiberNode 8000" ;
+    pon:mfgName       "ExampleVendor" ;
+    pon:operationalState pon:Up ;
+    pon:administrativeState pon:Enabled ;
+    pon:region        bbf:SouthRegion ;
+    pon:location      "South Central Office, Building B, Rack 1" ;
+    pon:hasPONPort    pon:PON-002-1 ;
+    pon:hasUplinkPort pon:UPL-002-1 .
+
+############################################################
+# OLT-002 PON Port
+############################################################
+pon:PON-002-1
+    a pon:PONPort ;
+    pon:componentId   "pon-0/0/1" ;
+    pon:name          "PON-002-1" ;
+    pon:belongsToOLT  pon:OLT-002 ;
+    pon:operationalState pon:Up ;
+    pon:administrativeState pon:Enabled .
+
+############################################################
+# OLT-002 Uplink Port
+############################################################
+pon:UPL-002-1
+    a pon:UplinkPort ;
+    pon:componentId   "uplink-0/1/1" ;
+    pon:name          "UPL-002-1" ;
+    pon:operationalState pon:Up ;
+    pon:administrativeState pon:Enabled .
+
+############################################################
+# ONT-004  (South, PON-002-1)  —  both UNIs free
+############################################################
+pon:ONT-004
+    a pon:ONT ;
+    pon:neId          "ONT-004" ;
+    pon:uuid          "a1b2c3d4-0002-0001-0002-000000000004" ;
+    pon:name          "ONT-004" ;
+    pon:serialNumber  "ONTVENDOR004" ;
+    pon:productName   "HomeGateway 500" ;
+    pon:mfgName       "ExampleVendor" ;
+    pon:operationalState pon:Up ;
+    pon:administrativeState pon:Enabled ;
+    pon:provisioningState pon:Ready ;
+    pon:connectedToPONPort pon:PON-002-1 ;
+    pon:region        bbf:SouthRegion ;
+    pon:hasUNIPort    pon:UNI-004-1 , pon:UNI-004-2 .
+
+pon:UNI-004-1
+    a pon:UNIPort ;
+    pon:componentId   "uni-0/0/4/1" ;
+    pon:name          "UNI-004-1" ;
+    pon:belongsToONT  pon:ONT-004 ;
+    pon:operationalState pon:Up ;
+    pon:provisioningState pon:Ready ;
+    pon:inUse         false ;
+    pon:region        bbf:SouthRegion .
+
+pon:UNI-004-2
+    a pon:UNIPort ;
+    pon:componentId   "uni-0/0/4/2" ;
+    pon:name          "UNI-004-2" ;
+    pon:belongsToONT  pon:ONT-004 ;
+    pon:operationalState pon:Up ;
+    pon:provisioningState pon:Ready ;
+    pon:inUse         false ;
+    pon:region        bbf:SouthRegion .
+
+############################################################
+# ONT-005  (South, PON-002-1)  —  UNI-005-1 operationally Down
+############################################################
+pon:ONT-005
+    a pon:ONT ;
+    pon:neId          "ONT-005" ;
+    pon:uuid          "a1b2c3d4-0002-0001-0002-000000000005" ;
+    pon:name          "ONT-005" ;
+    pon:serialNumber  "ONTVENDOR005" ;
+    pon:productName   "HomeGateway 500" ;
+    pon:mfgName       "ExampleVendor" ;
+    pon:operationalState pon:Up ;
+    pon:administrativeState pon:Enabled ;
+    pon:provisioningState pon:Ready ;
+    pon:connectedToPONPort pon:PON-002-1 ;
+    pon:region        bbf:SouthRegion ;
+    pon:hasUNIPort    pon:UNI-005-1 , pon:UNI-005-2 .
+
+pon:UNI-005-1
+    a pon:UNIPort ;
+    pon:componentId   "uni-0/0/5/1" ;
+    pon:name          "UNI-005-1" ;
+    pon:belongsToONT  pon:ONT-005 ;
+    pon:operationalState pon:Down ;
+    pon:provisioningState pon:Ready ;
+    pon:inUse         false ;
+    pon:region        bbf:SouthRegion .
+
+pon:UNI-005-2
+    a pon:UNIPort ;
+    pon:componentId   "uni-0/0/5/2" ;
+    pon:name          "UNI-005-2" ;
+    pon:belongsToONT  pon:ONT-005 ;
+    pon:operationalState pon:Up ;
+    pon:provisioningState pon:Ready ;
+    pon:inUse         false ;
+    pon:region        bbf:SouthRegion .
+
+############################################################
+# SVLAN Allocation for OLT-002
+############################################################
+pon:SVLAN-S-HSI
+    a pon:SVLANAllocation ;
+    pon:name          "South-HSI-SVLAN" ;
+    pon:sTag          100 ;
+    pon:serviceType   pon:HSIService ;
+    pon:appliesTo     pon:OLT-002 ;
+    pon:cTagMin       200 ;
+    pon:cTagMax       299 .
+
+############################################################
+# C-TAG Allocations for OLT-002 HSI pool
+############################################################
+pon:CTAG-S-001
+    a pon:CTAGAllocation ;
+    pon:cTag          200 ;
+    pon:fromSVLAN     pon:SVLAN-S-HSI ;
+    pon:inUse         false .
+
+pon:CTAG-S-002
+    a pon:CTAGAllocation ;
+    pon:cTag          201 ;
+    pon:fromSVLAN     pon:SVLAN-S-HSI ;
+    pon:inUse         false .
+
+pon:CTAG-S-003
+    a pon:CTAGAllocation ;
+    pon:cTag          202 ;
+    pon:fromSVLAN     pon:SVLAN-S-HSI ;
+    pon:inUse         false .
