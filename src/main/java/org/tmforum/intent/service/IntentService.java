@@ -78,11 +78,11 @@ public class IntentService {
         return intentRepository.findById(id);
     }
 
-    public List<Map<String, Object>> findAll(int limit, int offset, Map<String, String> filters) {
+    public List<Map<String, Object>> findAll(int limit, int offset, Map<String, Object> filters) {
         return intentRepository.findAll(limit, offset, filters);
     }
 
-    public long count(Map<String, String> filters) {
+    public long count(Map<String, Object> filters) {
         return intentRepository.count(filters);
     }
 
