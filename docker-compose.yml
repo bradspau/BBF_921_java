@@ -1,0 +1,63 @@
+services:
+
+  # ── Standalone profile (default) ─────────────────────────────────────────
+  # Runs on port 8000. No resource inventory loaded.
+  # Start: docker compose --profile standalone up --build
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - tdb2-standalone:/app/tdb2-data
+    environment:
+      SPRING_PROFILES_ACTIVE: standalone
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    profiles: [standalone]
+
+  # ── Access profile ────────────────────────────────────────────────────────
+  # Runs on port 8001. Loads BBF_access/pon_resource_data.ttl at startup.
+  # Start: docker compose --profile access up --build
+  app-access:
+    build: .
+    ports:
+      - "8001:8001"
+    volumes:
+      - tdb2-access:/app/tdb2-access
+    environment:
+      SPRING_PROFILES_ACTIVE: access
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    profiles: [access]
+
+  # ── Aggregation profile ───────────────────────────────────────────────────
+  # Multi-domain intent aggregation mode. Runs on port 8000.
+  # Start: docker compose --profile aggregation up --build
+  app-aggregation:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - tdb2-aggregation:/app/tdb2-aggregation
+    environment:
+      SPRING_PROFILES_ACTIVE: aggregation
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    profiles: [aggregation]
+
+volumes:
+  tdb2-standalone:
+  tdb2-access:
+  tdb2-aggregation:
