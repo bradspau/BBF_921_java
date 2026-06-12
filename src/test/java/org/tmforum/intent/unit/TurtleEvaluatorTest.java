@@ -143,7 +143,7 @@ class TurtleEvaluatorTest {
                 _:cond a quan:quanatLeast ;
                     rdf:first <http://example.org/metrics/latency> ;
                     rdf:rest [ rdf:first _:bound ] .
-                _:bound rdf:value "100"^^xsd:decimal .
+                _:bound rdf:value "10"^^xsd:decimal .
                 """;
         // Observation Turtle
         String obs = PREFIXES + """

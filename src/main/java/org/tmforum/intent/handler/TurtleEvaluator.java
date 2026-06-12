@@ -513,7 +513,9 @@ public class TurtleEvaluator {
             if (sv == null || !sv.getObject().isLiteral()
                     || !sv.getObject().asLiteral().getBoolean()) {
                 return EvalNode.fail(cond("validityGate",
-                        Map.of("context", validityCtx.getURI(), "passed", false)));
+                        Map.of("context",
+                               validityCtx.isURIResource() ? validityCtx.getURI() : validityCtx.toString(),
+                               "passed", false)));
             }
         }
 
