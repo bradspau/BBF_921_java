@@ -56,7 +56,7 @@ public class JenaConfig {
 
     @PreDestroy
     public void closeDataset() {
-        if (dataset != null && !dataset.isClosed()) {
+        if (dataset != null) {
             log.info("Closing TDB2 dataset");
             dataset.close();
         }
