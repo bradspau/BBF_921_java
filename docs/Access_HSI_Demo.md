@@ -246,8 +246,9 @@ Conditions 1–3 depend only on the inventory, so they pass as soon as the inten
 need a metric observation. You will post the metrics in two halves and check the intent report and the
 per-condition results after each.
 
-Set up the variables and a helper once. The helper reads the per-condition results that the handler stores in the
-intent's `handlerState` graph, so it needs the Fuseki profile (`access,fuseki`):
+Set up the variables and helpers once. `results` reads the TR290 intent report the handler stores with every
+IntentReport: an `icm:result` for the intent, each expectation and each condition. It queries Fuseki, so it needs
+the Fuseki profile (`access,fuseki`):
 
 ```bash
 OBS="$BASE/intent/$INTENT_ID/observation"
@@ -268,27 +269,36 @@ print('reason:             ', r[0].get('intentHandlingReason'))
 "
 }
 
-conditions() {    # per-condition results from the handlerState graph (Fuseki)
+results() {       # icm:result of every element in this intent's latest TR290 report (Fuseki)
   curl -s -G http://localhost:3030/intents/sparql -H 'Accept: text/csv' \
-    --data-urlencode "query=PREFIX imo: <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/>
-SELECT ?condition ?passed ?observed ?bound ?selected ?error WHERE {
-  GRAPH <http://tmforum.org/api/v5/intents/$INTENT_ID/handlerState> {
-    ?intent imo:hasConditionResult ?c .
-    ?c a ?condition ; imo:conditionPassed ?passed .
-    OPTIONAL { ?c imo:observedValue ?observed }
-    OPTIONAL { ?c imo:boundValue ?bound }
-    OPTIONAL { ?c imo:selectedResource ?selected }
-    OPTIONAL { ?c imo:conditionError ?error }
+    --data-urlencode "query=PREFIX icm: <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/>
+PREFIX tmf: <http://tmforum.org/api/v5/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT ?kind ?element ?result ?target ?reason WHERE {
+  ?report tmf:parentIntent <http://tmforum.org/api/v5/intents/$INTENT_ID> ; tmf:icmReport ?ir .
+  ?ir icm:reportNumber ?n .
+  FILTER NOT EXISTS {
+    ?other tmf:parentIntent <http://tmforum.org/api/v5/intents/$INTENT_ID> ; tmf:icmReport ?ir2 .
+    ?ir2 icm:reportNumber ?n2 . FILTER (?n2 > ?n)
   }
-} ORDER BY ?c" \
-  | sed 's|http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/||; s|http://broadband-forum.org/ont/pon-resource#||'
+  ?ir icm:resultFrom* ?r .
+  ?r a ?kind ; icm:about ?element ; icm:result ?result .
+  OPTIONAL { ?r icm:targetReport/rdfs:member ?target }
+  OPTIONAL { ?r icm:reason/rdfs:label ?reason }
+} ORDER BY ?kind ?element" \
+  | sed 's|http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/||; s|http://broadband-forum.org/Intent#||g; s|http://broadband-forum.org/ont/pon-resource#||g'
 }
 ```
 
-> **`icm:result` vs the handler state.** The TIO rules infer `icm:result` while an evaluation runs, in a temporary
-> in-memory model that is discarded afterwards. What the handler *persists*, and what Fuseki can show, is one
-> `imo:hasConditionResult` node per condition with `imo:conditionPassed` (true/false), the observed value and bound,
-> or the reason it failed. That is the per-condition pass/fail to look at here.
+> **How the intent is reported on (TR290 §4).** Each evaluation creates a TR290 report with one report per intent
+> element: an `icm:IntentReport`, an expectation report per expectation (`icm:DeliveryExpectationReport`,
+> `icm:PropertyExpectationReport`, ...) and an `icm:ConditionReport` per condition. Each says which element it
+> covers (`icm:about`), its truth value (`icm:result`; for the intent and expectations `true` means compliant), and
+> which reports it was derived from (`icm:resultFrom`), so the intent's result is built up from its conditions.
+> A report that is `false` carries an `icm:reason`. A report for an expectation also names its target's resources
+> (`icm:targetReport`), which for a delivery expectation are the resources chosen. The reporting expectation in the intent decides which elements are reported (TR290 §4.2).
+> Observed values are left out because it is an `icm:ReportingExpectation`; an `icm:ObservationReportingExpectation`
+> would add them (`met:observed`).
 
 ### 4a — First half: bandwidth metrics only
 
@@ -303,14 +313,23 @@ Expected: **`Degraded`**, with a reason that lists only the three conditions sti
 `smaller: no observation: LatencyMetric; … JitterMetric; … PacketLossMetric`.
 
 ```bash
-conditions
+results
 ```
 
-Expected: 8 rows. The three `DeliveryExpectation` rows pass, with `selected` = `UNI-001-1`, `SVLAN-N-HSI` and
-`CTAG-N-001` (the handler tries candidates in name order, so the choice is repeatable). The two `atLeast` rows
-pass (`passed = true`, with the observed value and the bound). The three `smaller` rows are `passed = false` with
-`error = no observation: …`. Order matters in the intent: the S-tag is selected before the C-tag, because the
-C-tag pool is built from the chosen S-VLAN.
+Expected: 12 rows, one per reported element, built up from the bottom:
+
+| `kind` | `element` | `result` | Notes |
+|---|---|---|---|
+| `ConditionReport` | `HSI_DownstreamBandwidthCondition`, `HSI_UpstreamBandwidthCondition` | `true` | |
+| `ConditionReport` | `HSI_LatencyCondition`, `HSI_JitterCondition`, `HSI_PacketLossCondition` | `false` | `reason` = `no observation: …` |
+| `DeliveryExpectationReport` | the UNI, S-tag and C-tag expectations | `true` | `target` = the resource chosen: `UNI-001-1`, `SVLAN-N-HSI`, `CTAG-N-001` (candidates are tried in name order, so the choice is repeatable) |
+| `PropertyExpectationReport` | `HSIPerformanceExpectation` | `false` | `target` = `HSIServiceInstance`, the resource its conditions apply to; five conditions, three of them false |
+| `ReportingExpectationReport` | `HSIMonitoringExpectation` | `true` | nothing to fail |
+| `ExpectationReport` | `HSICompositeExpectation` | `false` | one of its parts is false |
+| `IntentReport` | `HSIIntent` | `false` | not compliant |
+
+Order matters in the intent: the S-tag is selected before the C-tag, because the C-tag pool is built from the
+chosen S-VLAN.
 
 Nothing is allocated yet. The UNI, S-tag and C-tag are only *selected*; the handler writes the allocation back
 when the intent becomes Fulfilled (see Step 5).
@@ -322,22 +341,23 @@ post_metric LatencyMetric      8.0     # < 25:  pass
 post_metric JitterMetric       1.2     # < 3:   pass
 sleep 2
 report
-conditions
+results
 ```
 
-Expected: still **`Degraded`**. Only `PacketLossMetric` is left in the reason, and 7 of the 8 conditions are
-`passed = true`.
+Expected: still **`Degraded`**. Only `PacketLossMetric` is left in the reason. In `results`, four of the five
+`ConditionReport` rows are now `true` (only `HSI_PacketLossCondition` is `false`, with its reason), and the
+performance expectation, the composite expectation and the intent are still `false`.
 
 ```bash
 post_metric PacketLossMetric   0.02    # < 0.1: pass
 echo "Waiting for evaluation..."
 sleep 2
 report
-conditions
+results
 ```
 
-Expected: **`Fulfilled`** with reason `None`, and all 8 rows `passed = true`. The intent became Fulfilled only on the
-last observation, when the final condition passed.
+Expected: **`Fulfilled`** with reason `None`, and all 12 rows `result = true`, up to and including the
+`IntentReport`. The intent became compliant only on the last observation, when the final condition passed.
 
 ---
 
@@ -482,12 +502,12 @@ post_metric DownstreamBandwidthMetric 150.0
 sleep 1
 
 report
-conditions
+results
 ```
 
-Expected: still **`Fulfilled`**, and the three `DeliveryExpectation` rows still show the **same** `selected`
-resources as in Step 4 (`UNI-001-1`, `SVLAN-N-HSI`, `CTAG-N-001`), even though the UNI and C-tag are now in use
-and no longer in the free pool.
+Expected: still **`Fulfilled`**, all rows `true`, and the three `DeliveryExpectationReport` rows still show the
+**same** `target` resources as in Step 4 (`UNI-001-1`, `SVLAN-N-HSI`, `CTAG-N-001`), even though the UNI and
+C-tag are now in use and no longer in the free pool.
 
 Each observation creates a new IntentReport. Allocation does not repeat, and the intent does not choose again:
 

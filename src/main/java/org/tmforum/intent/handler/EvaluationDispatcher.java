@@ -17,6 +17,8 @@ import org.tmforum.intent.service.NotificationService;
 import org.tmforum.intent.service.StateMachine;
 
 import java.io.StringWriter;
+import org.apache.jena.rdf.model.Model;
+import org.tmforum.intent.graph.GraphNodes;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -48,10 +50,13 @@ public class EvaluationDispatcher {
     private final IntentRepository intentRepository;
     private final IntentReportRepository reportRepository;
     private final NotificationService notificationService;
+    private final ReportBuilder reportBuilder;
     private final Dataset dataset;
 
     // Per-intent locks guard DEGRADED→ACTIVE auto-transition against concurrent evaluations
     private final ConcurrentHashMap<String, ReentrantLock> transitionLocks = new ConcurrentHashMap<>();
+    // Per-intent locks serialise whole evaluations (see runEvaluation)
+    private final ConcurrentHashMap<String, ReentrantLock> evaluationLocks = new ConcurrentHashMap<>();
 
     public EvaluationDispatcher(TurtleEvaluator evaluator,
                                   ObservationStore observationStore,
@@ -60,6 +65,7 @@ public class EvaluationDispatcher {
                                   IntentRepository intentRepository,
                                   IntentReportRepository reportRepository,
                                   NotificationService notificationService,
+                                  ReportBuilder reportBuilder,
                                   Dataset dataset) {
         this.evaluator = evaluator;
         this.observationStore = observationStore;
@@ -68,6 +74,7 @@ public class EvaluationDispatcher {
         this.intentRepository = intentRepository;
         this.reportRepository = reportRepository;
         this.notificationService = notificationService;
+        this.reportBuilder = reportBuilder;
         this.dataset = dataset;
     }
 
@@ -84,7 +91,22 @@ public class EvaluationDispatcher {
         }
     }
 
+    /**
+     * Evaluations of one intent run one at a time. Observations often arrive in bursts, and concurrent
+     * evaluations would otherwise share a report sequence number, write reports out of order and race for
+     * the same free resources. Each evaluation reads the observations present when it starts.
+     */
     private void runEvaluation(String intentId) {
+        ReentrantLock lock = evaluationLocks.computeIfAbsent(intentId, id -> new ReentrantLock());
+        lock.lock();
+        try {
+            doRunEvaluation(intentId);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private void doRunEvaluation(String intentId) {
         Map<String, Object> intent = intentRepository.findById(intentId);
         if (intent == null) {
             log.warn("runEvaluation: intent {} not found", intentId);
@@ -129,7 +151,22 @@ public class EvaluationDispatcher {
         String now = Instant.now().toString();
         String reportHref = baseUrl + "/intent/" + intentId + "/intentReport/" + reportId;
         Map<String, Object> reportData = buildReportData(reportId, reportHref, intentId, now, result);
+
+        // TR290 intent report (icm:result per intent element), carried as the report's Turtle expression
+        Model tioReport = reportBuilder.build(result.report(), new ReportBuilder.ReportContext(
+                GraphNodes.reportNode(reportId), result.intentHandlingState(),
+                reportRepository.count(intentId) + 1, Instant.parse(now)));
+        if (tioReport != null) {
+            Map<String, Object> expression = new LinkedHashMap<>();
+            expression.put("@type", "TurtleExpression");
+            expression.put("iri", GraphNodes.reportExpressionUri(reportId));
+            expression.put("expressionValue", ReportBuilder.toTurtle(tioReport));
+            reportData.put("expression", expression);
+        }
         reportRepository.create(intentId, reportData);
+        if (tioReport != null) {
+            reportRepository.addTioReport(reportId, tioReport);
+        }
         log.info("runEvaluation: created report {} for intent {} (state={})",
                 reportId, intentId, result.intentHandlingState());
 

@@ -1,6 +1,9 @@
 package org.tmforum.intent.graph.repositories;
 
 import org.apache.jena.query.Dataset;
+import org.apache.jena.query.ReadWrite;
+import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.springframework.stereotype.Repository;
 import org.tmforum.intent.graph.GraphNodes;
 
@@ -62,6 +65,27 @@ public class IntentReportRepository extends BaseRepository {
         sb.append("    }\n}");
         execUpdate(sb.toString());
         return data;
+    }
+
+    /**
+     * Add the TR290 intent report triples (icm:IntentReport, icm:result, ...) to the report's named graph,
+     * so they can be queried alongside the TMF921 report resource.
+     */
+    public void addTioReport(String reportId, Model tioReport) {
+        String graphUri = GraphNodes.reportGraphUri(reportId);
+        dataset.begin(ReadWrite.WRITE);
+        try {
+            Model graph = dataset.containsNamedModel(graphUri)
+                    ? dataset.getNamedModel(graphUri) : ModelFactory.createDefaultModel();
+            graph.add(tioReport);
+            dataset.addNamedModel(graphUri, graph);
+            dataset.commit();
+        } catch (RuntimeException e) {
+            dataset.abort();
+            throw e;
+        } finally {
+            dataset.end();
+        }
     }
 
     public Map<String, Object> findById(String intentId, String reportId) {

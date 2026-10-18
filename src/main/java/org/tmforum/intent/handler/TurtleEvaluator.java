@@ -6,7 +6,9 @@ import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.springframework.stereotype.Service;
 import org.tmforum.intent.graph.TioNamespaces;
+import org.tmforum.intent.model.ElementResult;
 import org.tmforum.intent.model.EvaluationResult;
+import org.tmforum.intent.model.ReportTree;
 
 import java.io.StringReader;
 import java.math.BigDecimal;
@@ -44,7 +46,8 @@ public class TurtleEvaluator {
     );
 
     // ── Internal evaluation result ─────────────────────────────────────────
-    private record EvalNode(boolean passed, List<Map<String, Object>> conditions) {
+    private record EvalNode(boolean passed, List<Map<String, Object>> conditions, List<ElementResult> elements) {
+        EvalNode(boolean passed, List<Map<String, Object>> conditions) { this(passed, conditions, List.of()); }
         static EvalNode ok()                  { return new EvalNode(true,  List.of()); }
         static EvalNode fail(Map<String,Object> c) { return new EvalNode(false, List.of(c)); }
         static EvalNode of(boolean p, Map<String,Object> c) { return new EvalNode(p, List.of(c)); }
@@ -117,6 +120,7 @@ public class TurtleEvaluator {
         // Evaluation
         List<Resource> roots = findEvaluationRoots(g);
         List<Map<String, Object>> allConditions = new ArrayList<>();
+        List<ElementResult> elements = new ArrayList<>();
         boolean overallPassed;
 
         if (!roots.isEmpty()) {
@@ -125,6 +129,7 @@ public class TurtleEvaluator {
                 EvalNode r = evalNode(g, root);
                 allRootsPassed = allRootsPassed && r.passed();
                 allConditions.addAll(r.conditions());
+                elements.addAll(r.elements());
             }
             overallPassed = allRootsPassed;
         } else {
@@ -136,11 +141,12 @@ public class TurtleEvaluator {
             overallPassed = allConditions.stream().allMatch(c -> Boolean.TRUE.equals(c.get("passed")));
         }
 
+        ReportTree report = reportTree(g, elements, overallPassed);
         if (!overallPassed) {
             String reason = buildFailReason(allConditions);
-            return EvaluationResult.degraded(reason, allConditions);
+            return EvaluationResult.degraded(reason, allConditions).withReport(report);
         }
-        return EvaluationResult.fulfilled(allConditions);
+        return EvaluationResult.fulfilled(allConditions).withReport(report);
     }
 
     // ── Pre-processing: normalizeQuantityPredicates ─────────────────────────
@@ -594,7 +600,75 @@ public class TurtleEvaluator {
 
     // ── Recursive evaluator ───────────────────────────────────────────────────
 
+    /** Evaluates a node and records the outcome as an element of the report tree when it is a reportable IRI. */
     private EvalNode evalNode(Model g, Resource node) {
+        EvalNode r = evalNodeCore(g, node);
+        String kind = node.isURIResource() ? kindOf(g, node) : null;
+        if (kind == null) return r;                       // blank or unknown: its elements bubble up unchanged
+
+        List<ElementResult> children = r.elements();
+        String targetUri = null;
+        int targetCount = 0;
+        List<String> targetMembers = List.of();
+        Resource target = kind.endsWith("Expectation") ? objectResource(g, node, ICM_target) : null;
+        if (target != null && target.isURIResource()) {
+            targetUri = target.getURI();
+            List<Resource> members = sortedMembers(g, target, null);
+            targetCount = members.size();
+            targetMembers = members.stream().filter(Resource::isURIResource).map(Resource::getURI)
+                    .limit(ElementResult.MAX_TARGET_MEMBERS).toList();
+        }
+        ElementResult e = new ElementResult(node.getURI(), kind, r.passed(), children,
+                children.isEmpty() ? r.conditions() : List.of(), targetUri, targetCount, targetMembers);
+        return new EvalNode(r.passed(), r.conditions(), List.of(e));
+    }
+
+    /** The kind of intent element a node is, or null if it is not one that TR290 reports on. */
+    private String kindOf(Model g, Resource n) {
+        if (g.contains(n, RDF.type, g.createResource(ICM + "Intent"))) return "Intent";
+        if (g.contains(n, RDF.type, g.createResource(ICM + "DeliveryExpectation"))) return "DeliveryExpectation";
+        if (g.contains(n, RDF.type, g.createResource(ICM + "PropertyExpectation"))) return "PropertyExpectation";
+        if (g.contains(n, RDF.type, g.createResource(ICM + "ReportingExpectation"))
+                || g.contains(n, RDF.type, g.createResource(ICM + "ObservationReportingExpectation"))) {
+            return "ReportingExpectation";
+        }
+        if (g.contains(n, RDF.type, g.createResource(ICM + "Expectation"))) return "Expectation";
+        if (g.contains(n, RDF.type, g.createResource(ICM + "Condition"))
+                || g.contains(n, RDF.type, g.createResource(LOG + "Condition"))) return "Condition";
+        for (StmtIterator it = g.listStatements(n, RDF.type, (RDFNode) null); it.hasNext(); ) {
+            RDFNode o = it.next().getObject();
+            if (o.isURIResource() && o.asResource().getURI().startsWith(QUAN)) return "Condition";
+        }
+        return null;
+    }
+
+    /** The reporting scope: IRIs in the target of each reporting expectation (TR290 §4.2). */
+    private ReportTree reportTree(Model g, List<ElementResult> elements, boolean overallPassed) {
+        Set<String> scope = new TreeSet<>();
+        boolean observations = false;
+        Set<Resource> reporting = new HashSet<>();
+        g.listSubjectsWithProperty(RDF.type, g.createResource(ICM + "ReportingExpectation")).forEachRemaining(reporting::add);
+        g.listSubjectsWithProperty(RDF.type, g.createResource(ICM + "ObservationReportingExpectation")).forEachRemaining(reporting::add);
+        for (Resource re : reporting) {
+            if (g.contains(re, RDF.type, g.createResource(ICM + "ObservationReportingExpectation"))) observations = true;
+            Resource target = objectResource(g, re, ICM_target);
+            if (target == null) continue;
+            for (Resource m : sortedMembers(g, target, null)) {
+                if (m.isURIResource()) scope.add(m.getURI());
+            }
+        }
+
+        List<Resource> intents = g.listSubjectsWithProperty(RDF.type, g.createResource(ICM + "Intent")).toList().stream()
+                .filter(Resource::isURIResource).sorted(Comparator.comparing(Resource::getURI)).toList();
+        List<ElementResult> top = elements;
+        if (!intents.isEmpty()) {
+            top = List.of(new ElementResult(intents.get(0).getURI(), "Intent", overallPassed, elements,
+                    List.of(), null, 0, List.of()));
+        }
+        return top.isEmpty() ? null : new ReportTree(top, scope, observations);
+    }
+
+    private EvalNode evalNodeCore(Model g, Resource node) {
         // iv:ivvalidIf gate
         Resource validityCtx = objectResource(g, node, IV_validIf);
         if (validityCtx != null) {
@@ -628,7 +702,8 @@ public class TurtleEvaluator {
             }
             boolean passed = applyCombinator(cs.comb(),
                     childResults.stream().map(EvalNode::passed).toList());
-            return new EvalNode(passed, allConds);
+            return new EvalNode(passed, allConds,
+                    childResults.stream().flatMap(r -> r.elements().stream()).toList());
         }
 
         // log:match
@@ -708,10 +783,14 @@ public class TurtleEvaluator {
 
         BigDecimal obs = rdfValue(g, firstStmt.getObject());
         BigDecimal bnd = rdfValue(g, bndStmt.getObject());
+        String metricUri = firstStmt.getObject().isURIResource() ? firstStmt.getObject().asResource().getURI() : null;
         if (obs == null) {
             String name = firstStmt.getObject().isResource()
                     ? localName(firstStmt.getObject().asResource().getURI()) : "?";
-            return EvalNode.fail(qCond(typeName, sym, null, null, "no observation: " + name));
+            Map<String, Object> missing = qCond(typeName, sym, null, null, "no observation: " + name);
+            if (metricUri != null) missing.put("metric", metricUri);
+            if (node.isURIResource()) missing.put("element", node.getURI());
+            return EvalNode.fail(missing);
         }
         if (bnd == null) return EvalNode.fail(qCond(typeName, sym, obs, null, "missing bound value"));
 
@@ -721,6 +800,8 @@ public class TurtleEvaluator {
         c.put("operator", sym);
         c.put("observed", obs);
         c.put("bound", bnd);
+        if (metricUri != null) c.put("metric", metricUri);
+        if (node.isURIResource()) c.put("element", node.getURI());
         c.put("passed", passed);
         return new EvalNode(passed, List.of(c));
     }
