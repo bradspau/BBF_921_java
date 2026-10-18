@@ -130,6 +130,29 @@ class JenaBuiltinsTest {
     }
 
     @Test
+    void unitCompare_failsWithoutThrowingOnExtremeExponents() {
+        // scale 2147483647: multiplying by the unit factor would underflow the BigDecimal scale
+        assertEquals(Set.of(), compare("\"1E-2147483647\"^^xsd:decimal", "ms", "25", "ms"));
+        assertEquals(Set.of(), compare("\"1E+2147483647\"^^xsd:double", "ms", "25", "ms"));
+        assertEquals(Set.of(), compare("25", "ms", "\"1E-2147483647\"", "s"));
+        assertEquals(Set.of(), compare("\"1E-20000\"", "", "1", ""));
+        // large but sane exponents still compare
+        assertEquals(Set.of("1"), compare("\"1E+300\"^^xsd:double", "Gbps", "1", "bps"));
+        assertEquals(Set.of("-1"), compare("\"1E-300\"^^xsd:double", "ps", "1", "s"));
+    }
+
+    @Test
+    void numbersWithExtremeExponentsAreNotNumbers() {
+        InfModel inf = run("ex:a ex:v \"1E-2147483647\" . ex:b ex:v \"1E+2147483647\" . ex:c ex:v \"1E-300\" .", """
+                [a: (?t ex:v ?v) isNumber(?v) -> (?t ex:num 'yes')]
+                [b: (?t ex:v ?v) notNumber(?v) -> (?t ex:num 'no')]
+                """);
+        assertEquals(Set.of("no"), objects(inf, "a", "num"));
+        assertEquals(Set.of("no"), objects(inf, "b", "num"));
+        assertEquals(Set.of("yes"), objects(inf, "c", "num"));
+    }
+
+    @Test
     void unitCompare_checksAnAlreadyBoundResult() {
         InfModel inf = run("ex:t ex:va 1 ; ex:ua \"Gbps\" ; ex:vb 1000 ; ex:ub \"Mbps\" .",
                 "[t: (?t ex:va ?va) (?t ex:ua ?ua) (?t ex:vb ?vb) (?t ex:ub ?ub) unitCompare(?va, ?ua, ?vb, ?ub, 0)"

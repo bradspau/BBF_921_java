@@ -129,6 +129,11 @@
     -> (?c tmf:argMissing "?")]
 [quanArgLastValueLiteral: (?c rdf:type tmf:QuanCell) (?c rdf:first ?a) (?a met:lastValue ?x) isLiteral(?x)
     -> (?c tmf:argMissing "?")]
+# met:lastValue ( <literal> ): a literal is not a metric, so there is no observation. Missing with name "?",
+# giving the Java texts "no observation: ?" (first argument), "missing bound value" (bound), "missing rdf:value"
+# (inRange); Java itself does not read the spec form of met:lastValue at all (see the Task 12 report).
+[quanArgLastValueOfLiteral: (?c rdf:type tmf:QuanCell) (?c rdf:first ?a) (?a tmf:lastValueOf ?m) isLiteral(?m)
+    -> (?c tmf:argMissing "?")]
 
 # Any other node is a metric: the newest observation of it (DEVIATIONS.md entry 5; TR290 §2.2.2 uses it).
 [quanArgMetric: (?c rdf:type tmf:QuanCell) (?c rdf:first ?a) notLiteral(?a)

@@ -36,7 +36,8 @@ import java.time.format.DateTimeParseException;
  *       greatest {@code met:obtainedAt}; {@code noObservation(?metric)} succeeds when there is none.</li>
  * </ul>
  *
- * <p>Every builtin fails (never throws) on unbound or unexpected input.
+ * <p>Every builtin fails (never throws) on unbound or unexpected input. Values whose decimal exponent exceeds
+ * {@link #MAX_SCALE} are not numbers, so unit conversion cannot overflow.
  *
  * <p><b>Newest observation.</b> Candidates are subjects with {@code rdf:type met:Observation},
  * {@code met:observedMetric ?metric} and a usable value: a literal {@code rdf:value}, or a nested quantity whose
@@ -110,8 +111,8 @@ public final class JenaBuiltins {
             int cmp;
             try {
                 cmp = Integer.signum(Quantities.compare(a, unit(ua), b, unit(ub)));
-            } catch (Quantities.UnitMismatch e) {
-                return false;
+            } catch (Quantities.UnitMismatch | ArithmeticException e) {
+                return false;                     // ArithmeticException: backstop, number() already bounds the scale
             }
             Node result = NodeFactory.createLiteral(Integer.toString(cmp), XSDDatatype.XSDint);
             return context.getEnv().bind(args[4], result);
@@ -134,6 +135,8 @@ public final class JenaBuiltins {
                 return false;
             } catch (Quantities.UnitMismatch e) {
                 return length == 2 || context.getEnv().bind(args[2], NodeFactory.createLiteral(e.getMessage()));
+            } catch (ArithmeticException e) {
+                return false;                     // backstop only: comparing ONE with ONE cannot overflow
             }
         }
     }
@@ -170,7 +173,12 @@ public final class JenaBuiltins {
         @Override
         public boolean bodyCall(Node[] args, int length, RuleContext context) {
             if (length != 2) return false;
-            Node newest = newest(getArg(0, args, context), context);
+            Node newest;
+            try {
+                newest = newest(getArg(0, args, context), context);
+            } catch (RuntimeException e) {
+                return false;                     // backstop: a builtin fails, never throws
+            }
             return newest != null && context.getEnv().bind(args[1], newest);
         }
     }
@@ -188,7 +196,11 @@ public final class JenaBuiltins {
             if (length != 1) return false;
             Node metric = getArg(0, args, context);
             if (metric == null || metric.isVariable() || metric.isLiteral()) return false;
-            return newest(metric, context) == null;
+            try {
+                return newest(metric, context) == null;
+            } catch (RuntimeException e) {
+                return false;                     // backstop: a builtin fails, never throws
+            }
         }
     }
 
@@ -267,11 +279,20 @@ public final class JenaBuiltins {
         }
     }
 
+    /**
+     * Largest |scale| (decimal exponent) of a value accepted as a number. Unit conversion multiplies by factors up to
+     * 10^±30 (and 1024^8), which adds their scale; a scale near Integer.MAX_VALUE (e.g. {@code "1E-2147483647"})
+     * would underflow and throw. 10,000 is far beyond any real quantity (xsd:double spans about 10^±324) and keeps
+     * the arithmetic cheap. A value outside it is "not a number": the function is false with the missing-value text.
+     */
+    static final int MAX_SCALE = 10_000;
+
     /** A literal's value as a decimal, read from its lexical form (as the Java engine does), or null. */
     private static BigDecimal number(Node n) {
         if (n == null || !n.isLiteral()) return null;
         try {
-            return new BigDecimal(n.getLiteralLexicalForm());
+            BigDecimal d = new BigDecimal(n.getLiteralLexicalForm());
+            return Math.abs((long) d.scale()) > MAX_SCALE ? null : d;
         } catch (NumberFormatException e) {
             return null;
         }

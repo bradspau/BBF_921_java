@@ -187,8 +187,14 @@ saturated facts.
   `tio_choose.rules`) and held resources; roll-up to expectations and the intent; reasons.
 - **Builtins** (`JenaBuiltins`): `lexLess` (exists), a unit-aware quantity comparison, newest-observation selection.
   Only where rules cannot express it.
-- **List handling.** Fixed arity: `listEntry`/`listLength`. Variable arity: cell propagation helpers. Nested
-  function-valued arguments (`[ met:lastValue ( m ) ]`) are ordinary anonymous nodes and need no special case.
+- **List handling.** Fixed arity: `listEntry`/`listLength`. Variable arity: cell propagation helpers.
+- **Quantity arguments are classified inline in stage A** (`tio_a_quantity.rules`, see its header). Each argument
+  cell resolves to `tmf:argNode`/`tmf:argValue` (+ `tmf:argUnit`) or to `tmf:argMissing`. The cases are a literal,
+  a node with its own `rdf:value`, `[ met:lastValue ( m ) ]` (newest observation of `m`), and any other node, which
+  is treated as a metric (closed world: no observation means missing). Nested function-valued arguments therefore
+  *do* need a special case. Any other value-producing function used as a quantity argument (for example
+  `[ quan:sum ( ... ) ]`) needs its own classification rule. Without one it is taken as a metric, and it must not
+  get `rdf:value` derived in stage A, because the classification negates `rdf:value` on input argument nodes.
 - `rdf:value` is the associated-value property (TR292C §2-4 and every example). TR292C §11.7 names
   `tio:assumedValue` as the default `fun:resultProperty`; it appears nowhere else in the specification set and
   is not defined in the ontology, so it is treated as an editorial inconsistency.

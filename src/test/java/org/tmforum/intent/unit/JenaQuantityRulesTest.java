@@ -330,6 +330,36 @@ class JenaQuantityRulesTest {
     }
 
     @Test
+    void extremeExponentsGiveAnExplicitFalseNotAnException() {
+        InfModel m = stageA("""
+                ex:a quan:atLeast ( [ rdf:value "1E-2147483647" ; quan:unit "ms" ] [ rdf:value 25 ; quan:unit "ms" ] ) .
+                ex:b quan:atLeast ( [ rdf:value 25 ; quan:unit "ms" ] [ rdf:value "1E+2147483647"^^xsd:double ; quan:unit "s" ] ) .
+                ex:c quan:inRange ( [ rdf:value 5 ; quan:unit "ms" ] [ rdf:value "1E-2147483647" ; quan:unit "s" ] [ rdf:value 9 ; quan:unit "ms" ] ) .
+                ex:d quan:exactly ( [ rdf:value 5 ; quan:unit "ms" ] [ rdf:value "1E-2147483647" ; quan:unit "s" ] ) .
+                """);
+        assertEquals("false", value(m, "a"));
+        assertEquals(Set.of("no observation: ?"), failures(m, "a"));
+        assertEquals("false", value(m, "b"));
+        assertEquals(Set.of("missing bound value"), failures(m, "b"));
+        assertEquals("false", value(m, "c"));
+        assertEquals(Set.of("missing rdf:value"), failures(m, "c"));
+        assertEquals("false", value(m, "d"));
+        assertEquals(Set.of("missing bound value"), failures(m, "d"));
+    }
+
+    @Test
+    void aLiteralLastValueArgumentIsFalseWithAFailure() {
+        InfModel m = stageA("""
+                ex:a quan:atLeast ( [ met:lastValue ( 5 ) ] 3 ) .
+                ex:b quan:atLeast ( 3 [ met:lastValue ( "x" ) ] ) .
+                """);
+        assertEquals("false", value(m, "a"));
+        assertEquals(Set.of("no observation: ?"), failures(m, "a"));
+        assertEquals("false", value(m, "b"));
+        assertEquals(Set.of("missing bound value"), failures(m, "b"));
+    }
+
+    @Test
     void inRangeMismatchTextFollowsTheComparisonOrder() {
         InfModel m = stageA("""
                 ex:a quan:inRange ( [ rdf:value 5 ; quan:unit "ms" ] [ rdf:value 1 ; quan:unit "Mbps" ] [ rdf:value 9 ; quan:unit "ms" ] ) .
