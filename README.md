@@ -169,6 +169,8 @@ Named graph URIs in TDB2 (base: `http://tmforum.org/api/v5`):
 | `http://tmforum.org/api/v5/hubs` | Hub registrations |
 | `http://tmforum.org/api/v5/resources` | PON resource inventory (access profile) |
 
+> **Note:** These are project-local graph names, not identifiers defined by the TMF921 specification. They are never dereferenced over HTTP and are kept identical to the BBF_921 Python project so the demo Turtle files work unchanged. The REST endpoints themselves follow the spec: `{apiRoot}/tmf-api/intentManagement/v5/...`.
+
 ---
 
 ## Demos
