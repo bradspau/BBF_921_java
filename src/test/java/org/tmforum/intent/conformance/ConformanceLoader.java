@@ -28,8 +28,9 @@ public final class ConformanceLoader {
     /** @return every case, sorted by name */
     public static List<ConformanceCase> loadAll() {
         Path root = root();
+        Set<String> registered = DeviationRegister.caseNames(root);
         try (Stream<Path> dirs = Files.list(root)) {
-            return dirs.filter(Files::isDirectory).sorted().map(ConformanceLoader::load).toList();
+            return dirs.filter(Files::isDirectory).sorted().map(d -> load(d, registered)).toList();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -37,6 +38,13 @@ public final class ConformanceLoader {
 
     /** @return the case in {@code dir} */
     public static ConformanceCase load(Path dir) {
+        return load(dir, DeviationRegister.caseNames(dir.getParent()));
+    }
+
+    private static ConformanceCase load(Path dir, Set<String> registered) {
+        if (Files.isRegularFile(dir.resolve("expected.jena.ttl")) && !registered.contains(dir.getFileName().toString()))
+            throw new IllegalStateException(dir.getFileName()
+                    + ": expected.jena.ttl has no entry in DEVIATIONS.md (add a 'case: " + dir.getFileName() + "' line)");
         String expression = read(dir.resolve("expression.ttl"));
         if (expression == null) throw new IllegalStateException(dir.getFileName() + ": expression.ttl is missing");
         Properties props = new Properties();

@@ -20,4 +20,4 @@ ex:E a icm:DeliveryExpectation ;
 ex:T a icm:Target .
 
 ex:Pool a icm:Target ;
-    set:resourcesOfType ex:Gadget .
+    set:resourcesOfType ( ex:Gadget ) .

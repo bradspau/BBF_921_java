@@ -1,8 +1,14 @@
 @prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix met:  <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
 @prefix bbf:  <http://broadband-forum.org/Intent#> .
 
 # A condition on its own, not part of any icm:Intent: there is no intent to report on.
 bbf:C a quan:quanatMost ;
     rdf:first bbf:LatencyMetric ;
     rdf:rest ( 10 ) .
+
+# The same condition in TIO form, which a rule engine evaluates; still no icm:Intent, so still no result.
+bbf:C2 a icm:Condition ;
+    quan:atMost ( bbf:LatencyMetric [ rdf:value 10 ; quan:unit "ms" ] ) .

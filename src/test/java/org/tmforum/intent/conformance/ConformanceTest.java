@@ -79,8 +79,14 @@ class ConformanceTest {
     void reevaluationWhileHoldingExpectsTheSameGraphAsTheFirstEvaluation() {
         Map<String, ConformanceCase> byName = new HashMap<>();
         ConformanceLoader.loadAll().forEach(c -> byName.put(c.name(), c));
-        Model first = byName.get("seed-fulfilled").expected();
-        Model again = byName.get("seed-reevaluation-held").expected();
+        ConformanceCase firstCase = byName.get("seed-fulfilled");
+        ConformanceCase againCase = byName.get("seed-reevaluation-held");
+        assertNotNull(firstCase, "case seed-fulfilled is missing from the corpus");
+        assertNotNull(againCase, "case seed-reevaluation-held is missing from the corpus");
+        Model first = firstCase.expected();
+        Model again = againCase.expected();
+        assertNotNull(first, "seed-fulfilled: no expected.ttl");
+        assertNotNull(again, "seed-reevaluation-held: no expected.ttl");
         assumeFalse(RECORD, "record mode");
         assertTrue(ResultContract.sameResults(first, again), () -> diff(again, first));
     }
