@@ -1,0 +1,26 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+@prefix met:  <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix ex:   <http://example.org/> .
+
+# A quantity condition that the observation violates (TR292D quan:atLeast).
+ex:Intent a icm:Intent ;
+    log:allOf ( ex:PerformanceExpectation ) .
+
+ex:PerformanceExpectation a icm:PropertyExpectation ;
+    icm:target ex:ServiceTarget ;
+    log:allOf ( ex:BandwidthCondition ) .
+
+ex:ServiceTarget a icm:Target ;
+    rdfs:member ex:Service .
+
+# Downstream bandwidth >= 100 Mbps
+ex:BandwidthCondition a icm:Condition ;
+    quan:atLeast ( ex:BandwidthMetric [ rdf:value "100"^^xsd:decimal ; quan:unit "Mbps" ] ) .
+ex:BandwidthMetric a met:metric .
+

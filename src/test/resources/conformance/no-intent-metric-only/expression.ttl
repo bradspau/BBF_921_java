@@ -1,0 +1,8 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix bbf:  <http://broadband-forum.org/Intent#> .
+
+# A condition on its own, not part of any icm:Intent: there is no intent to report on.
+bbf:C a quan:quanatMost ;
+    rdf:first bbf:LatencyMetric ;
+    rdf:rest ( 10 ) .
