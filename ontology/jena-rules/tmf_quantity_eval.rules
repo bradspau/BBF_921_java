@@ -6,8 +6,8 @@
 # Jena built-ins used:
 #   ge(x, y)  — x >= y (greaterThanOrEqual)
 #   le(x, y)  — x <= y (lessThanOrEqual)
-#   gt(x, y)  — x > y
-#   lt(x, y)  — x < y
+#   greaterThan(x, y) — x > y
+#   lessThan(x, y)    — x < y
 #   equal(x, y) — x == y (numeric)
 #
 # Note: builtins operate on the raw XSD numeric literal values.
@@ -64,7 +64,7 @@
     (?R rdf:first ?Q2)
     (?Q1 rdf:value ?V1)
     (?Q2 rdf:value ?V2)
-    gt(?V1, ?V2)
+    greaterThan(?V1, ?V2)
     ->
     (?F rdf:value "true"^^xsd:boolean)
 ]
@@ -78,7 +78,7 @@
     (?R rdf:first ?Q2)
     (?Q1 rdf:value ?V1)
     (?Q2 rdf:value ?V2)
-    lt(?V1, ?V2)
+    lessThan(?V1, ?V2)
     ->
     (?F rdf:value "true"^^xsd:boolean)
 ]

@@ -7,6 +7,7 @@
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
 @prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
 @prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+@prefix tmf:  <http://tmforum.org/api/v5/> .
 
 # ── Expectation subclass propagation ─────────────────────────────────────────
 
@@ -84,6 +85,21 @@
     (?M rdf:type ?C)
     ->
     (?E icm:result "true"^^xsd:boolean)
+]
+
+# ── icm:chooseFrom (TR290 §2.5.3) — stage A helper ────────────────────────────
+# A candidate of the delivery type is "not lowest" when another candidate of that type sorts before it.
+# Choosing the lowest candidate keeps the handler's choice stable and repeatable.
+
+[icmNotLowestCandidate:
+    (?E rdf:type icm:DeliveryExpectation)
+    (?E icm:deliveryType ?C)
+    (?E icm:chooseFrom ?P)
+    (?P rdfs:member ?X) (?X rdf:type ?C)
+    (?P rdfs:member ?Y) (?Y rdf:type ?C)
+    lexLess(?Y, ?X)
+    ->
+    (?X tmf:notLowestCandidateFor ?E)
 ]
 
 # ── PropertyExpectation result ────────────────────────────────────────────────

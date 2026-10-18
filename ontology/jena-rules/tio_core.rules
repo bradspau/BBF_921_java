@@ -42,13 +42,13 @@
 # Approximation: assert Complies when the intent has at least one expectation
 # with result=true and no expectation is known to have result=false.
 # This is a closed-world approximation sufficient for PoC evaluation.
+# NOTE: full FORALL requires an external check that ALL expectations comply.
 
 [tioCompliancePositive:
     (?intent rdf:type icm:Intent)
     (?intent icm:hasExpectation ?exp)
     (?exp icm:result "true"^^xsd:boolean)
     noValue(?intent icm:hasExpectation ?nexp)
-    # NOTE: full FORALL requires external check that ALL expectations comply
     ->
     (?intent imo:intentHandlingState imo:Complies)
 ]

@@ -6,6 +6,7 @@ import org.apache.jena.reasoner.rulesys.GenericRuleReasoner;
 import org.apache.jena.reasoner.rulesys.Rule;
 import org.apache.jena.tdb2.TDB2Factory;
 import org.slf4j.Logger;
+import org.tmforum.intent.handler.JenaBuiltins;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -41,6 +42,7 @@ public class JenaConfig {
 
     @Bean
     public GenericRuleReasoner ruleReasoner(ResourceLoader resourceLoader) throws Exception {
+        JenaBuiltins.register();   // the rules use TIO builtins (lexLess); they must exist before parsing
         Resource resource = resourceLoader.getResource(rulesPath);
         String rulesText;
         try (BufferedReader reader = new BufferedReader(

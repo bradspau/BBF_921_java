@@ -87,6 +87,21 @@
     (?E icm:target ?T) (?T rdfs:member ?M)
     (?E icm:deliveryType ?C) (?M rdf:type ?C)
     -> (?E icm:result "true"^^xsd:boolean)]
+# ── icm:chooseFrom (TR290 §2.5.3) — stage A helper ────────────────────────────
+# A candidate of the delivery type is "not lowest" when another candidate of that type sorts before it.
+# Choosing the lowest candidate keeps the handler's choice stable and repeatable.
+
+[icmNotLowestCandidate:
+    (?E rdf:type icm:DeliveryExpectation)
+    (?E icm:deliveryType ?C)
+    (?E icm:chooseFrom ?P)
+    (?P rdfs:member ?X) (?X rdf:type ?C)
+    (?P rdfs:member ?Y) (?Y rdf:type ?C)
+    lexLess(?Y, ?X)
+    ->
+    (?X tmf:notLowestCandidateFor ?E)
+]
+
 [icmPropertyResult:
     (?E rdf:type icm:PropertyExpectation)
     (?E rdf:value "true"^^xsd:boolean)
@@ -288,12 +303,12 @@
 [quanGreater:
     (?F rdf:type quan:quangreater)
     (?F rdf:first ?Q1) (?F rdf:rest ?R) (?R rdf:first ?Q2)
-    (?Q1 rdf:value ?V1) (?Q2 rdf:value ?V2) gt(?V1, ?V2)
+    (?Q1 rdf:value ?V1) (?Q2 rdf:value ?V2) greaterThan(?V1, ?V2)
     -> (?F rdf:value "true"^^xsd:boolean)]
 [quanSmaller:
     (?F rdf:type quan:quansmaller)
     (?F rdf:first ?Q1) (?F rdf:rest ?R) (?R rdf:first ?Q2)
-    (?Q1 rdf:value ?V1) (?Q2 rdf:value ?V2) lt(?V1, ?V2)
+    (?Q1 rdf:value ?V1) (?Q2 rdf:value ?V2) lessThan(?V1, ?V2)
     -> (?F rdf:value "true"^^xsd:boolean)]
 [quanExactly:
     (?F rdf:type quan:quanexactly)

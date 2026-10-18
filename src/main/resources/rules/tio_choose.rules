@@ -1,0 +1,40 @@
+# tio_choose.rules — stage B: the intent handler's choices (icm:chooseFrom, TR290 §2.5.3)
+#
+# Runs over the saturated result of stage A (tio_all.rules). It is a separate stage because it
+# uses negation (noValue): "nothing complies yet" and "no lower candidate" must be judged against
+# facts that are already complete, not facts that other rules may still derive.
+#
+# Load: GenericRuleReasoner(Rule.parseRules(...)) over the InfModel produced by tio_all.rules.
+# Needs the TIO builtins registered first (JenaBuiltins.register()).
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix tmf:  <http://tmforum.org/api/v5/> .
+
+# A delivery expectation that does not comply yet chooses, from its icm:chooseFrom pool, the lowest
+# candidate that is an instance of icm:deliveryType. The choice becomes a member of the target
+# ("These resources would then be considered additions to the target", TR290 §2.5.3).
+[icmChooseFrom:
+    (?E rdf:type icm:DeliveryExpectation)
+    (?E icm:target ?T)
+    (?E icm:deliveryType ?C)
+    (?E icm:chooseFrom ?P)
+    (?P rdfs:member ?X) (?X rdf:type ?C)
+    noValue(?E icm:result "true"^^xsd:boolean)
+    noValue(?X tmf:notLowestCandidateFor ?E)
+    ->
+    (?T rdfs:member ?X)
+    (?X tmf:chosenFor ?E)
+]
+
+# Once a member of the target has the delivery type, the expectation complies (same rule as stage A,
+# repeated here so the choice made above is taken into account).
+[icmDeliveryFulfilledAfterChoice:
+    (?E rdf:type icm:DeliveryExpectation)
+    (?E icm:target ?T) (?T rdfs:member ?M)
+    (?E icm:deliveryType ?C) (?M rdf:type ?C)
+    ->
+    (?E icm:result "true"^^xsd:boolean)
+]
