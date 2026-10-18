@@ -20,9 +20,23 @@
   <properties>
     <java.version>21</java.version>
     <jena.version>4.10.0</jena.version>
+    <jetty10.version>10.0.24</jetty10.version>
     <rest-assured.version>5.4.0</rest-assured.version>
     <jacoco.version>0.8.12</jacoco.version>
   </properties>
+
+  <!-- Fuseki 4.x embeds Jetty 10; override Spring Boot's managed Jetty 12 (the app itself runs on Tomcat) -->
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.eclipse.jetty</groupId>
+        <artifactId>jetty-bom</artifactId>
+        <version>${jetty10.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <dependencies>
     <!-- Spring Boot -->
@@ -41,6 +55,31 @@
       <artifactId>apache-jena-libs</artifactId>
       <version>${jena.version}</version>
       <type>pom</type>
+    </dependency>
+
+    <!-- Embedded Fuseki (SPARQL endpoint + web UI); only started under the 'fuseki' Spring profile -->
+    <dependency>
+      <groupId>org.apache.jena</groupId>
+      <artifactId>jena-fuseki-main</artifactId>
+      <version>${jena.version}</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.apache.logging.log4j</groupId>
+          <artifactId>log4j-slf4j-impl</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <dependency>
+      <groupId>org.apache.jena</groupId>
+      <artifactId>jena-fuseki-ui</artifactId>
+      <version>${jena.version}</version>
+    </dependency>
+
+    <!-- Jena 4.10's Fuseki init expects the pre-1.13 Micrometer Prometheus package -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-registry-prometheus-simpleclient</artifactId>
     </dependency>
 
     <!-- HTTP client for hub notifications -->

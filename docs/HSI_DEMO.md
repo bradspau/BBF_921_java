@@ -69,6 +69,25 @@ make build
 make run
 ```
 
+### Optional: enable Fuseki (SPARQL + web UI on port 3030)
+
+Add the `fuseki` Spring profile to inspect the intent, observation, handler-state and report graphs while you work through the steps:
+
+```bash
+# Docker
+APP_PROFILES=standalone,fuseki docker compose --profile standalone up --build
+
+# Dev server
+mvn spring-boot:run -Dspring-boot.run.profiles=standalone,fuseki
+```
+
+Wait for `Start Fuseki (http=3030)`, then open <http://localhost:3030> (dataset `/intents`, read-only).
+Example: list graphs and sizes after creating an intent:
+
+```sparql
+SELECT ?g (COUNT(*) AS ?triples) WHERE { GRAPH ?g { ?s ?p ?o } } GROUP BY ?g
+```
+
 ### Verify
 
 ```bash

@@ -57,6 +57,21 @@ Wait for:
 Started Application in N.NNN seconds
 ```
 
+### Optional: enable Fuseki (SPARQL + web UI on port 3030)
+
+Add the `fuseki` Spring profile to browse the live TDB2 graphs, including the PON resource graph, in a browser:
+
+```bash
+# Docker
+APP_PROFILES=access,fuseki docker compose --profile access up --build
+
+# Dev server
+mvn spring-boot:run -Dspring-boot.run.profiles=access,fuseki
+```
+
+Wait for `Start Fuseki (http=3030)`, then open <http://localhost:3030> (dataset `/intents`, read-only).
+Query endpoint: `http://localhost:3030/intents/sparql`.
+
 ### Verify (port 8001 for access profile)
 
 ```bash
@@ -219,7 +234,21 @@ print('lifecycleStatus: ', d.get('lifecycleStatus'))
 "
 ```
 
-For direct TDB2 verification, run the AccessDemoIT integration test which performs
+**With Fuseki enabled** (`access,fuseki` profiles), run this in the Fuseki UI query tab at
+<http://localhost:3030>, or via curl, to see allocated ports directly:
+
+```bash
+curl -s -G http://localhost:3030/intents/sparql \
+  -H 'Accept: application/sparql-results+json' \
+  --data-urlencode 'query=PREFIX pon: <http://broadband-forum.org/ont/pon-resource#>
+SELECT ?port ?svc WHERE {
+  GRAPH <http://tmforum.org/api/v5/resources> {
+    ?port pon:inUse true ; pon:assignedToService ?svc .
+  }
+}'
+```
+
+Without Fuseki, for direct TDB2 verification, run the AccessDemoIT integration test which performs
 a SPARQL ASK query against the embedded dataset:
 
 ```bash

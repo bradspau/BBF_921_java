@@ -114,8 +114,33 @@ Full OAS 3.0 specification: `docs/spec/TMF921_Intent_Management_v5.0.0_oas.yaml`
 | `standalone` (default) | 8000 | No resource inventory; metric-only evaluation |
 | `access` | 8001 | Loads `BBF_access/pon_resource_data.ttl`; enables set constructors and resource allocation |
 | `aggregation` | 8000 | Multi-domain mode; TDB2 path separate from standalone |
+| `fuseki` | 3030 | Opt-in add-on: embedded Fuseki (SPARQL endpoint + web UI) over the live TDB2 dataset; combine with another profile |
 
 Activate with `--spring.profiles.active=access` or env var `SPRING_PROFILES_ACTIVE=access`.
+
+### Browsing the graph with Fuseki
+
+Add the `fuseki` profile to any other profile, e.g. `mvn spring-boot:run -Dspring-boot.run.profiles=access,fuseki`, then open <http://localhost:3030> for the Fuseki UI. The dataset is `/intents`; SPARQL endpoint is `http://localhost:3030/intents/sparql`. Use `GRAPH ?g { ... }` to query the named graphs.
+
+| Property | Default | Meaning |
+|---|---|---|
+| `intent.fuseki.port` | `3030` | Fuseki HTTP port |
+| `intent.fuseki.dataset-name` | `intents` | Dataset path |
+| `intent.fuseki.allow-update` | `false` | Read-only by default; write via the TMF921 API |
+| `intent.fuseki.loopback` | `true` | Bind to localhost only; `docker-compose.yml` sets `false` inside the container |
+
+**Docker:** `docker-compose.yml` already publishes `127.0.0.1:3030:3030` and reads the Spring profile list from `APP_PROFILES`:
+
+```bash
+APP_PROFILES=access,fuseki docker compose --profile access up --build        # port 8001 + 3030
+APP_PROFILES=standalone,fuseki docker compose --profile standalone up --build  # port 8000 + 3030
+```
+
+(Docker Compose `--profile` selects the service; `APP_PROFILES` sets the Spring profiles inside it.) Without `fuseki` in `APP_PROFILES`, nothing listens on 3030.
+
+Wait for `Start Fuseki (http=3030)` in the log. Only one Fuseki can run per host at a time (port 3030).
+
+The UI's admin features (dataset create/delete, backup) are not available in embedded mode; query and graph browsing work.
 
 ---
 

@@ -7,10 +7,13 @@ services:
     build: .
     ports:
       - "8000:8000"
+      - "127.0.0.1:3030:3030"   # embedded Fuseki; only listens if APP_PROFILES includes fuseki
     volumes:
       - tdb2-standalone:/app/tdb2-data
     environment:
-      SPRING_PROFILES_ACTIVE: standalone
+      # Add Fuseki:  APP_PROFILES=standalone,fuseki docker compose --profile standalone up
+      SPRING_PROFILES_ACTIVE: ${APP_PROFILES:-standalone}
+      INTENT_FUSEKI_LOOPBACK: "false"   # container must bind all interfaces; host side is localhost-only
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8000/health"]
       interval: 10s
@@ -26,10 +29,13 @@ services:
     build: .
     ports:
       - "8001:8001"
+      - "127.0.0.1:3030:3030"   # embedded Fuseki; only listens if APP_PROFILES includes fuseki
     volumes:
       - tdb2-access:/app/tdb2-access
     environment:
-      SPRING_PROFILES_ACTIVE: access
+      # Add Fuseki:  APP_PROFILES=access,fuseki docker compose --profile access up
+      SPRING_PROFILES_ACTIVE: ${APP_PROFILES:-access}
+      INTENT_FUSEKI_LOOPBACK: "false"   # container must bind all interfaces; host side is localhost-only
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8001/health"]
       interval: 10s
@@ -45,10 +51,13 @@ services:
     build: .
     ports:
       - "8000:8000"
+      - "127.0.0.1:3030:3030"   # embedded Fuseki; only listens if APP_PROFILES includes fuseki
     volumes:
       - tdb2-aggregation:/app/tdb2-aggregation
     environment:
-      SPRING_PROFILES_ACTIVE: aggregation
+      # Add Fuseki:  APP_PROFILES=aggregation,fuseki docker compose --profile aggregation up
+      SPRING_PROFILES_ACTIVE: ${APP_PROFILES:-aggregation}
+      INTENT_FUSEKI_LOOPBACK: "false"   # container must bind all interfaces; host side is localhost-only
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8000/health"]
       interval: 10s

@@ -36,3 +36,15 @@ server:
   port: 8000
 intent:
   tdb2-path: tdb2-aggregation
+
+---
+spring:
+  config:
+    activate:
+      on-profile: fuseki
+intent:
+  fuseki:
+    port: 3030
+    dataset-name: intents
+    allow-update: false
+    loopback: true
