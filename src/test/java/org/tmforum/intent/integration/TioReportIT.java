@@ -67,9 +67,9 @@ class TioReportIT {
         return id;
     }
 
-    private void post(String id, String metric, double value) {
+    private void post(String id, String metric, double value, String unit) {
         rest.postForEntity(base() + "/intent/" + id + "/observation",
-                Map.of("metricUri", BBF + metric, "value", value), Map.class);
+                Map.of("metricUri", BBF + metric, "value", value, "unit", unit), Map.class);
     }
 
     private List<Map<String, String>> select(String body) {
@@ -93,11 +93,11 @@ class TioReportIT {
     void reportsAreNumberedInOrder_andTheLatestOneShowsEveryResultTrueOnceFulfilled() throws Exception {
         String id = createActiveSeedIntent();
         // Post all five metrics back to back: several evaluations are triggered at once
-        post(id, "DownstreamBandwidthMetric", 150.0);
-        post(id, "UpstreamBandwidthMetric", 30.0);
-        post(id, "LatencyMetric", 8.0);
-        post(id, "JitterMetric", 1.2);
-        post(id, "PacketLossMetric", 0.02);
+        post(id, "DownstreamBandwidthMetric", 150.0, "Mbps");
+        post(id, "UpstreamBandwidthMetric", 30.0, "Mbps");
+        post(id, "LatencyMetric", 8.0, "ms");
+        post(id, "JitterMetric", 1.2, "ms");
+        post(id, "PacketLossMetric", 0.02, "percent");
 
         String intentNode = "http://tmforum.org/api/v5/intents/" + id;
         // Wait until the report with the highest number says the intent is compliant
@@ -126,7 +126,7 @@ class TioReportIT {
                 + "tmf:icmReport ?ir . ?ir icm:reportNumber ?n . FILTER (?n = " + newest + ") "
                 + "?ir icm:resultFrom* ?r . ?r a ?type ; icm:about ?x ; icm:result ?res } }";
         List<Map<String, String>> elements = select(inNewest);
-        assertEquals(12, elements.size(), "intent + composite + 5 expectations + 5 conditions: " + elements);
+        assertEquals(11, elements.size(), "intent + 5 expectations + 5 conditions: " + elements);
         List<Map<String, String>> falseOnes = elements.stream().filter(e -> e.get("res").startsWith("false")).toList();
         assertTrue(falseOnes.isEmpty(), "false elements in newest report: " + falseOnes);
         assertEquals(5, elements.stream().filter(e -> e.get("type").endsWith("ConditionReport")).count());

@@ -34,6 +34,13 @@ public class TurtleEvaluator {
 
     private static final int MAX_TURTLE_BYTES = 512 * 1024;
     private static final Resource ICM_TARGET_CLASS = ResourceFactory.createResource(ICM + "Target");
+    private static final Property QUAN_unit = ResourceFactory.createProperty(QUAN + "unit");
+    private static final Property SET_P_intersection = ResourceFactory.createProperty(SET + "intersection");
+    private static final Property SET_P_union = ResourceFactory.createProperty(SET + "union");
+    private static final Property SET_P_difference = ResourceFactory.createProperty(SET + "difference");
+
+    /** An observed value together with its unit (null = dimensionless). */
+    private record Observed(Literal value, String unit) {}
 
     // ── Combinator descriptors ───────────────────────────────────────────────
     private enum Combinator { ALL, ANY, NONE, ONE }
@@ -203,6 +210,9 @@ public class TurtleEvaluator {
         Set<Resource> setNodes = new HashSet<>();
         g.listSubjectsWithProperty(SET_P_resourcesOfType).forEachRemaining(setNodes::add);
         g.listSubjectsWithProperty(SET_P_resourcesWithPropertyObject).forEachRemaining(setNodes::add);
+        for (Property comb : List.of(SET_P_intersection, SET_P_union, SET_P_difference)) {
+            g.listSubjectsWithProperty(comb).forEachRemaining(setNodes::add);
+        }
         return setNodes;
     }
 
@@ -225,6 +235,17 @@ public class TurtleEvaluator {
     private boolean collectDerived(Model g, Resource node, Set<Resource> setNodes, Set<Resource> derived) {
         if (!derived.add(node)) return false;
         boolean dependsOnChoice = false;
+        for (Property comb : List.of(SET_P_intersection, SET_P_union, SET_P_difference)) {
+            for (RDFNode listNode : g.listObjectsOfProperty(node, comb).toList()) {
+                if (!listNode.isResource()) continue;
+                for (RDFNode item : iterRdfList(g, listNode.asResource())) {
+                    if (!item.isResource()) continue;
+                    Resource r = item.asResource();
+                    if (setNodes.contains(r)) dependsOnChoice |= collectDerived(g, r, setNodes, derived);
+                    else if (g.contains(r, RDF.type, ICM_TARGET_CLASS)) dependsOnChoice = true;
+                }
+            }
+        }
         for (StmtIterator it = g.listStatements(node, SET_P_resourcesWithPropertyObject, (RDFNode) null);
              it.hasNext(); ) {
             RDFNode listNode = it.next().getObject();
@@ -249,13 +270,17 @@ public class TurtleEvaluator {
         if (g.contains(target, RDFS.member)) return;            // already materialised
 
         // Collect type-class members
-        List<RDFNode> typeClasses = g.listObjectsOfProperty(target, SET_P_resourcesOfType).toList();
+        // set:resourcesOfType ( <class> ... ) takes a list (TR292F); a single class is also accepted
+        List<RDFNode> typeClasses = functionArguments(g, target, SET_P_resourcesOfType);
         Set<Resource> members = null;
         if (!typeClasses.isEmpty()) {
             members = new HashSet<>();
             for (RDFNode cls : typeClasses) {
                 if (!cls.isResource()) continue;
-                g.listSubjectsWithProperty(RDF.type, cls.asResource()).forEachRemaining(members::add);
+                // instances of the class or of any of its subclasses
+                for (Resource c : withSubclasses(g, cls.asResource())) {
+                    g.listSubjectsWithProperty(RDF.type, c).forEachRemaining(members::add);
+                }
             }
         }
 
@@ -281,9 +306,58 @@ public class TurtleEvaluator {
             members = (members == null) ? filterSet : intersect(members, filterSet);
         }
 
+        // set:intersection / set:union / set:difference ( <container> ... ): each item is a container, usually an
+        // anonymous node defined by another set function (TR292F)
+        for (Property comb : List.of(SET_P_intersection, SET_P_union, SET_P_difference)) {
+            for (RDFNode listNode : g.listObjectsOfProperty(target, comb).toList()) {
+                if (!listNode.isResource()) continue;
+                Set<Resource> combined = null;
+                for (RDFNode item : iterRdfList(g, listNode.asResource())) {
+                    if (!item.isResource()) continue;
+                    if (setNodes.contains(item.asResource())) materialiseSet(g, item.asResource(), setNodes, done);
+                    Set<Resource> itemMembers = new HashSet<>();
+                    g.listObjectsOfProperty(item.asResource(), RDFS.member)
+                            .forEachRemaining(m -> { if (m.isResource()) itemMembers.add(m.asResource()); });
+                    if (combined == null) combined = itemMembers;
+                    else if (comb.equals(SET_P_intersection)) combined = intersect(combined, itemMembers);
+                    else if (comb.equals(SET_P_union)) combined.addAll(itemMembers);
+                    else combined.removeAll(itemMembers);
+                }
+                if (combined != null) members = (members == null) ? combined : intersect(members, combined);
+            }
+        }
+
         if (members != null) {
             for (Resource m : members) g.add(target, RDFS.member, m);
         }
+    }
+
+    /**
+     * The arguments of a function applied as a property: the items of the list that is its object, or the
+     * object itself if it is not a list (the older single-argument form).
+     */
+    private List<RDFNode> functionArguments(Model g, Resource subject, Property function) {
+        List<RDFNode> args = new ArrayList<>();
+        for (RDFNode o : g.listObjectsOfProperty(subject, function).toList()) {
+            if (o.isResource() && (o.asResource().equals(RDF.nil) || g.contains(o.asResource(), RDF.first))) {
+                args.addAll(iterRdfList(g, o.asResource()));
+            } else {
+                args.add(o);
+            }
+        }
+        return args;
+    }
+
+    /** The class and every class below it (rdfs:subClassOf), when the model holds the subclass statements. */
+    private Set<Resource> withSubclasses(Model g, Resource cls) {
+        Set<Resource> all = new LinkedHashSet<>();
+        Deque<Resource> todo = new ArrayDeque<>(List.of(cls));
+        while (!todo.isEmpty()) {
+            Resource c = todo.pop();
+            if (!all.add(c)) continue;
+            g.listSubjectsWithProperty(RDFS.subClassOf, c).forEachRemaining(todo::push);
+        }
+        return all;
     }
 
     // ── Pre-processing: resolveMetricRefs ──────────────────────────────────
@@ -292,7 +366,7 @@ public class TurtleEvaluator {
      * Injects rdf:value onto metric/function nodes from met:Observation triples.
      */
     private void resolveMetricRefs(Model g) {
-        Map<Resource, Literal> obsIndex = buildObsIndex(g);
+        Map<Resource, Observed> obsIndex = buildObsIndex(g);
 
         // Pattern B: _:fn a met:metlastValue ; rdfs:member <metric>
         for (ResIterator it = g.listSubjectsWithProperty(RDF.type, MET_metlastValue);
@@ -301,8 +375,8 @@ public class TurtleEvaluator {
             if (g.contains(fn, RDF.value)) continue;
             Resource metric = objectResource(g, fn, RDFS.member);
             if (metric == null) continue;
-            Literal val = obsIndex.get(metric);
-            if (val != null) g.addLiteral(fn, RDF.value, val);
+            Observed val = obsIndex.get(metric);
+            if (val != null) assignObserved(g, fn, val);
         }
 
         // Pattern C: _:fn a met:metobservedValue ; rdf:first <obs>
@@ -314,6 +388,8 @@ public class TurtleEvaluator {
             if (obs == null) continue;
             Statement vs = g.getProperty(obs, RDF.value);
             if (vs != null) g.add(fn, RDF.value, vs.getObject());
+            Statement us = g.getProperty(obs, QUAN_unit);
+            if (us != null) g.add(fn, QUAN_unit, us.getObject());
         }
 
         // Pattern A: direct metric URI as rdf:first of a quantity condition
@@ -329,29 +405,72 @@ public class TurtleEvaluator {
                 if (seen.contains(valRes)) continue;
                 seen.add(valRes);
                 if (g.contains(valRes, RDF.value)) continue;
-                Literal val = obsIndex.get(valRes);
-                if (val != null) g.addLiteral(valRes, RDF.value, val);
+                Observed val = obsIndex.get(valRes);
+                if (val != null) assignObserved(g, valRes, val);
             }
         }
     }
 
-    private Map<Resource, Literal> buildObsIndex(Model g) {
-        Map<Resource, Pair<Instant, Literal>> best = new HashMap<>();
+    /** Makes the metric (or function result) node carry the observed value and unit as a quantity. */
+    private void assignObserved(Model g, Resource node, Observed o) {
+        g.addLiteral(node, RDF.value, o.value());
+        if (o.unit() != null) g.add(node, QUAN_unit, g.createLiteral(o.unit()));
+    }
+
+    private Map<Resource, Observed> buildObsIndex(Model g) {
+        Map<Resource, Pair<Instant, Observed>> best = new HashMap<>();
         for (ResIterator it = g.listSubjectsWithProperty(RDF.type, MET_Observation); it.hasNext(); ) {
             Resource obs = it.next();
             Resource metric = objectResource(g, obs, MET_observedMetric);
             if (metric == null) continue;
-            Statement vs = g.getProperty(obs, RDF.value);
-            if (vs == null || !vs.getObject().isLiteral()) continue;
-            Literal val = vs.getObject().asLiteral();
+            Observed observed = observedOf(g, obs);
+            if (observed == null) continue;
             Statement ts = g.getProperty(obs, MET_obtainedAt);
             Instant dt = ts != null ? parseInstant(ts.getString()) : Instant.MIN;
-            best.merge(metric, new Pair<>(dt, val),
+            best.merge(metric, new Pair<>(dt, observed),
                     (existing, candidate) -> candidate.first.isAfter(existing.first) ? candidate : existing);
         }
-        Map<Resource, Literal> index = new HashMap<>();
+        Map<Resource, Observed> index = new HashMap<>();
         best.forEach((m, p) -> index.put(m, p.second));
         return index;
+    }
+
+    /**
+     * The value and unit of an observation. The value may be a plain literal, with quan:unit on the
+     * observation, or a nested quantity ({@code rdf:value [ rdf:value 10 ; quan:unit "ms" ]}); TR292C §4
+     * treats the two as equivalent.
+     */
+    private Observed observedOf(Model g, Resource obs) {
+        Statement vs = g.getProperty(obs, RDF.value);
+        if (vs == null) return null;
+        if (vs.getObject().isLiteral()) {
+            return new Observed(vs.getObject().asLiteral(), unitOf(g, obs));
+        }
+        if (vs.getObject().isResource()) {
+            Resource q = vs.getObject().asResource();
+            Statement inner = g.getProperty(q, RDF.value);
+            if (inner != null && inner.getObject().isLiteral()) {
+                String unit = unitOf(g, q);
+                return new Observed(inner.getObject().asLiteral(), unit != null ? unit : unitOf(g, obs));
+            }
+        }
+        return null;
+    }
+
+    /** The quan:unit of a quantity node (null if it has none, or if the node is a plain literal). */
+    private String unitOf(Model g, RDFNode node) {
+        if (node == null || !node.isResource()) return null;
+        Resource r = node.asResource();
+        Statement us = g.getProperty(r, QUAN_unit);
+        if (us != null && us.getObject().isLiteral()) {
+            String u = us.getObject().asLiteral().getLexicalForm().trim();
+            return u.isEmpty() ? null : u;
+        }
+        Statement vs = g.getProperty(r, RDF.value);          // nested quantity
+        if (vs != null && vs.getObject().isResource() && !vs.getObject().asResource().equals(r)) {
+            return unitOf(g, vs.getObject());
+        }
+        return null;
     }
 
     // ── Pre-processing: computeMathFunctions ─────────────────────────────────
@@ -661,7 +780,8 @@ public class TurtleEvaluator {
         List<Resource> intents = g.listSubjectsWithProperty(RDF.type, g.createResource(ICM + "Intent")).toList().stream()
                 .filter(Resource::isURIResource).sorted(Comparator.comparing(Resource::getURI)).toList();
         List<ElementResult> top = elements;
-        if (!intents.isEmpty()) {
+        boolean intentEvaluated = elements.stream().anyMatch(e -> "Intent".equals(e.kind()));
+        if (!intents.isEmpty() && !intentEvaluated) {          // the intent links to its expectations in another way
             top = List.of(new ElementResult(intents.get(0).getURI(), "Intent", overallPassed, elements,
                     List.of(), null, 0, List.of()));
         }
@@ -794,14 +914,25 @@ public class TurtleEvaluator {
         }
         if (bnd == null) return EvalNode.fail(qCond(typeName, sym, obs, null, "missing bound value"));
 
-        boolean passed = compare(obs, sym, bnd);
+        String obsUnit = unitOf(g, firstStmt.getObject());
+        String bndUnit = unitOf(g, bndStmt.getObject());
         Map<String, Object> c = new LinkedHashMap<>();
         c.put("type", typeName);
         c.put("operator", sym);
         c.put("observed", obs);
         c.put("bound", bnd);
+        if (obsUnit != null) c.put("observedUnit", obsUnit);
+        if (bndUnit != null) c.put("boundUnit", bndUnit);
         if (metricUri != null) c.put("metric", metricUri);
         if (node.isURIResource()) c.put("element", node.getURI());
+        boolean passed;
+        try {
+            passed = compare(Quantities.compare(obs, obsUnit, bnd, bndUnit), sym);
+        } catch (Quantities.UnitMismatch e) {
+            c.put("error", e.getMessage());                  // unit dimensions differ: evaluates to false (TR292D §5.2)
+            c.put("passed", false);
+            return EvalNode.fail(c);
+        }
         c.put("passed", passed);
         return new EvalNode(passed, List.of(c));
     }
@@ -830,10 +961,24 @@ public class TurtleEvaluator {
             return EvalNode.fail(Map.of("type", "quaninRange", "operator", "<=<=",
                     "error", "missing rdf:value", "passed", false));
         }
-        boolean passed = lo.compareTo(val) <= 0 && val.compareTo(hi) <= 0;
+        String valUnit = unitOf(g, valStmt.getObject());
+        String loUnit = unitOf(g, loStmt.getObject());
+        String hiUnit = unitOf(g, hiStmt.getObject());
         Map<String, Object> c = new LinkedHashMap<>();
         c.put("type", "quaninRange"); c.put("operator", "<=<=");
-        c.put("observed", val); c.put("lower", lo); c.put("upper", hi); c.put("passed", passed);
+        c.put("observed", val); c.put("lower", lo); c.put("upper", hi);
+        if (valUnit != null) c.put("observedUnit", valUnit);
+        if (loUnit != null) c.put("boundUnit", loUnit);
+        boolean passed;
+        try {
+            passed = Quantities.compare(lo, loUnit, val, valUnit) <= 0
+                    && Quantities.compare(val, valUnit, hi, hiUnit) <= 0;
+        } catch (Quantities.UnitMismatch e) {
+            c.put("error", e.getMessage());
+            c.put("passed", false);
+            return EvalNode.fail(c);
+        }
+        c.put("passed", passed);
         return new EvalNode(passed, List.of(c));
     }
 
@@ -1154,6 +1299,8 @@ public class TurtleEvaluator {
             Statement vs = g.getProperty(node.asResource(), RDF.value);
             if (vs != null && vs.getObject().isLiteral())
                 return parseDecimal(vs.getObject().asLiteral().getLexicalForm());
+            if (vs != null && vs.getObject().isResource() && !vs.getObject().equals(node))
+                return rdfValue(g, vs.getObject());          // nested quantity
         }
         return null;
     }
@@ -1164,8 +1311,7 @@ public class TurtleEvaluator {
         try { return new BigDecimal(s); } catch (NumberFormatException e) { return null; }
     }
 
-    private boolean compare(BigDecimal obs, String sym, BigDecimal bnd) {
-        int cmp = obs.compareTo(bnd);
+    private boolean compare(int cmp, String sym) {
         return switch (sym) {
             case ">="  -> cmp >= 0;
             case "<="  -> cmp <= 0;
@@ -1240,7 +1386,9 @@ public class TurtleEvaluator {
         if (sym == null) return t + ": FAIL";
         Object obs = c.get("observed"); Object bnd = c.get("bound");
         if (bnd == null) bnd = c.get("lower") + "…" + c.get("upper");
-        return obs + " " + sym + " " + bnd + ": FAIL";
+        String ou = c.get("observedUnit") != null ? " " + c.get("observedUnit") : "";
+        String bu = c.get("boundUnit") != null ? " " + c.get("boundUnit") : "";
+        return obs + ou + " " + sym + " " + bnd + bu + ": FAIL";
     }
 
     private String joinTurtle(String... parts) {

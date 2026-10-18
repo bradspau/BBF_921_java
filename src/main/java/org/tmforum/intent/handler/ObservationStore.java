@@ -24,6 +24,7 @@ import java.util.*;
  *   <obs_uri> a met:Observation ;
  *       met:observedMetric <metric_uri> ;
  *       rdf:value "42.5"^^xsd:decimal ;
+ *       quan:unit "ms" ;                      (optional; a value without unit is a dimensionless quantity)
  *       met:obtainedAt "2026-06-11T10:00:00Z"^^xsd:dateTime .
  */
 @Service
@@ -33,6 +34,7 @@ public class ObservationStore {
 
     private static final String BASE = "http://tmforum.org/api/v5";
     private static final String MET = TioNamespaces.MET;
+    private static final String QUAN = TioNamespaces.QUAN;
 
     private final Dataset dataset;
 
@@ -46,11 +48,12 @@ public class ObservationStore {
      * @param intentId   Intent UUID
      * @param metricUri  Metric URI (the thing being measured)
      * @param value      Observed value
+     * @param unit       Unit of the value as a quan:unit string such as "Mbps" or "ms" (null → no unit)
      * @param obtainedAt ISO-8601 timestamp (null → now)
      * @return observation URI
      */
     public String writeObservation(String intentId, String metricUri,
-                                    BigDecimal value, String obtainedAt) {
+                                    BigDecimal value, String unit, String obtainedAt) {
         String obsId = UUID.randomUUID().toString();
         String obsUri = BASE + "/intents/" + intentId + "/observations/" + obsId;
         String graphUri = GraphNodes.observationsGraphUri(intentId);
@@ -68,6 +71,9 @@ public class ObservationStore {
                     graphModel.createResource(metricUri));
             obs.addProperty(RDF.value,
                     graphModel.createTypedLiteral(value.toPlainString(), XSDDatatype.XSDdecimal));
+            if (unit != null && !unit.isBlank()) {
+                obs.addProperty(graphModel.createProperty(QUAN + "unit"), unit.trim());
+            }
             obs.addProperty(graphModel.createProperty(MET + "obtainedAt"),
                     graphModel.createTypedLiteral(timestamp, XSDDatatype.XSDdateTime));
             dataset.addNamedModel(graphUri, graphModel);
@@ -81,6 +87,12 @@ public class ObservationStore {
 
         pruneOldObservations(intentId, metricUri, MAX_OBS_PER_METRIC);
         return obsUri;
+    }
+
+    /** Persist an observation whose value has no unit. */
+    public String writeObservation(String intentId, String metricUri,
+                                    BigDecimal value, String obtainedAt) {
+        return writeObservation(intentId, metricUri, value, null, obtainedAt);
     }
 
     /**

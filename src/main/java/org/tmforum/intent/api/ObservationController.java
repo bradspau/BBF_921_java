@@ -14,7 +14,12 @@ import java.util.*;
  * Extension endpoint: inject metric observations for an intent.
  *
  * POST /intent/{intentId}/observation
- * Body: { "metricUri": "http://...", "value": 42.5, "obtainedAt": "2026-..." }
+ * Body: { "metricUri": "http://...", "value": 42.5, "unit": "ms", "obtainedAt": "2026-..." }
+ *
+ * {@code unit} is optional and is the quan:unit of the value (TR292D): a prefix and a unit symbol such as
+ * "Mbps", "ms" or "Kibit". A value without unit is a dimensionless quantity; it is only compared with a
+ * bound that also has no unit. The unit must match what the intent's conditions use, otherwise the
+ * condition is false with a unit mismatch.
  *
  * Persists the observation and triggers re-evaluation when the intent is ACTIVE.
  * This endpoint is not part of the TMF921 standard; it is used by the HSI and Access demos.
@@ -58,11 +63,19 @@ public class ObservationController {
             throw new IllegalArgumentException("value must be numeric, got: " + valueObj);
         }
 
+        String unit = null;
+        if (body.get("unit") != null) {
+            if (!(body.get("unit") instanceof String s) || s.isBlank() || s.length() > 64) {
+                throw new IllegalArgumentException("unit must be a non-blank string of at most 64 characters");
+            }
+            unit = s.trim();
+        }
+
         String obtainedAt = body.containsKey("obtainedAt")
                 ? (String) body.get("obtainedAt")
                 : Instant.now().toString();
 
-        String obsUri = observationStore.writeObservation(intentId, metricUri, value, obtainedAt);
+        String obsUri = observationStore.writeObservation(intentId, metricUri, value, unit, obtainedAt);
 
         // Re-evaluate immediately when intent is ACTIVE
         if ("ACTIVE".equals(intent.get("lifecycleStatus"))) {
@@ -74,6 +87,7 @@ public class ObservationController {
         response.put("intentId", intentId);
         response.put("metricUri", metricUri);
         response.put("value", value);
+        if (unit != null) response.put("unit", unit);
         response.put("obtainedAt", obtainedAt);
         return ResponseEntity.status(201).body(response);
     }

@@ -96,7 +96,7 @@ bash seed_data/seed.sh http://localhost:8001   # access
 | `/tmf-api/intentManagement/v5/intent/{id}` | GET, PATCH, DELETE | Manage a single intent |
 | `/tmf-api/intentManagement/v5/intent/{id}/intentReport` | GET | List evaluation reports |
 | `/tmf-api/intentManagement/v5/intent/{id}/intentReport/{rid}` | GET | Single report |
-| `/tmf-api/intentManagement/v5/intent/{id}/observation` | POST | Inject metric observation |
+| `/tmf-api/intentManagement/v5/intent/{id}/observation` | POST | Inject metric observation: `{"metricUri", "value", "unit"?, "obtainedAt"?}` (see below) |
 | `/tmf-api/intentManagement/v5/intentSpecification` | GET, POST | IntentSpec CRUD |
 | `/tmf-api/intentManagement/v5/intentSpecification/{id}` | GET, PATCH, DELETE | |
 | `/tmf-api/intentManagement/v5/hub` | GET, POST | Register notification webhooks |
@@ -104,6 +104,21 @@ bash seed_data/seed.sh http://localhost:8001   # access
 | `/health` | GET | Liveness/readiness probe |
 
 Full OAS 3.0 specification: `docs/spec/TMF921_Intent_Management_v5.0.0_oas.yaml`
+
+### Metric observations and units
+
+`POST .../intent/{id}/observation` is an extension endpoint (not part of TMF921) that records a `met:Observation`
+for a metric and re-evaluates the intent. The value is a quantity (TR292D): a number with an optional `unit`.
+
+```json
+{ "metricUri": "http://broadband-forum.org/Intent#LatencyMetric", "value": 8.0, "unit": "ms" }
+```
+
+`unit` is a prefix and a unit symbol (`Mbps`, `Gbps`, `ms`, `us`, `Kibit`, `percent`, ...). Conditions compare
+quantities after converting prefixes, so `0.15 Gbps` satisfies `>= 100 Mbps`. A value whose unit has a different
+dimension, or no unit when the bound has one, cannot be compared: the condition is `false` with a
+"unit mismatch" reason. Omit `unit` for dimensionless values, such as counts. Bare numbers compare with bounds
+that have no unit.
 
 ---
 

@@ -31,24 +31,29 @@ class HsiSeedIntentTest {
                 + "\n" + Files.readString(Path.of("BBF_access/pon_resource_data.ttl"));
     }
 
-    private static String observations(String... metricAndValue) {
+    /** Observations as (metric, value, unit) triples; an empty unit means a value without unit. */
+    private static String observations(String... metricValueUnit) {
         StringBuilder sb = new StringBuilder("""
                 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
                 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
                 @prefix met: <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+                @prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
                 """);
-        for (int i = 0; i < metricAndValue.length; i += 2) {
+        for (int i = 0; i < metricValueUnit.length; i += 3) {
             sb.append("<http://example.org/obs/").append(i).append("> a met:Observation ;\n")
-              .append("  met:observedMetric <").append(BBF).append(metricAndValue[i]).append("> ;\n")
-              .append("  rdf:value \"").append(metricAndValue[i + 1]).append("\"^^xsd:decimal ;\n")
-              .append("  met:obtainedAt \"2026-06-11T10:00:0").append(i / 2).append("Z\"^^xsd:dateTime .\n");
+              .append("  met:observedMetric <").append(BBF).append(metricValueUnit[i]).append("> ;\n")
+              .append("  rdf:value \"").append(metricValueUnit[i + 1]).append("\"^^xsd:decimal ;\n");
+            if (!metricValueUnit[i + 2].isEmpty()) {
+                sb.append("  quan:unit \"").append(metricValueUnit[i + 2]).append("\" ;\n");
+            }
+            sb.append("  met:obtainedAt \"2026-06-11T10:00:0").append(i / 3).append("Z\"^^xsd:dateTime .\n");
         }
         return sb.toString();
     }
 
     private static final String[] ALL_METRICS_OK = {
-            "DownstreamBandwidthMetric", "150", "UpstreamBandwidthMetric", "30",
-            "LatencyMetric", "8", "JitterMetric", "1.2", "PacketLossMetric", "0.02"};
+            "DownstreamBandwidthMetric", "150", "Mbps", "UpstreamBandwidthMetric", "30", "Mbps",
+            "LatencyMetric", "8", "ms", "JitterMetric", "1.2", "ms", "PacketLossMetric", "0.02", "percent"};
 
     private List<Map<String, Object>> deliveries(EvaluationResult r) {
         return r.conditions().stream().filter(c -> "DeliveryExpectation".equals(c.get("type"))).toList();
@@ -69,6 +74,41 @@ class HsiSeedIntentTest {
         assertEquals(PON + "UNI-001-1", selectedByType.get(PON + "UNIPort"));
         assertEquals(PON + "SVLAN-N-HSI", selectedByType.get(PON + "SVLANAllocation"));
         assertEquals(PON + "CTAG-N-001", selectedByType.get(PON + "CTAGAllocation"));
+    }
+
+    @Test
+    void observationsInAnotherPrefix_areConvertedBeforeComparison() {
+        // 0.15 Gbps is 150 Mbps; 8000 us is 8 ms
+        EvaluationResult r = evaluator.evaluate(intent, observations(
+                "DownstreamBandwidthMetric", "0.15", "Gbps", "UpstreamBandwidthMetric", "30000", "kbps",
+                "LatencyMetric", "8000", "us", "JitterMetric", "0.0012", "s", "PacketLossMetric", "0.02", "percent"),
+                inventory);
+
+        assertEquals("Fulfilled", r.intentHandlingState(), r.reason());
+    }
+
+    @Test
+    void anObservationWithoutUnit_doesNotMatchABoundWithAUnit() {
+        // Latency is bounded in ms; a bare number has no unit dimension
+        EvaluationResult r = evaluator.evaluate(intent, observations(
+                "DownstreamBandwidthMetric", "150", "Mbps", "UpstreamBandwidthMetric", "30", "Mbps",
+                "LatencyMetric", "8", "", "JitterMetric", "1.2", "ms", "PacketLossMetric", "0.02", "percent"),
+                inventory);
+
+        assertEquals("Degraded", r.intentHandlingState());
+        assertTrue(r.reason().contains("unit mismatch"), r.reason());
+        assertTrue(r.reason().contains("a value without unit"), r.reason());
+    }
+
+    @Test
+    void anObservationInTheWrongDimension_failsTheConditionWithAnExplanation() {
+        EvaluationResult r = evaluator.evaluate(intent, observations(
+                "DownstreamBandwidthMetric", "150", "Mbps", "UpstreamBandwidthMetric", "30", "Mbps",
+                "LatencyMetric", "8", "Mbps", "JitterMetric", "1.2", "ms", "PacketLossMetric", "0.02", "percent"),
+                inventory);
+
+        assertEquals("Degraded", r.intentHandlingState());
+        assertTrue(r.reason().contains("'Mbps' cannot be compared with 'ms'"), r.reason());
     }
 
     @Test

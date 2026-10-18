@@ -260,6 +260,11 @@ The intent has **eight** conditions, all of which must pass:
 | 7 | Jitter | `smaller` | observed < 3 ms |
 | 8 | Packet loss | `smaller` | observed < 0.1 % |
 
+Observations are quantities (TR292D): a number and a unit. The conditions state their bounds with units
+(`100 Mbps`, `25 ms`, `0.1 percent`), so each observation is posted with its unit. Unit prefixes are converted
+(`0.15 Gbps` satisfies `>= 100 Mbps`); a value in a different dimension, or without a unit, cannot be compared
+and the condition is `false` with a "unit mismatch" reason.
+
 Conditions 1–3 depend only on the inventory, so they pass as soon as the intent is active. Conditions 4–8 each
 need a metric observation. You will post the metrics in two halves and check the intent report and the
 per-condition results after each.
@@ -272,9 +277,9 @@ the Fuseki profile (`access,fuseki`):
 OBS="$BASE/intent/$INTENT_ID/observation"
 BBF="http://broadband-forum.org/Intent#"
 
-post_metric() {   # usage: post_metric DownstreamBandwidthMetric 150.0
+post_metric() {   # usage: post_metric DownstreamBandwidthMetric 150.0 Mbps
   curl -s -o /dev/null -X POST "$OBS" -H "Content-Type: application/json" \
-    -d "{\"metricUri\": \"${BBF}$1\", \"value\": $2}"
+    -d "{\"metricUri\": \"${BBF}$1\", \"value\": $2, \"unit\": \"$3\"}"
 }
 
 report() {        # latest intent report: state and why
@@ -325,8 +330,8 @@ if they are empty.
 ### 4a — First half: bandwidth metrics only
 
 ```bash
-post_metric DownstreamBandwidthMetric 150.0    # >= 100: pass
-post_metric UpstreamBandwidthMetric   30.0     # >= 20:  pass
+post_metric DownstreamBandwidthMetric 150.0 Mbps    # >= 100 Mbps: pass
+post_metric UpstreamBandwidthMetric   30.0  Mbps    # >= 20 Mbps:  pass
 sleep 2
 report
 ```
@@ -338,7 +343,7 @@ Expected: **`Degraded`**, with a reason that lists only the three conditions sti
 results
 ```
 
-Expected: 12 rows, one per reported element, built up from the bottom:
+Expected: 11 rows, one per reported element, built up from the bottom:
 
 | `kind` | `element` | `result` | Notes |
 |---|---|---|---|
@@ -347,7 +352,6 @@ Expected: 12 rows, one per reported element, built up from the bottom:
 | `DeliveryExpectationReport` | the UNI, S-tag and C-tag expectations | `true` | `target` = the resource chosen: `UNI-001-1`, `SVLAN-N-HSI`, `CTAG-N-001` (candidates are tried in name order, so the choice is repeatable) |
 | `PropertyExpectationReport` | `HSIPerformanceExpectation` | `false` | `target` = `HSIServiceInstance`, the resource its conditions apply to; five conditions, three of them false |
 | `ReportingExpectationReport` | `HSIMonitoringExpectation` | `true` | nothing to fail |
-| `ExpectationReport` | `HSICompositeExpectation` | `false` | one of its parts is false |
 | `IntentReport` | `HSIIntent` | `false` | not compliant |
 
 Order matters in the intent: the S-tag is selected before the C-tag, because the C-tag pool is built from the
@@ -359,8 +363,8 @@ when the intent becomes Fulfilled (see Step 5).
 ### 4b — Second half: latency, jitter and packet loss
 
 ```bash
-post_metric LatencyMetric      8.0     # < 25:  pass
-post_metric JitterMetric       1.2     # < 3:   pass
+post_metric LatencyMetric      8.0  ms         # < 25 ms: pass
+post_metric JitterMetric       1.2  ms         # < 3 ms:  pass
 sleep 2
 report
 results
@@ -368,17 +372,17 @@ results
 
 Expected: still **`Degraded`**. Only `PacketLossMetric` is left in the reason. In `results`, four of the five
 `ConditionReport` rows are now `true` (only `HSI_PacketLossCondition` is `false`, with its reason), and the
-performance expectation, the composite expectation and the intent are still `false`.
+performance expectation and the intent are still `false`.
 
 ```bash
-post_metric PacketLossMetric   0.02    # < 0.1: pass
+post_metric PacketLossMetric   0.02 percent    # < 0.1 percent: pass
 echo "Waiting for evaluation..."
 sleep 2
 report
 results
 ```
 
-Expected: **`Fulfilled`** with reason `None`, and all 12 rows `result = true`, up to and including the
+Expected: **`Fulfilled`** with reason `None`, and all 11 rows `result = true`, up to and including the
 `IntentReport`. The intent became compliant only on the last observation, when the final condition passed.
 
 ---
@@ -519,7 +523,7 @@ Post the same observation a second time. This triggers another evaluation of an 
 resources:
 
 ```bash
-post_metric DownstreamBandwidthMetric 150.0
+post_metric DownstreamBandwidthMetric 150.0 Mbps
 
 sleep 1
 
@@ -579,8 +583,8 @@ curl -s -X PATCH "$BASE/intent/$COMP_ID" \
 COMP_OBS="$BASE/intent/$COMP_ID/observation"
 
 curl -s -X POST "$COMP_OBS" -H "Content-Type: application/json" \
-  -d "{\"metricUri\": \"${BBF}DownstreamBandwidthMetric\", \"value\": 150.0}"
-# ... (repeat for all 5 metrics)
+  -d "{\"metricUri\": \"${BBF}DownstreamBandwidthMetric\", \"value\": 150.0, \"unit\": \"Mbps\"}"
+# ... (repeat for all 5 metrics, with their units as in Step 4)
 
 sleep 2
 

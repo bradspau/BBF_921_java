@@ -485,6 +485,86 @@ class TurtleEvaluatorTest {
         assertEquals("Degraded", evaluator.evaluate(turtle, null, resources).intentHandlingState());
     }
 
+    // ── Set functions in their TR292F form: lists, and explicit intersection ───
+
+    private String chosenFrom(String poolTurtle, String resources) {
+        String turtle = PREFIXES + EX + """
+                ex:E a icm:DeliveryExpectation ;
+                    icm:target ex:T ; icm:deliveryType ex:Widget ; icm:chooseFrom ex:Pool .
+                ex:T a icm:Target .
+                """ + poolTurtle;
+        EvaluationResult r = evaluator.evaluate(turtle, null, PREFIXES + EX + resources);
+        return r.isFulfilled() ? (String) deliveryCondition(r).get("selected") : "none";
+    }
+
+    @Test
+    void setResourcesOfType_takesAListOfClasses() {
+        assertEquals("http://example.org/w1", chosenFrom(
+                "ex:Pool a icm:Target ; set:resourcesOfType ( ex:Widget ) .",
+                "ex:w2 a ex:Widget . ex:w1 a ex:Widget ."));
+    }
+
+    @Test
+    void setResourcesOfType_includesInstancesOfSubclasses() {
+        assertEquals("http://example.org/a1", chosenFrom(
+                "ex:Pool a icm:Target ; set:resourcesOfType ( ex:Widget ) .",
+                "ex:BigWidget rdfs:subClassOf ex:Widget . ex:a1 a ex:BigWidget . ex:a1 a ex:Widget . ex:w2 a ex:Widget ."));
+    }
+
+    @Test
+    void setIntersection_combinesFunctionNodesGivenAsAList() {
+        // free widgets only: w1 is in use, w2 is free
+        assertEquals("http://example.org/w2", chosenFrom("""
+                ex:Pool a icm:Target ;
+                    set:intersection ( [ set:resourcesOfType ( ex:Widget ) ]
+                                       [ set:resourcesWithPropertyObject ( ex:inUse false ) ] ) .
+                """, "ex:w1 a ex:Widget ; ex:inUse true . ex:w2 a ex:Widget ; ex:inUse false . ex:g0 a ex:Gadget ; ex:inUse false ."));
+    }
+
+    @Test
+    void setUnion_andDifference() {
+        String resources = "ex:w1 a ex:Widget . ex:w2 a ex:Widget . ex:g1 a ex:Gadget .";
+        // widgets minus w1 -> w2
+        assertEquals("http://example.org/w2", chosenFrom("""
+                ex:Pool a icm:Target ;
+                    set:difference ( [ set:resourcesOfType ( ex:Widget ) ]
+                                     [ set:resourcesWithPropertyObject ( ex:marker ex:Skip ) ] ) .
+                """, resources + " ex:w1 ex:marker ex:Skip ."));
+        // union of an empty set and the widgets -> w1
+        assertEquals("http://example.org/w1", chosenFrom("""
+                ex:Pool a icm:Target ;
+                    set:union ( [ set:resourcesOfType ( ex:Nothing ) ] [ set:resourcesOfType ( ex:Widget ) ] ) .
+                """, resources));
+    }
+
+    @Test
+    void ctagPool_isFilteredByTheSelectedStag_whenWrittenAsAnExplicitIntersection() {
+        String resources = STAG_CTAG_RESOURCES;
+        String expression = PREFIXES + EX + """
+                ex:Top a icm:Expectation ; log:allOf ( ex:STagE ex:CTagE ) .
+
+                ex:STagE a icm:DeliveryExpectation ;
+                    icm:target ex:SelectedSVLAN ; icm:deliveryType ex:SVLAN ; icm:chooseFrom ex:SVLANs .
+                ex:SelectedSVLAN a icm:Target .
+                ex:SVLANs a icm:Target ; set:resourcesOfType ( ex:SVLAN ) .
+
+                ex:CTagE a icm:DeliveryExpectation ;
+                    icm:target ex:SelectedCTag ; icm:deliveryType ex:CTag ; icm:chooseFrom ex:CTags .
+                ex:SelectedCTag a icm:Target .
+                ex:CTags a icm:Target ;
+                    set:intersection ( [ set:resourcesOfType ( ex:CTag ) ]
+                                       [ set:resourcesWithPropertyObject ( ex:inUse false ) ]
+                                       [ set:resourcesWithPropertyObject ( ex:fromSVLAN ex:SelectedSVLAN ) ] ) .
+                """;
+        EvaluationResult r = evaluator.evaluate(expression, null, resources);
+
+        assertEquals("Fulfilled", r.intentHandlingState(), r.reason());
+        Map<String, Object> ctag = r.conditions().stream()
+                .filter(c -> CTAG_TYPE.equals(c.get("deliveryType"))).findFirst().orElseThrow();
+        assertEquals("http://example.org/b1", ctag.get("selected"),
+                "a0 is lowest overall but belongs to the other S-VLAN");
+    }
+
     // ── Resources the intent already holds ────────────────────────────────────
 
     private static final String HELD_EXPRESSION = PREFIXES + EX + """

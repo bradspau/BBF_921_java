@@ -26,6 +26,7 @@ class ReportBuilderTest {
             PREFIX icm: <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/>
             PREFIX imo: <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/>
             PREFIX met: <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/>
+            PREFIX quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/>
             PREFIX bbf: <http://broadband-forum.org/Intent#>
             PREFIX pon: <http://broadband-forum.org/ont/pon-resource#>
             PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -48,25 +49,31 @@ class ReportBuilderTest {
                 + "\n" + Files.readString(Path.of("BBF_access/pon_resource_data.ttl"));
     }
 
-    private static String observations(String... metricAndValue) {
+    /** Observations as (metric, value, unit) triples; an empty unit means a value without unit. */
+    private static String observations(String... metricValueUnit) {
         StringBuilder sb = new StringBuilder("""
                 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
                 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
                 @prefix met: <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+                @prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
                 """);
-        for (int i = 0; i < metricAndValue.length; i += 2) {
+        for (int i = 0; i < metricValueUnit.length; i += 3) {
             sb.append("<http://example.org/obs/").append(i).append("> a met:Observation ;\n")
-              .append("  met:observedMetric <").append(BBF).append(metricAndValue[i]).append("> ;\n")
-              .append("  rdf:value \"").append(metricAndValue[i + 1]).append("\"^^xsd:decimal ;\n")
-              .append("  met:obtainedAt \"2026-06-11T10:00:0").append(i / 2).append("Z\"^^xsd:dateTime .\n");
+              .append("  met:observedMetric <").append(BBF).append(metricValueUnit[i]).append("> ;\n")
+              .append("  rdf:value \"").append(metricValueUnit[i + 1]).append("\"^^xsd:decimal ;\n");
+            if (!metricValueUnit[i + 2].isEmpty()) {
+                sb.append("  quan:unit \"").append(metricValueUnit[i + 2]).append("\" ;\n");
+            }
+            sb.append("  met:obtainedAt \"2026-06-11T10:00:0").append(i / 3).append("Z\"^^xsd:dateTime .\n");
         }
         return sb.toString();
     }
 
     private static final String[] ALL_OK = {
-            "DownstreamBandwidthMetric", "150", "UpstreamBandwidthMetric", "30",
-            "LatencyMetric", "8", "JitterMetric", "1.2", "PacketLossMetric", "0.02"};
-    private static final String[] BANDWIDTH_ONLY = {"DownstreamBandwidthMetric", "150", "UpstreamBandwidthMetric", "30"};
+            "DownstreamBandwidthMetric", "150", "Mbps", "UpstreamBandwidthMetric", "30", "Mbps",
+            "LatencyMetric", "8", "ms", "JitterMetric", "1.2", "ms", "PacketLossMetric", "0.02", "percent"};
+    private static final String[] BANDWIDTH_ONLY = {
+            "DownstreamBandwidthMetric", "150", "Mbps", "UpstreamBandwidthMetric", "30", "Mbps"};
 
     private Model report(String intentTtl, String... obs) {
         EvaluationResult r = evaluator.evaluate(intentTtl, obs.length == 0 ? null : observations(obs), inventory);
@@ -115,26 +122,26 @@ class ReportBuilderTest {
 
     @Test
     void aViolatedCondition_isExplainedByItsValues() {
-        Model m = report(intent, "DownstreamBandwidthMetric", "150", "UpstreamBandwidthMetric", "30",
-                "LatencyMetric", "40", "JitterMetric", "1.2", "PacketLossMetric", "0.02");
+        Model m = report(intent, "DownstreamBandwidthMetric", "150", "Mbps", "UpstreamBandwidthMetric", "30", "Mbps",
+                "LatencyMetric", "40", "ms", "JitterMetric", "1.2", "ms", "PacketLossMetric", "0.02", "percent");
 
         assertTrue(ask(m, "?c icm:about bbf:HSI_LatencyCondition ; icm:result false ; "
-                + "icm:reason [ rdfs:label \"40 < 25 is false\" ]"));
+                + "icm:reason [ rdfs:label \"40 ms < 25 ms is false\" ]"));
     }
 
     @Test
     void resultFrom_followsTheIntentHierarchy() {
         Model m = report(intent, ALL_OK);
 
-        // intent <- composite expectation <- (delivery x3, performance, monitoring) ; performance <- 5 conditions
-        assertTrue(ask(m, "?ir a icm:IntentReport ; icm:resultFrom ?comp . "
-                + "?comp icm:about bbf:HSICompositeExpectation"));
-        assertEquals(5, count(m, "?comp icm:about bbf:HSICompositeExpectation ; icm:resultFrom ?child"));
+        // intent <- 5 expectations (UNI, S-tag, C-tag, performance, monitoring) ; performance <- 5 conditions
+        assertEquals(5, count(m, "?ir a icm:IntentReport ; icm:resultFrom ?e . ?e icm:about ?x"));
+        assertTrue(ask(m, "?ir a icm:IntentReport ; icm:resultFrom ?e . ?e icm:about bbf:HSIPerformanceExpectation"));
         assertEquals(5, count(m, "?perf icm:about bbf:HSIPerformanceExpectation ; icm:resultFrom ?c . "
                 + "?c a icm:ConditionReport"));
         assertTrue(ask(m, "?e a icm:DeliveryExpectationReport ; icm:about bbf:HSIServiceProvisioningExpectation"));
         assertTrue(ask(m, "?e a icm:PropertyExpectationReport ; icm:about bbf:HSIPerformanceExpectation"));
         assertTrue(ask(m, "?e a icm:ReportingExpectationReport ; icm:about bbf:HSIMonitoringExpectation ; icm:result true"));
+        assertEquals(0, count(m, "?e a icm:ExpectationReport"), "there is no composite expectation any more");
     }
 
     @Test
@@ -196,7 +203,7 @@ class ReportBuilderTest {
         Model m = report(observed, ALL_OK);
         assertEquals(5, count(m, "?c a icm:ConditionReport ; met:observed ?o"));
         assertTrue(ask(m, "?c icm:about bbf:HSI_LatencyCondition ; met:observed [ a met:Observation ; "
-                + "met:observedMetric bbf:LatencyMetric ; rdf:value 8 ]"));
+                + "met:observedMetric bbf:LatencyMetric ; rdf:value 8 ; quan:unit \"ms\" ]"));
     }
 
     // ── Plumbing ──────────────────────────────────────────────────────────────

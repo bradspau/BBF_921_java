@@ -132,6 +132,9 @@ public class ReportBuilder {
                     obs.addProperty(RDF.type, m.createResource(MET + "Observation"));
                     obs.addProperty(m.createProperty(MET + "observedMetric"), m.createResource(d.get("metric").toString()));
                     obs.addProperty(RDF.value, m.createTypedLiteral(plain(d.get("observed")), XSDDatatype.XSDdecimal));
+                    if (d.get("observedUnit") != null) {
+                        obs.addProperty(m.createProperty(TioNamespaces.QUAN + "unit"), d.get("observedUnit").toString());
+                    }
                     r.addProperty(m.createProperty(MET + "observed"), obs);
                 }
             }
@@ -186,9 +189,14 @@ public class ReportBuilder {
     private static String reason(Map<String, Object> d) {
         if (d.get("error") != null) return d.get("error").toString();
         if (d.get("observed") != null && d.get("operator") != null && d.get("bound") != null) {
-            return plain(d.get("observed")) + " " + d.get("operator") + " " + plain(d.get("bound")) + " is false";
+            return withUnit(d.get("observed"), d.get("observedUnit")) + " " + d.get("operator") + " "
+                    + withUnit(d.get("bound"), d.get("boundUnit")) + " is false";
         }
         return null;
+    }
+
+    private static String withUnit(Object value, Object unit) {
+        return plain(value) + (unit != null ? " " + unit : "");
     }
 
     private static String plain(Object v) {
