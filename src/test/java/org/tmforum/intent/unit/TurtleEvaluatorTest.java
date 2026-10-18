@@ -338,6 +338,270 @@ class TurtleEvaluatorTest {
         assertEquals("Degraded", r.intentHandlingState());
     }
 
+    // ── DeliveryExpectation: deliveryType, chooseFrom, nested pools (TR290 §2.5) ─
+
+    private static final String EX = """
+            @prefix ex: <http://example.org/> .
+            """;
+
+    private Map<String, Object> deliveryCondition(EvaluationResult r) {
+        return r.conditions().stream()
+                .filter(c -> "DeliveryExpectation".equals(c.get("type")))
+                .findFirst().orElseThrow();
+    }
+
+    @Test
+    void delivery_choosesFromPool_addsChoiceToTarget_andPasses() {
+        String resources = PREFIXES + EX + """
+                ex:a2 a ex:Widget .
+                ex:a1 a ex:Widget .
+                """;
+        String turtle = PREFIXES + EX + """
+                ex:E a icm:DeliveryExpectation ;
+                    icm:target ex:T ;
+                    icm:deliveryType ex:Widget ;
+                    icm:chooseFrom ex:Pool .
+                ex:T a icm:Target .
+                ex:Pool a icm:Target ; set:resourcesOfType ex:Widget .
+                """;
+        EvaluationResult r = evaluator.evaluate(turtle, null, resources);
+        assertEquals("Fulfilled", r.intentHandlingState());
+        // deterministic: lowest URI wins
+        assertEquals("http://example.org/a1", deliveryCondition(r).get("selected"));
+    }
+
+    @Test
+    void delivery_poolMembersOfWrongType_fail() {
+        // The pool holds things, but none is an instance of the required deliveryType
+        String resources = PREFIXES + EX + """
+                ex:gadget1 a ex:Gadget .
+                """;
+        String turtle = PREFIXES + EX + """
+                ex:E a icm:DeliveryExpectation ;
+                    icm:target ex:T ;
+                    icm:deliveryType ex:Widget ;
+                    icm:chooseFrom ex:Pool .
+                ex:T a icm:Target .
+                ex:Pool a icm:Target ; set:resourcesOfType ex:Gadget .
+                """;
+        EvaluationResult r = evaluator.evaluate(turtle, null, resources);
+        assertEquals("Degraded", r.intentHandlingState());
+        assertTrue(r.reason().contains("no candidate of type Widget"), r.reason());
+    }
+
+    @Test
+    void delivery_deliveryTypeIsIndividualNotClass_fails() {
+        // pon:HSIService-style value: an individual, not a class any resource is an instance of
+        String resources = PREFIXES + EX + """
+                ex:u1 a ex:Port .
+                ex:HSI a ex:ServiceType .
+                """;
+        String turtle = PREFIXES + EX + """
+                ex:E a icm:DeliveryExpectation ;
+                    icm:target ex:T ;
+                    icm:deliveryType ex:HSI ;
+                    icm:chooseFrom ex:Pool .
+                ex:T a icm:Target .
+                ex:Pool a icm:Target ; set:resourcesOfType ex:Port .
+                """;
+        assertEquals("Degraded", evaluator.evaluate(turtle, null, resources).intentHandlingState());
+    }
+
+    @Test
+    void delivery_withoutDeliveryType_anyChosenResourceSatisfies() {
+        String resources = PREFIXES + EX + "ex:u1 a ex:Port .\n";
+        String turtle = PREFIXES + EX + """
+                ex:E a icm:DeliveryExpectation ;
+                    icm:target ex:T ;
+                    icm:chooseFrom ex:Pool .
+                ex:T a icm:Target .
+                ex:Pool a icm:Target ; set:resourcesOfType ex:Port .
+                """;
+        assertEquals("Fulfilled", evaluator.evaluate(turtle, null, resources).intentHandlingState());
+    }
+
+    @Test
+    void delivery_assertedIcmResultIsIgnored() {
+        // icm:result belongs in reports; asserting it on an expectation must not force compliance
+        String turtle = PREFIXES + EX + """
+                ex:E a icm:DeliveryExpectation ;
+                    icm:target ex:T ;
+                    icm:deliveryType ex:Widget ;
+                    icm:result "true"^^xsd:boolean .
+                ex:T a icm:Target .
+                """;
+        EvaluationResult r = evaluator.evaluate(turtle, null, null);
+        assertEquals("Degraded", r.intentHandlingState());
+    }
+
+    @Test
+    void pool_filteredByPropertyOfAnotherPool() {
+        // Only tags whose svlan has serviceType ex:HSI are eligible; the lowest free one is chosen
+        String resources = PREFIXES + EX + """
+                ex:svHsi  a ex:SVLAN ; ex:serviceType ex:HSI .
+                ex:svVoip a ex:SVLAN ; ex:serviceType ex:VoIP .
+                ex:t1 a ex:CTag ; ex:fromSVLAN ex:svVoip ; ex:inUse false .
+                ex:t2 a ex:CTag ; ex:fromSVLAN ex:svHsi  ; ex:inUse false .
+                ex:t3 a ex:CTag ; ex:fromSVLAN ex:svHsi  ; ex:inUse true .
+                """;
+        String turtle = PREFIXES + EX + """
+                ex:E a icm:DeliveryExpectation ;
+                    icm:target ex:T ;
+                    icm:deliveryType ex:CTag ;
+                    icm:chooseFrom ex:TagPool .
+                ex:T a icm:Target .
+                ex:HsiVlans a icm:Target ;
+                    set:resourcesOfType ex:SVLAN ;
+                    set:resourcesWithPropertyObject ( ex:serviceType ex:HSI ) .
+                ex:TagPool a icm:Target ;
+                    set:resourcesOfType ex:CTag ;
+                    set:resourcesWithPropertyObject ( ex:inUse false ) ;
+                    set:resourcesWithPropertyObject ( ex:fromSVLAN ex:HsiVlans ) .
+                """;
+        EvaluationResult r = evaluator.evaluate(turtle, null, resources);
+        assertEquals("Fulfilled", r.intentHandlingState());
+        assertEquals("http://example.org/t2", deliveryCondition(r).get("selected"));
+    }
+
+    @Test
+    void pool_filteredByEmptyOtherPool_hasNoCandidates() {
+        String resources = PREFIXES + EX + """
+                ex:svVoip a ex:SVLAN ; ex:serviceType ex:VoIP .
+                ex:t1 a ex:CTag ; ex:fromSVLAN ex:svVoip ; ex:inUse false .
+                """;
+        String turtle = PREFIXES + EX + """
+                ex:E a icm:DeliveryExpectation ;
+                    icm:target ex:T ;
+                    icm:deliveryType ex:CTag ;
+                    icm:chooseFrom ex:TagPool .
+                ex:T a icm:Target .
+                ex:HsiVlans a icm:Target ;
+                    set:resourcesOfType ex:SVLAN ;
+                    set:resourcesWithPropertyObject ( ex:serviceType ex:HSI ) .
+                ex:TagPool a icm:Target ;
+                    set:resourcesOfType ex:CTag ;
+                    set:resourcesWithPropertyObject ( ex:fromSVLAN ex:HsiVlans ) .
+                """;
+        assertEquals("Degraded", evaluator.evaluate(turtle, null, resources).intentHandlingState());
+    }
+
+    // ── Resources the intent already holds ────────────────────────────────────
+
+    private static final String HELD_EXPRESSION = PREFIXES + EX + """
+            ex:E a icm:DeliveryExpectation ;
+                icm:target ex:T ; icm:deliveryType ex:Widget ; icm:chooseFrom ex:Pool .
+            ex:T a icm:Target .
+            ex:Pool a icm:Target ;
+                set:resourcesOfType ex:Widget ;
+                set:resourcesWithPropertyObject ( ex:inUse false ) .
+            """;
+
+    @Test
+    void heldResource_isKeptEvenThoughItIsNoLongerInTheFreePool() {
+        // w1 is allocated to this intent (in use); w2 is free and sorts after it
+        String resources = PREFIXES + EX + """
+                ex:w1 a ex:Widget ; ex:inUse true .
+                ex:w2 a ex:Widget ; ex:inUse false .
+                """;
+        EvaluationResult r = evaluator.evaluate(HELD_EXPRESSION, null, resources, List.of("http://example.org/w1"));
+
+        assertEquals("Fulfilled", r.intentHandlingState());
+        Map<String, Object> d = deliveryCondition(r);
+        assertEquals("http://example.org/w1", d.get("selected"));
+        assertEquals(true, d.get("held"));
+    }
+
+    @Test
+    void heldResource_keepsTheIntentFulfilledWhenThePoolIsExhausted() {
+        String resources = PREFIXES + EX + """
+                ex:w1 a ex:Widget ; ex:inUse true .
+                ex:w2 a ex:Widget ; ex:inUse true .
+                """;
+        assertEquals("Degraded", evaluator.evaluate(HELD_EXPRESSION, null, resources).intentHandlingState());
+        assertEquals("Fulfilled", evaluator.evaluate(HELD_EXPRESSION, null, resources,
+                List.of("http://example.org/w1")).intentHandlingState());
+    }
+
+    @Test
+    void heldResource_ofAnotherTypeIsNotUsed() {
+        String resources = PREFIXES + EX + """
+                ex:g1 a ex:Gadget ; ex:inUse true .
+                ex:w2 a ex:Widget ; ex:inUse false .
+                """;
+        EvaluationResult r = evaluator.evaluate(HELD_EXPRESSION, null, resources, List.of("http://example.org/g1"));
+
+        assertEquals("http://example.org/w2", deliveryCondition(r).get("selected"));
+        assertNull(deliveryCondition(r).get("held"));
+    }
+
+    // ── C-tags constrained by the selected S-tag (802.1ad) ────────────────────
+
+    private static final String STAG_CTAG_RESOURCES = PREFIXES + EX + """
+            ex:svA a ex:SVLAN .
+            ex:svB a ex:SVLAN .
+            ex:a0 a ex:CTag ; ex:fromSVLAN ex:svB ; ex:inUse false .   # sorts first, but belongs to svB
+            ex:b1 a ex:CTag ; ex:fromSVLAN ex:svA ; ex:inUse false .
+            ex:b2 a ex:CTag ; ex:fromSVLAN ex:svA ; ex:inUse true .
+            """;
+
+    private static String stagThenCtag(String first, String second) {
+        return PREFIXES + EX + """
+                ex:Top a icm:Expectation ; log:allOf ( ex:%s ex:%s ) .
+
+                ex:STagE a icm:DeliveryExpectation ;
+                    icm:target ex:SelectedSVLAN ; icm:deliveryType ex:SVLAN ; icm:chooseFrom ex:SVLANs .
+                ex:SelectedSVLAN a icm:Target .
+                ex:SVLANs a icm:Target ; set:resourcesOfType ex:SVLAN .
+
+                ex:CTagE a icm:DeliveryExpectation ;
+                    icm:target ex:SelectedCTag ; icm:deliveryType ex:CTag ; icm:chooseFrom ex:CTags .
+                ex:SelectedCTag a icm:Target .
+                ex:CTags a icm:Target ;
+                    set:resourcesOfType ex:CTag ;
+                    set:resourcesWithPropertyObject ( ex:inUse false ) ;
+                    set:resourcesWithPropertyObject ( ex:fromSVLAN ex:SelectedSVLAN ) .
+                """.formatted(first, second);
+    }
+
+    @Test
+    void ctag_isChosenFromTheSelectedStag_notJustAnyFreeCtag() {
+        EvaluationResult r = evaluator.evaluate(stagThenCtag("STagE", "CTagE"), null, STAG_CTAG_RESOURCES);
+
+        assertEquals("Fulfilled", r.intentHandlingState(), r.reason());
+        Map<String, Object> stag = r.conditions().stream()
+                .filter(c -> SVLAN_TYPE.equals(c.get("deliveryType"))).findFirst().orElseThrow();
+        Map<String, Object> ctag = r.conditions().stream()
+                .filter(c -> CTAG_TYPE.equals(c.get("deliveryType"))).findFirst().orElseThrow();
+        assertEquals("http://example.org/svA", stag.get("selected"));
+        // ex:a0 is the lowest free C-tag overall but belongs to svB, so it must not be chosen
+        assertEquals("http://example.org/b1", ctag.get("selected"));
+    }
+
+    @Test
+    void ctag_stagWithNoFreeCtags_failsEvenIfOtherStagsHaveSome() {
+        // Only svB has a free C-tag; svA (chosen first, lowest name) has none
+        String resources = PREFIXES + EX + """
+                ex:svA a ex:SVLAN .
+                ex:svB a ex:SVLAN .
+                ex:a1 a ex:CTag ; ex:fromSVLAN ex:svA ; ex:inUse true .
+                ex:b1 a ex:CTag ; ex:fromSVLAN ex:svB ; ex:inUse false .
+                """;
+        EvaluationResult r = evaluator.evaluate(stagThenCtag("STagE", "CTagE"), null, resources);
+
+        assertEquals("Degraded", r.intentHandlingState());
+        assertTrue(r.reason().contains("no candidate of type CTag"), r.reason());
+    }
+
+    @Test
+    void ctag_evaluatedBeforeStag_hasNoSelectionToConstrainBy() {
+        // The S-tag choice does not exist yet, so the C-tag pool is empty: order in the list matters
+        EvaluationResult r = evaluator.evaluate(stagThenCtag("CTagE", "STagE"), null, STAG_CTAG_RESOURCES);
+        assertEquals("Degraded", r.intentHandlingState());
+    }
+
+    private static final String SVLAN_TYPE = "http://example.org/SVLAN";
+    private static final String CTAG_TYPE = "http://example.org/CTag";
+
     // ── set:setforAll ─────────────────────────────────────────────────────────
 
     @Test

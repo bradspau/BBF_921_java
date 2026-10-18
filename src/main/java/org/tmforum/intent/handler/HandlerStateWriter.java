@@ -138,7 +138,10 @@ public class HandlerStateWriter {
 
     /**
      * Mark selected resources as in-use in the resource inventory graph.
-     * Flow 4 (Resource Allocation) — idempotent via WHERE clause guard.
+     * Flow 4 (Resource Allocation). Resources the intent already holds (flagged {@code held} by the
+     * evaluator) are skipped, so this is safe to call after every Fulfilled evaluation and also completes
+     * a partial allocation. Each claim is guarded by {@code WHERE inUse false}; losing a race for a
+     * resource is detected and logged rather than reported as an allocation.
      */
     public void writeResourceAllocation(String intentId, EvaluationResult result) {
         List<Map<String, Object>> conditions = result.conditions();
@@ -148,7 +151,15 @@ public class HandlerStateWriter {
             if (!"DeliveryExpectation".equals(c.get("type"))) continue;
             Object sel = c.get("selected");
             if (sel == null) continue;
+            if (Boolean.TRUE.equals(c.get("held"))) continue;    // already allocated to this intent
             String resourceUri = sel.toString();
+
+            // Only exclusive resources (those that carry pon:inUse, e.g. UNI ports and C-tags) are
+            // allocated to one service. Shared resources such as an S-VLAN are selected but not claimed.
+            if (!isExclusiveResource(resourceUri)) {
+                log.debug("writeResourceAllocation: {} is a shared resource — selected, not allocated", resourceUri);
+                continue;
+            }
 
             String sparql = String.format("""
                     PREFIX pon: <%s>
@@ -158,12 +169,21 @@ public class HandlerStateWriter {
                                   pon:assignedToService "%s" }
                     WHERE  { <%s> pon:inUse false }
                     """, PON, resourcesGraph, resourceUri, resourceUri, intentId, resourceUri);
+            String claimed = String.format("""
+                    ASK { GRAPH <%s> { <%s> <%sassignedToService> "%s" } }
+                    """, resourcesGraph, resourceUri, PON, intentId);
 
             dataset.begin(ReadWrite.WRITE);
             try {
                 UpdateExecutionFactory.create(UpdateFactory.create(sparql), dataset).execute();
+                boolean won = org.apache.jena.query.QueryExecutionFactory.create(claimed, dataset).execAsk();
                 dataset.commit();
-                log.info("writeResourceAllocation: allocated {} to intent {}", resourceUri, intentId);
+                if (won) {
+                    log.info("writeResourceAllocation: allocated {} to intent {}", resourceUri, intentId);
+                } else {
+                    log.warn("writeResourceAllocation: {} was taken by another intent before intent {} could "
+                            + "claim it — it will choose again on its next evaluation", resourceUri, intentId);
+                }
             } catch (Exception e) {
                 dataset.abort();
                 log.error("writeResourceAllocation: failed for {}/intent {}: {}",
@@ -174,19 +194,37 @@ public class HandlerStateWriter {
         }
     }
 
-    /**
-     * Check if resources are already allocated to this intent (idempotency guard).
-     */
-    public boolean resourcesAlreadyAllocated(String intentId) {
+    private boolean isExclusiveResource(String resourceUri) {
         String sparql = String.format("""
-                ASK { GRAPH <%s> { ?r <%sassignedToService> "%s" } }
-                """, Namespaces.RESOURCES_GRAPH, PON, intentId);
+                ASK { GRAPH <%s> { <%s> <%sinUse> ?v } }
+                """, Namespaces.RESOURCES_GRAPH, resourceUri, PON);
         dataset.begin(ReadWrite.READ);
         try {
-            return org.apache.jena.query.QueryExecutionFactory
-                    .create(sparql, dataset).execAsk();
+            return org.apache.jena.query.QueryExecutionFactory.create(sparql, dataset).execAsk();
         } finally {
             dataset.end();
         }
+    }
+
+    /**
+     * URIs of the resources currently assigned to this intent. The evaluator treats them as already
+     * chosen, so an allocated intent keeps its resources instead of choosing from the free pool again.
+     */
+    public List<String> heldResources(String intentId) {
+        String sparql = String.format("""
+                SELECT ?r WHERE { GRAPH <%s> { ?r <%sassignedToService> "%s" } } ORDER BY ?r
+                """, Namespaces.RESOURCES_GRAPH, PON, intentId);
+        List<String> held = new java.util.ArrayList<>();
+        dataset.begin(ReadWrite.READ);
+        try (var qe = org.apache.jena.query.QueryExecutionFactory.create(sparql, dataset)) {
+            var rs = qe.execSelect();
+            while (rs.hasNext()) {
+                var r = rs.next().getResource("r");
+                if (r != null && r.isURIResource()) held.add(r.getURI());
+            }
+        } finally {
+            dataset.end();
+        }
+        return held;
     }
 }

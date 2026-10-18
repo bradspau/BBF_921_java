@@ -31,6 +31,7 @@ import static org.tmforum.intent.graph.TioNamespaces.*;
 public class TurtleEvaluator {
 
     private static final int MAX_TURTLE_BYTES = 512 * 1024;
+    private static final Resource ICM_TARGET_CLASS = ResourceFactory.createResource(ICM + "Target");
 
     // ── Combinator descriptors ───────────────────────────────────────────────
     private enum Combinator { ALL, ANY, NONE, ONE }
@@ -61,6 +62,30 @@ public class TurtleEvaluator {
     public EvaluationResult evaluate(String expressionTurtle,
                                       String observationsTurtle,
                                       String resourcesTurtle) {
+        return evaluate(expressionTurtle, observationsTurtle, resourcesTurtle, List.of());
+    }
+
+    /**
+     * @param heldResources URIs of resources already allocated to this intent. A delivery expectation
+     *        whose deliveryType matches one of them keeps it as its choice instead of choosing again from
+     *        the free pool (which no longer contains it, being in use).
+     */
+    public EvaluationResult evaluate(String expressionTurtle,
+                                      String observationsTurtle,
+                                      String resourcesTurtle,
+                                      Collection<String> heldResources) {
+        return doEvaluate(expressionTurtle, observationsTurtle, resourcesTurtle,
+                heldResources == null ? List.of() : heldResources);
+    }
+
+    /** Evaluation context carried in the model: the resources the intent being evaluated already holds. */
+    private static final Resource EVAL_CONTEXT = ResourceFactory.createResource("urn:tmf921:evaluation");
+    private static final Property EVAL_HOLDS = ResourceFactory.createProperty("urn:tmf921:evaluation#holds");
+
+    private EvaluationResult doEvaluate(String expressionTurtle,
+                                         String observationsTurtle,
+                                         String resourcesTurtle,
+                                         Collection<String> heldResources) {
         if (expressionTurtle == null || expressionTurtle.isBlank()) {
             return EvaluationResult.degraded("Empty expression", List.of());
         }
@@ -76,6 +101,8 @@ public class TurtleEvaluator {
         } catch (Exception e) {
             return EvaluationResult.degraded("Turtle parse error: " + e.getMessage(), List.of());
         }
+
+        for (String uri : heldResources) g.add(EVAL_CONTEXT, EVAL_HOLDS, g.createResource(uri));
 
         // Pre-processing pipeline
         normalizeQuantityPredicates(g);
@@ -148,46 +175,108 @@ public class TurtleEvaluator {
     /**
      * Materialises rdfs:member directly for set:resourcesOfType and
      * set:resourcesWithPropertyObject predicates.
+     *
+     * An object argument of set:resourcesWithPropertyObject that is itself a set node
+     * (e.g. {@code ( pon:fromSVLAN bbf:HSISVLANPool )}) stands for all members of that set,
+     * so one pool can be filtered by properties of another.
      */
     private void normalizeSetPredicates(Model g) {
-        Set<Resource> targets = new HashSet<>();
-        g.listSubjectsWithProperty(SET_P_resourcesOfType).forEachRemaining(targets::add);
-        g.listSubjectsWithProperty(SET_P_resourcesWithPropertyObject).forEachRemaining(targets::add);
+        Set<Resource> setNodes = setNodes(g);
+        Set<Resource> done = new HashSet<>();
+        for (Resource target : setNodes) {
+            materialiseSet(g, target, setNodes, done);
+        }
+    }
 
-        for (Resource target : targets) {
-            if (g.contains(target, RDFS.member)) continue; // already materialised
+    /** A set node, or a plain icm:Target (e.g. a delivery target), stands for its members rather than itself. */
+    private boolean isContainerArg(Model g, Resource arg, Set<Resource> setNodes) {
+        return setNodes.contains(arg) || g.contains(arg, RDF.type, ICM_TARGET_CLASS);
+    }
 
-            // Collect type-class members
-            List<RDFNode> typeClasses = g.listObjectsOfProperty(target, SET_P_resourcesOfType)
-                    .toList();
-            Set<Resource> members = null;
-            if (!typeClasses.isEmpty()) {
-                members = new HashSet<>();
-                for (RDFNode cls : typeClasses) {
-                    if (!cls.isResource()) continue;
-                    g.listSubjectsWithProperty(RDF.type, cls.asResource())
-                            .forEachRemaining(members::add);
+    private Set<Resource> setNodes(Model g) {
+        Set<Resource> setNodes = new HashSet<>();
+        g.listSubjectsWithProperty(SET_P_resourcesOfType).forEachRemaining(setNodes::add);
+        g.listSubjectsWithProperty(SET_P_resourcesWithPropertyObject).forEachRemaining(setNodes::add);
+        return setNodes;
+    }
+
+    /**
+     * Pools are normally materialised once, up front. A pool filtered by a plain icm:Target (such as the
+     * target another delivery expectation fills with its choice) can only be computed once that choice
+     * exists, so it is recomputed when the dependent expectation is evaluated. This means the expectation
+     * providing the choice must come first in the enclosing list.
+     */
+    private void refreshPoolIfDependsOnChoice(Model g, Resource pool) {
+        Set<Resource> setNodes = setNodes(g);
+        Set<Resource> derived = new LinkedHashSet<>();
+        boolean dependsOnChoice = collectDerived(g, pool, setNodes, derived);
+        if (!dependsOnChoice) return;
+        for (Resource d : derived) g.removeAll(d, RDFS.member, null);
+        Set<Resource> done = new HashSet<>();
+        materialiseSet(g, pool, setNodes, done);
+    }
+
+    private boolean collectDerived(Model g, Resource node, Set<Resource> setNodes, Set<Resource> derived) {
+        if (!derived.add(node)) return false;
+        boolean dependsOnChoice = false;
+        for (StmtIterator it = g.listStatements(node, SET_P_resourcesWithPropertyObject, (RDFNode) null);
+             it.hasNext(); ) {
+            RDFNode listNode = it.next().getObject();
+            if (!listNode.isResource()) continue;
+            List<RDFNode> args = iterRdfList(g, listNode.asResource());
+            for (int i = 1; i < args.size(); i++) {
+                RDFNode arg = args.get(i);
+                if (!arg.isResource()) continue;
+                Resource r = arg.asResource();
+                if (setNodes.contains(r)) {
+                    dependsOnChoice |= collectDerived(g, r, setNodes, derived);
+                } else if (g.contains(r, RDF.type, ICM_TARGET_CLASS)) {
+                    dependsOnChoice = true;
                 }
             }
+        }
+        return dependsOnChoice;
+    }
 
-            // Intersect with property-object filters
-            for (StmtIterator it = g.listStatements(target, SET_P_resourcesWithPropertyObject,
-                    (RDFNode) null); it.hasNext(); ) {
-                RDFNode listNode = it.next().getObject();
-                if (!listNode.isResource()) continue;
-                List<RDFNode> args = iterRdfList(g, listNode.asResource());
-                if (args.size() < 2) continue;
-                Property prop = ResourceFactory.createProperty(args.get(0).asResource().getURI());
-                Set<Resource> filterSet = new HashSet<>();
-                for (int i = 1; i < args.size(); i++) {
-                    g.listSubjectsWithProperty(prop, args.get(i)).forEachRemaining(filterSet::add);
+    private void materialiseSet(Model g, Resource target, Set<Resource> setNodes, Set<Resource> done) {
+        if (!done.add(target)) return;                          // already handled (or cyclic reference)
+        if (g.contains(target, RDFS.member)) return;            // already materialised
+
+        // Collect type-class members
+        List<RDFNode> typeClasses = g.listObjectsOfProperty(target, SET_P_resourcesOfType).toList();
+        Set<Resource> members = null;
+        if (!typeClasses.isEmpty()) {
+            members = new HashSet<>();
+            for (RDFNode cls : typeClasses) {
+                if (!cls.isResource()) continue;
+                g.listSubjectsWithProperty(RDF.type, cls.asResource()).forEachRemaining(members::add);
+            }
+        }
+
+        // Intersect with property-object filters
+        for (StmtIterator it = g.listStatements(target, SET_P_resourcesWithPropertyObject,
+                (RDFNode) null); it.hasNext(); ) {
+            RDFNode listNode = it.next().getObject();
+            if (!listNode.isResource()) continue;
+            List<RDFNode> args = iterRdfList(g, listNode.asResource());
+            if (args.size() < 2) continue;
+            Property prop = ResourceFactory.createProperty(args.get(0).asResource().getURI());
+            Set<Resource> filterSet = new HashSet<>();
+            for (int i = 1; i < args.size(); i++) {
+                RDFNode arg = args.get(i);
+                if (arg.isResource() && isContainerArg(g, arg.asResource(), setNodes)) {
+                    materialiseSet(g, arg.asResource(), setNodes, done);
+                    g.listObjectsOfProperty(arg.asResource(), RDFS.member).forEachRemaining(o ->
+                            g.listSubjectsWithProperty(prop, o).forEachRemaining(filterSet::add));
+                } else {
+                    g.listSubjectsWithProperty(prop, arg).forEachRemaining(filterSet::add);
                 }
-                members = (members == null) ? filterSet : intersect(members, filterSet);
             }
+            members = (members == null) ? filterSet : intersect(members, filterSet);
+        }
 
-            if (members != null) {
-                for (Resource m : members) g.add(target, RDFS.member, m);
-            }
+        if (members != null) {
+            for (Resource m : members) g.add(target, RDFS.member, m);
         }
     }
 
@@ -814,52 +903,81 @@ public class TurtleEvaluator {
 
     // ── ICM evaluators ────────────────────────────────────────────────────────
 
+    /**
+     * TR290 §2.5: a delivery expectation is compliant when a member of its target is an instance of
+     * icm:deliveryType (the class of the delivered resource). The handler fills the target by choosing
+     * from the icm:chooseFrom pool (§2.5.3); the choice becomes an rdfs:member of the target. An empty
+     * target is not compliant (§2.3.3). If icm:deliveryType is absent, any target member satisfies it.
+     * Candidates are tried in URI order so the choice is deterministic.
+     */
     private EvalNode evalDeliveryExpectation(Model g, Resource node) {
-        if (g.containsLiteral(node, ICM_result, true)) {
-            return new EvalNode(true, List.of(cond("DeliveryExpectation", Map.of("passed", true))));
-        }
         Resource target = objectResource(g, node, ICM_target);
         Resource deliveryType = objectResource(g, node, ICM_deliveryType);
+        Resource pool = objectResource(g, node, ResourceFactory.createProperty(ICM + "chooseFrom"));
+
+        Map<String, Object> c = new LinkedHashMap<>();
+        c.put("type", "DeliveryExpectation");
+        if (node.isURIResource()) c.put("element", node.getURI());
+        if (deliveryType != null) c.put("deliveryType", deliveryType.getURI());
 
         if (target == null) {
-            return EvalNode.fail(cond("DeliveryExpectation",
-                    Map.of("error", "missing icm:target", "passed", false)));
-        }
-        if (deliveryType == null) {
-            return EvalNode.fail(cond("DeliveryExpectation",
-                    Map.of("error", "missing icm:deliveryType", "passed", false)));
-        }
-        List<Resource> members = g.listObjectsOfProperty(target, RDFS.member)
-                .filterKeep(RDFNode::isResource).mapWith(RDFNode::asResource).toList();
-        if (!members.isEmpty()) {
-            boolean passed = members.stream().anyMatch(m -> g.contains(m, RDF.type, deliveryType));
-            Map<String, Object> c = new LinkedHashMap<>();
-            c.put("type", "DeliveryExpectation");
-            c.put("deliveryType", deliveryType.getURI());
-            c.put("member_count", members.size());
-            c.put("passed", passed);
-            return new EvalNode(passed, List.of(c));
+            c.put("error", "missing icm:target");
+            c.put("passed", false);
+            return EvalNode.fail(c);
         }
 
-        // Check chooseFrom pool
-        Property chooseFrom = ResourceFactory.createProperty(ICM + "chooseFrom");
-        Resource pool = objectResource(g, node, chooseFrom);
-        if (pool != null) {
-            List<Resource> candidates = g.listObjectsOfProperty(pool, RDFS.member)
-                    .filterKeep(RDFNode::isResource).mapWith(RDFNode::asResource).toList();
-            boolean passed = !candidates.isEmpty();
-            Map<String, Object> c = new LinkedHashMap<>();
-            c.put("type", "DeliveryExpectation");
-            c.put("deliveryType", deliveryType.getURI());
-            c.put("candidates", candidates.size());
-            c.put("passed", passed);
-            if (passed) c.put("selected", candidates.get(0).getURI());
-            return new EvalNode(passed, List.of(c));
+        // Resources this intent already holds are its choice: keep them rather than choosing again.
+        Resource selected = null;
+        boolean heldChoice = false;
+        if (deliveryType != null) {
+            List<Resource> holdings = g.listObjectsOfProperty(EVAL_CONTEXT, EVAL_HOLDS).toList().stream()
+                    .filter(RDFNode::isURIResource).map(RDFNode::asResource)
+                    .sorted(Comparator.comparing(Resource::getURI)).collect(Collectors.toList());
+            for (Resource h : holdings) {
+                if (g.contains(h, RDF.type, deliveryType)) {
+                    g.add(target, RDFS.member, h);
+                    selected = h;
+                    heldChoice = true;
+                    break;
+                }
+            }
+        }
+        int candidateCount = 0;
+        if (!heldChoice && sortedMembers(g, target, deliveryType).isEmpty() && pool != null) {
+            refreshPoolIfDependsOnChoice(g, pool);
+            List<Resource> candidates = sortedMembers(g, pool, deliveryType);
+            candidateCount = candidates.size();
+            c.put("candidates", candidateCount);
+            if (!candidates.isEmpty()) {
+                selected = candidates.get(0);
+                g.add(target, RDFS.member, selected);
+            }
         }
 
-        return EvalNode.fail(cond("DeliveryExpectation",
-                Map.of("deliveryType", deliveryType.getURI(),
-                       "error", "empty target container", "passed", false)));
+        List<Resource> matching = sortedMembers(g, target, deliveryType);
+        boolean passed = !matching.isEmpty();
+        c.put("member_count", matching.size());
+        c.put("passed", passed);
+        if (passed && selected != null) {
+            c.put("selected", selected.isURIResource() ? selected.getURI() : selected.toString());
+            if (heldChoice) c.put("held", true);
+        } else if (!passed) {
+            String of = deliveryType != null ? " of type " + localName(deliveryType.getURI()) : "";
+            c.put("error", pool != null
+                    ? "no candidate" + of + " in chooseFrom pool"
+                    : "no target member" + of);
+        }
+        return passed ? new EvalNode(true, List.of(c)) : EvalNode.fail(c);
+    }
+
+    /** rdfs:members of a container, optionally only instances of {@code type}, ordered by URI. */
+    private List<Resource> sortedMembers(Model g, Resource container, Resource type) {
+        return g.listObjectsOfProperty(container, RDFS.member).toList().stream()
+                .filter(RDFNode::isResource)
+                .map(RDFNode::asResource)
+                .filter(m -> type == null || g.contains(m, RDF.type, type))
+                .sorted(Comparator.comparing(m -> m.isURIResource() ? m.getURI() : "~" + m))
+                .collect(Collectors.toList());
     }
 
     private EvalNode evalPropertyExpectation(Model g, Resource node) {

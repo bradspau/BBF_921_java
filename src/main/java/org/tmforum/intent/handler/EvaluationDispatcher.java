@@ -110,11 +110,12 @@ public class EvaluationDispatcher {
         // Get observations and resources Turtle
         String obsTurtle = observationStore.getObservationsTurtle(intentId);
         String resTurtle = getResourcesTurtle();
+        List<String> heldResources = handlerStateWriter.heldResources(intentId);
 
         // Evaluate (with timeout guard via interruption)
         EvaluationResult result;
         try {
-            result = evaluateWithTimeout(expressionTurtle, obsTurtle, resTurtle, intentId);
+            result = evaluateWithTimeout(expressionTurtle, obsTurtle, resTurtle, heldResources, intentId);
         } catch (Exception e) {
             log.warn("runEvaluation: evaluation failed for intent {}: {}", intentId, e.getMessage());
             result = EvaluationResult.degraded("Evaluation error: " + e.getMessage(), List.of());
@@ -233,20 +234,19 @@ public class EvaluationDispatcher {
                                          Map<String, Object> intent) {
         if ("ProbeIntent".equals(intent.get("@type"))) return; // probe = availability check only
 
-        if (handlerStateWriter.resourcesAlreadyAllocated(intentId)) {
-            log.debug("tryResourceAllocation: already allocated for intent {} — skipping", intentId);
-            return;
-        }
+        // Resources the intent already holds are flagged "held" by the evaluator and skipped, so this
+        // only claims what is still missing (the first time, or after a partial allocation).
         handlerStateWriter.writeResourceAllocation(intentId, result);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private EvaluationResult evaluateWithTimeout(String expressionTurtle, String obsTurtle,
-                                                   String resTurtle, String intentId) {
+                                                   String resTurtle, List<String> heldResources,
+                                                   String intentId) {
         // Run evaluation in current thread (already in evaluationExecutor pool).
         // The pool provides concurrency; we don't add another layer here.
-        return evaluator.evaluate(expressionTurtle, obsTurtle, resTurtle);
+        return evaluator.evaluate(expressionTurtle, obsTurtle, resTurtle, heldResources);
     }
 
     private String getResourcesTurtle() {

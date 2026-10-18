@@ -33,6 +33,7 @@ bbf:HSIIntent  a icm:Intent ;
 ############################################################
 bbf:HSICompositeExpectation  a icm:Expectation ;
     log:allOf ( bbf:HSIServiceProvisioningExpectation
+                bbf:HSISTagProvisioningExpectation
                 bbf:HSICTAGProvisioningExpectation
                 bbf:HSIPerformanceExpectation
                 bbf:HSIMonitoringExpectation ) .
@@ -40,11 +41,14 @@ bbf:HSICompositeExpectation  a icm:Expectation ;
 ############################################################
 # Service provisioning expectation
 ############################################################
+# icm:deliveryType is the class the delivered (chosen) resource must be an instance of;
+# pon:HSIService is the kind of service being delivered, so it is the delivery description.
 bbf:HSIServiceProvisioningExpectation  a icm:DeliveryExpectation ;
-    icm:target            bbf:SelectedUNIInterface ;
-    icm:deliveryType      pon:HSIService ;
-    icm:deliveryDescription bbf:HSIServiceSpecification ;
-    icm:chooseFrom        bbf:AvailableUNIInterfaces .
+    icm:target              bbf:SelectedUNIInterface ;
+    icm:deliveryType        pon:UNIPort ;
+    icm:deliveryDescription pon:HSIService ,
+                            bbf:HSIServiceSpecification ;
+    icm:chooseFrom          bbf:AvailableUNIInterfaces .
 
 ############################################################
 # Targets
@@ -57,19 +61,39 @@ bbf:AvailableUNIInterfaces  a icm:Target ;
     set:resourcesWithPropertyObject ( pon:operationalState  pon:Up ) ;
     set:resourcesWithPropertyObject ( pon:provisioningState pon:Ready ) .
 
+# S-VLANs that carry HSI. An S-VLAN is shared by many services, so it is selected but not marked in use.
+# Demo simplification: one S-VLAN is chosen (the lowest-named) irrespective of service provider.
+# Provider-aware selection is tracked in beads as bbf921j-3or.
+bbf:SelectedSVLANAllocation  a icm:Target .
+
+bbf:AvailableSVLANAllocations  a icm:Target ;
+    set:resourcesOfType              pon:SVLANAllocation ;
+    set:resourcesWithPropertyObject ( pon:serviceType pon:HSIService ) .
+
+# 802.1ad dual-tagged VLAN: a C-tag only has meaning inside its S-VLAN (each C-tag is unique within it), so
+# the free C-tags offered are those of the S-VLAN chosen by the S-tag expectation (bbf:SelectedSVLANAllocation).
+# The S-tag expectation therefore has to be evaluated before the C-tag one (see the order in the composite).
 bbf:SelectedCTAGAllocation  a icm:Target .
 
 bbf:AvailableCTAGAllocations  a icm:Target ;
     set:resourcesOfType              pon:CTAGAllocation ;
-    set:resourcesWithPropertyObject ( pon:inUse  false ) .
+    set:resourcesWithPropertyObject ( pon:inUse  false ) ;
+    set:resourcesWithPropertyObject ( pon:fromSVLAN  bbf:SelectedSVLANAllocation ) .
 
 ############################################################
 # CTAG provisioning expectation
 ############################################################
+bbf:HSISTagProvisioningExpectation  a icm:DeliveryExpectation ;
+    icm:target              bbf:SelectedSVLANAllocation ;
+    icm:deliveryType        pon:SVLANAllocation ;
+    icm:deliveryDescription pon:HSIService ;
+    icm:chooseFrom          bbf:AvailableSVLANAllocations .
+
 bbf:HSICTAGProvisioningExpectation  a icm:DeliveryExpectation ;
-    icm:target      bbf:SelectedCTAGAllocation ;
-    icm:deliveryType  pon:HSIService ;
-    icm:chooseFrom  bbf:AvailableCTAGAllocations .
+    icm:target              bbf:SelectedCTAGAllocation ;
+    icm:deliveryType        pon:CTAGAllocation ;
+    icm:deliveryDescription pon:HSIService ;
+    icm:chooseFrom          bbf:AvailableCTAGAllocations .
 
 ############################################################
 # Performance expectation
@@ -121,9 +145,25 @@ bbf:HSI_PacketLossCondition  a icm:Condition ;
 bbf:Periodic15m a imo:Event ;
     t:hasDuration "PT15M"^^xsd:duration .
 
+# Reporting scope (TR290 §4.2): the intent report contains a report for each intent element that is a
+# member of this target, so every element we want an icm:result for must be listed here.
 bbf:HSIMonitoringTarget a icm:Target ;
-    rdfs:member bbf:HSIServiceTarget ;
-    rdfs:member bbf:HSIIntent .
+    rdfs:member bbf:HSIIntent ,
+                bbf:HSICompositeExpectation ,
+                bbf:HSIServiceProvisioningExpectation ,
+                bbf:HSISTagProvisioningExpectation ,
+                bbf:HSICTAGProvisioningExpectation ,
+                bbf:HSIPerformanceExpectation ,
+                bbf:HSIMonitoringExpectation ,
+                bbf:HSI_DownstreamBandwidthCondition ,
+                bbf:HSI_UpstreamBandwidthCondition ,
+                bbf:HSI_LatencyCondition ,
+                bbf:HSI_JitterCondition ,
+                bbf:HSI_PacketLossCondition ,
+                bbf:SelectedUNIInterface ,
+                bbf:SelectedSVLANAllocation ,
+                bbf:SelectedCTAGAllocation ,
+                bbf:HSIServiceTarget .
 
 bbf:HSIMonitoringExpectation a icm:ReportingExpectation ;
     icm:target bbf:HSIMonitoringTarget ;

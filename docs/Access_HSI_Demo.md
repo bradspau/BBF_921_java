@@ -192,7 +192,14 @@ excluded by the seed data in `BBF_access/pon_resource_data.ttl`, so you can see 
 If the query returns no rows, every UNI is allocated or unavailable and the intent cannot reach
 `Fulfilled`; restart from a clean store (`docker compose --profile access down -v`).
 
-The evaluator also needs a free C-tag (`pon:CTAGAllocation` with `pon:inUse false`); a clean store has 6.
+The intent also selects an S-tag and a C-tag. The HSI service is carried on an 802.1ad dual-tagged VLAN: the
+S-tag identifies the S-VLAN and the C-tag is an inner tag that is unique only *within* that S-VLAN. So the S-tag
+is chosen first, from S-VLANs whose `pon:serviceType` is `pon:HSIService`, and the C-tag must then come from the
+S-VLAN that was chosen, never from another one. A clean store has three S-VLANs: `SVLAN-N-HSI` and
+`SVLAN-S-HSI` (both HSI, S-tag 100) and `SVLAN-N-VoIP` (VoIP, so never used for HSI). There are 6 free C-tags,
+all on the two HSI S-VLANs. Each
+delivery expectation in the intent names the class of resource it must deliver (`icm:deliveryType`):
+`pon:UNIPort`, `pon:SVLANAllocation` and `pon:CTAGAllocation`. `pon:HSIService` is the delivery description.
 
 ---
 
@@ -220,30 +227,117 @@ The initial report shows **`Degraded`** because no metric observations exist yet
 
 ---
 
-## Step 4 — Submit observations (all metrics pass)
+## Step 4 — Show the intent is not Fulfilled until every condition is met
+
+The intent has **eight** conditions, all of which must pass:
+
+| # | Condition | Type | Passes when |
+|---|---|---|---|
+| 1 | UNI selection | `DeliveryExpectation` | a free, `Up`, `Ready` `pon:UNIPort` can be chosen |
+| 2 | S-tag selection | `DeliveryExpectation` | an HSI `pon:SVLANAllocation` can be chosen |
+| 3 | C-tag selection | `DeliveryExpectation` | a free `pon:CTAGAllocation` from the S-VLAN chosen in condition 2 can be chosen |
+| 4 | Downstream bandwidth | `atLeast` | observed ≥ 100 Mbps |
+| 5 | Upstream bandwidth | `atLeast` | observed ≥ 20 Mbps |
+| 6 | Latency | `smaller` | observed < 25 ms |
+| 7 | Jitter | `smaller` | observed < 3 ms |
+| 8 | Packet loss | `smaller` | observed < 0.1 % |
+
+Conditions 1–3 depend only on the inventory, so they pass as soon as the intent is active. Conditions 4–8 each
+need a metric observation. You will post the metrics in two halves and check the intent report and the
+per-condition results after each.
+
+Set up the variables and a helper once. The helper reads the per-condition results that the handler stores in the
+intent's `handlerState` graph, so it needs the Fuseki profile (`access,fuseki`):
 
 ```bash
 OBS="$BASE/intent/$INTENT_ID/observation"
 BBF="http://broadband-forum.org/Intent#"
 
-curl -s -X POST "$OBS" -H "Content-Type: application/json" \
-  -d "{\"metricUri\": \"${BBF}DownstreamBandwidthMetric\", \"value\": 150.0}"
+post_metric() {   # usage: post_metric DownstreamBandwidthMetric 150.0
+  curl -s -o /dev/null -X POST "$OBS" -H "Content-Type: application/json" \
+    -d "{\"metricUri\": \"${BBF}$1\", \"value\": $2}"
+}
 
-curl -s -X POST "$OBS" -H "Content-Type: application/json" \
-  -d "{\"metricUri\": \"${BBF}UpstreamBandwidthMetric\", \"value\": 30.0}"
+report() {        # latest intent report: state and why
+  curl -s "$BASE/intent/$INTENT_ID/intentReport" | python3 -c "
+import sys, json
+r = json.load(sys.stdin)
+print('reports so far:     ', len(r))
+print('intentHandlingState:', r[0].get('intentHandlingState'))
+print('reason:             ', r[0].get('intentHandlingReason'))
+"
+}
 
-curl -s -X POST "$OBS" -H "Content-Type: application/json" \
-  -d "{\"metricUri\": \"${BBF}LatencyMetric\", \"value\": 8.0}"
+conditions() {    # per-condition results from the handlerState graph (Fuseki)
+  curl -s -G http://localhost:3030/intents/sparql -H 'Accept: text/csv' \
+    --data-urlencode "query=PREFIX imo: <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/>
+SELECT ?condition ?passed ?observed ?bound ?selected ?error WHERE {
+  GRAPH <http://tmforum.org/api/v5/intents/$INTENT_ID/handlerState> {
+    ?intent imo:hasConditionResult ?c .
+    ?c a ?condition ; imo:conditionPassed ?passed .
+    OPTIONAL { ?c imo:observedValue ?observed }
+    OPTIONAL { ?c imo:boundValue ?bound }
+    OPTIONAL { ?c imo:selectedResource ?selected }
+    OPTIONAL { ?c imo:conditionError ?error }
+  }
+} ORDER BY ?c" \
+  | sed 's|http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/||; s|http://broadband-forum.org/ont/pon-resource#||'
+}
+```
 
-curl -s -X POST "$OBS" -H "Content-Type: application/json" \
-  -d "{\"metricUri\": \"${BBF}JitterMetric\", \"value\": 1.2}"
+> **`icm:result` vs the handler state.** The TIO rules infer `icm:result` while an evaluation runs, in a temporary
+> in-memory model that is discarded afterwards. What the handler *persists*, and what Fuseki can show, is one
+> `imo:hasConditionResult` node per condition with `imo:conditionPassed` (true/false), the observed value and bound,
+> or the reason it failed. That is the per-condition pass/fail to look at here.
 
-curl -s -X POST "$OBS" -H "Content-Type: application/json" \
-  -d "{\"metricUri\": \"${BBF}PacketLossMetric\", \"value\": 0.02}"
+### 4a — First half: bandwidth metrics only
 
+```bash
+post_metric DownstreamBandwidthMetric 150.0    # >= 100: pass
+post_metric UpstreamBandwidthMetric   30.0     # >= 20:  pass
+sleep 2
+report
+```
+
+Expected: **`Degraded`**, with a reason that lists only the three conditions still missing:
+`smaller: no observation: LatencyMetric; … JitterMetric; … PacketLossMetric`.
+
+```bash
+conditions
+```
+
+Expected: 8 rows. The three `DeliveryExpectation` rows pass, with `selected` = `UNI-001-1`, `SVLAN-N-HSI` and
+`CTAG-N-001` (the handler tries candidates in name order, so the choice is repeatable). The two `atLeast` rows
+pass (`passed = true`, with the observed value and the bound). The three `smaller` rows are `passed = false` with
+`error = no observation: …`. Order matters in the intent: the S-tag is selected before the C-tag, because the
+C-tag pool is built from the chosen S-VLAN.
+
+Nothing is allocated yet. The UNI, S-tag and C-tag are only *selected*; the handler writes the allocation back
+when the intent becomes Fulfilled (see Step 5).
+
+### 4b — Second half: latency, jitter and packet loss
+
+```bash
+post_metric LatencyMetric      8.0     # < 25:  pass
+post_metric JitterMetric       1.2     # < 3:   pass
+sleep 2
+report
+conditions
+```
+
+Expected: still **`Degraded`**. Only `PacketLossMetric` is left in the reason, and 7 of the 8 conditions are
+`passed = true`.
+
+```bash
+post_metric PacketLossMetric   0.02    # < 0.1: pass
 echo "Waiting for evaluation..."
 sleep 2
+report
+conditions
 ```
+
+Expected: **`Fulfilled`** with reason `None`, and all 8 rows `passed = true`. The intent became Fulfilled only on the
+last observation, when the final condition passed.
 
 ---
 
@@ -308,8 +402,12 @@ Expected: two rows for your intent ID:
 
 | Row | `type` | `cTag` / `sTag` | Meaning |
 |---|---|---|---|
-| 1 | `pon:UNIPort` | empty | The subscriber-facing port allocated to the service (e.g. `UNI-003-1`) |
-| 2 | `pon:CTAGAllocation` | e.g. `201` / `100` | The inner VLAN (C-tag) taken from the S-VLAN pool (S-tag 100); the `N`/`S` in `CTAG-N-002` / `CTAG-S-002` is the North/South pool, not "S-tag" |
+| 1 | `pon:UNIPort` | empty | The subscriber-facing port allocated to the service (e.g. `UNI-001-1`) |
+| 2 | `pon:CTAGAllocation` | e.g. `200` / `100` | The inner VLAN (C-tag) taken from the S-VLAN chosen for this service (S-tag 100); the `N`/`S` in `CTAG-N-001` / `CTAG-S-001` is the North/South S-VLAN pool, not "S-tag" |
+
+The S-tag the handler selected (`SVLAN-N-HSI`) is not in this result. An S-VLAN carries many services, so it is
+*selected* (visible in the per-condition results from Step 4) but not claimed by one service the way a port and
+a C-tag are.
 
 Both rows must carry your intent ID. Resources that belonged to the initial inventory (`UNI-002-1`,
 `CTAG-N-002`) show `existing-service-placeholder` instead; those were already in use before the demo.
@@ -332,8 +430,8 @@ On a clean store after one Fulfilled intent, expect **4 rows**:
 |---|---|---|
 | `UNI-002-1` | `existing-service-placeholder` | Already in use in the seed data (see Step 1b); not part of your intent |
 | `CTAG-N-002` | `existing-service-placeholder` | Already in use in the seed data (C-tag 201 in the North pool); not part of your intent |
-| a free `UNI-…` (e.g. `UNI-003-1`) | your intent ID | Allocated by this demo |
-| a free `CTAG-S-…` (e.g. `CTAG-S-002`) | your intent ID | Allocated by this demo |
+| a free `UNI-…` (e.g. `UNI-001-1`) | your intent ID | Allocated by this demo |
+| a free `CTAG-…` (e.g. `CTAG-N-001`) | your intent ID | Allocated by this demo |
 
 Each further Fulfilled intent adds two rows. Use the filtered query above to see only your own intent.
 
@@ -375,21 +473,34 @@ ASK {
 
 ## Step 6 — Verify idempotency
 
-Post the same observations a second time:
+Post the same observation a second time. This triggers another evaluation of an intent that already holds its
+resources:
 
 ```bash
-curl -s -X POST "$OBS" -H "Content-Type: application/json" \
-  -d "{\"metricUri\": \"${BBF}DownstreamBandwidthMetric\", \"value\": 150.0}"
+post_metric DownstreamBandwidthMetric 150.0
 
 sleep 1
 
-curl -s "$BASE/intent/$INTENT_ID/intentReport" \
-  | python3 -c "import sys,json; print('Total reports:', len(json.load(sys.stdin)))"
+report
+conditions
 ```
 
-Each observation triggers an evaluation cycle and creates a new IntentReport.
-Resource allocation does NOT double-write — the idempotency guard in
-`HandlerStateWriter.resourcesAlreadyAllocated()` prevents repeated `pon:inUse` updates.
+Expected: still **`Fulfilled`**, and the three `DeliveryExpectation` rows still show the **same** `selected`
+resources as in Step 4 (`UNI-001-1`, `SVLAN-N-HSI`, `CTAG-N-001`), even though the UNI and C-tag are now in use
+and no longer in the free pool.
+
+Each observation creates a new IntentReport. Allocation does not repeat, and the intent does not choose again:
+
+- Before each evaluation the handler looks up the resources already assigned to the intent
+  (`HandlerStateWriter.heldResources()`) and the evaluator keeps them as the intent's choice (`held`).
+- Flow 4 claims only what is still missing, so a repeat evaluation changes nothing, and an interrupted
+  allocation is completed by the next evaluation.
+- The intent stays Fulfilled even when other intents have used up the rest of the free pool, because it no
+  longer depends on it.
+
+The S-tag is not held: an S-VLAN is shared, so it is chosen again each time. For this demo one S-VLAN is chosen
+irrespective of service provider (the lowest-named HSI S-VLAN); provider-aware selection is tracked as
+`bbf921j-3or`.
 
 ---
 
