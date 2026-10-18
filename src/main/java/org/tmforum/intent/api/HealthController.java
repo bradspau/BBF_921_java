@@ -2,6 +2,8 @@ package org.tmforum.intent.api;
 
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.ReadWrite;
+import org.tmforum.intent.engine.EngineStatus;
+import org.tmforum.intent.engine.EvaluationEngine;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,17 +17,27 @@ public class HealthController {
 
     private final Dataset dataset;
 
-    public HealthController(Dataset dataset) {
+    private final EvaluationEngine engine;
+
+    public HealthController(Dataset dataset, EvaluationEngine engine) {
         this.dataset = dataset;
+        this.engine = engine;
     }
 
     @GetMapping("/health")
     public ResponseEntity<Map<String, Object>> health() {
         Map<String, Object> status = new LinkedHashMap<>();
         String graphStatus = checkDataset();
-        status.put("status", "UP".equals(graphStatus) ? "UP" : "DEGRADED");
+        EngineStatus es = engine.status();
+        Map<String, Object> evaluator = new LinkedHashMap<>();
+        evaluator.put("engine", engine.name());
+        evaluator.put("ready", es.ready());
+        if (es.reason() != null) evaluator.put("reason", es.reason());
+        boolean up = "UP".equals(graphStatus) && es.ready();
+        status.put("status", up ? "UP" : "DEGRADED");
         status.put("graph", graphStatus);
-        int httpStatus = "UP".equals(graphStatus) ? 200 : 503;
+        status.put("evaluator", evaluator);
+        int httpStatus = up ? 200 : 503;
         return ResponseEntity.status(httpStatus).body(status);
     }
 
