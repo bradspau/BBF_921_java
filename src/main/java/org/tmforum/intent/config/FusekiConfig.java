@@ -2,6 +2,10 @@ package org.tmforum.intent.config;
 
 import org.apache.jena.fuseki.main.FusekiServer;
 import org.apache.jena.query.Dataset;
+import org.apache.jena.sparql.core.DatasetGraph;
+import org.apache.jena.sparql.core.DatasetGraphWrapper;
+import org.apache.jena.sparql.util.Context;
+import org.apache.jena.tdb2.TDB2;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -74,7 +78,7 @@ public class FusekiConfig {
                     server.put("uptime", Instant.now().getEpochSecond() - started.getEpochSecond());
                     return server;
                 }))
-                .add("/" + datasetName, dataset.asDatasetGraph(), allowUpdate)
+                .add("/" + datasetName, unionView(dataset), allowUpdate)
                 .build();
     }
 
@@ -135,5 +139,17 @@ public class FusekiConfig {
                 mapper.writeValue(resp.getOutputStream(), body.get());
             }
         };
+    }
+
+    /**
+     * All data lives in named graphs, so an unqualified query ({@code ?s ?p ?o}) would see nothing.
+     * Give Fuseki its own view whose default graph is the union of all named graphs; the app's
+     * Dataset context is left untouched.
+     */
+    private static DatasetGraph unionView(Dataset dataset) {
+        DatasetGraph dsg = dataset.asDatasetGraph();
+        Context cxt = Context.mergeCopy(dsg.getContext(), new Context());
+        cxt.set(TDB2.symUnionDefaultGraph, true);
+        return new DatasetGraphWrapper(dsg, cxt);
     }
 }
