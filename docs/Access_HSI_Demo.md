@@ -314,7 +314,8 @@ Expected: two rows for your intent ID:
 Both rows must carry your intent ID. Resources that belonged to the initial inventory (`UNI-002-1`,
 `CTAG-N-002`) show `existing-service-placeholder` instead; those were already in use before the demo.
 
-To list every allocation in the graph, whichever service owns it, drop the intent filter:
+To list every resource currently in use, whichever service owns it, drop the intent filter. This shows
+more than your intent's allocation:
 
 ```sparql
 PREFIX pon: <http://broadband-forum.org/ont/pon-resource#>
@@ -324,6 +325,17 @@ SELECT ?resource ?svc WHERE {
   }
 }
 ```
+
+On a clean store after one Fulfilled intent, expect **4 rows**:
+
+| Resource | `svc` | Where it comes from |
+|---|---|---|
+| `UNI-002-1` | `existing-service-placeholder` | Already in use in the seed data (see Step 1b); not part of your intent |
+| `CTAG-N-002` | `existing-service-placeholder` | Already in use in the seed data (C-tag 201 in the North pool); not part of your intent |
+| a free `UNI-…` (e.g. `UNI-003-1`) | your intent ID | Allocated by this demo |
+| a free `CTAG-S-…` (e.g. `CTAG-S-002`) | your intent ID | Allocated by this demo |
+
+Each further Fulfilled intent adds two rows. Use the filtered query above to see only your own intent.
 
 Each resource should appear **once**. If the same port or C-tag appears with two different service IDs,
 two intents were allocated the same resource. The write-back only claims a resource that is still
