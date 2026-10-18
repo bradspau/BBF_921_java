@@ -70,7 +70,7 @@ docker compose --profile access up --build
 ```
 
 TDB2 data is persisted in named Docker volumes (`tdb2-standalone`, `tdb2-access`).
-To start fresh: `docker compose down -v`.
+To start fresh: `docker compose --profile <name> down -v` (use the same profile you started with; without it Compose skips the service and its volume).
 
 ---
 

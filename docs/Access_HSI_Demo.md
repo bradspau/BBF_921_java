@@ -40,7 +40,7 @@ this graph at evaluation time when resolving `set:resourcesOfType` and
 **Docker (recommended):**
 
 ```bash
-docker compose down -v                            # clear any previous state
+docker compose --profile access down -v             # clear any previous state (--profile is required)
 docker compose --profile access up --build
 ```
 
@@ -59,7 +59,7 @@ Started Application in N.NNN seconds
 
 > **Restarts keep allocations.** The PON inventory is loaded only into an empty store, so allocations
 > written back by the handler survive an application restart. If you edit `BBF_access/pon_resource_data.ttl`
-> and want it re-read, start from a clean store (`docker compose down -v`, or `make clean`).
+> and want it re-read, start from a clean store (`docker compose --profile access down -v`, or `make clean`).
 
 ### Optional: enable Fuseki (SPARQL + web UI on port 3030)
 
@@ -185,7 +185,7 @@ Expected on a clean store: **8 rows** (`UNI-001-1`, `UNI-001-2`, `UNI-002-2`, `U
 and `UNI-005-1` is operationally `Down`.
 
 If the query returns no rows, every UNI is allocated or unavailable and the intent cannot reach
-`Fulfilled`; restart from a clean store (`docker compose down -v`).
+`Fulfilled`; restart from a clean store (`docker compose --profile access down -v`).
 
 The evaluator also needs a free C-tag (`pon:CTAGAllocation` with `pon:inUse false`); a clean store has 6.
 
@@ -322,7 +322,7 @@ SELECT ?resource ?svc WHERE {
 
 Each resource should appear **once**. If the same port or C-tag appears with two different service IDs,
 two intents were allocated the same resource. The write-back only claims a resource that is still
-`pon:inUse false`, so this should not happen; start from a clean store (`docker compose down -v`) and
+`pon:inUse false`, so this should not happen; start from a clean store (`docker compose --profile access down -v`) and
 repeat to confirm.
 
 Without Fuseki, for direct TDB2 verification, run the AccessDemoIT integration test which performs

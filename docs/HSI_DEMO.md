@@ -36,7 +36,7 @@ TDB2 data persists in `tdb2-data/` (or the Docker volume).
 ### Docker (recommended — wipes volume on restart)
 
 ```bash
-docker compose down -v   # -v removes named volumes → clean TDB2 store
+docker compose --profile standalone down -v   # -v removes named volumes → clean TDB2 store (--profile is required)
 docker compose --profile standalone up --build
 ```
 
