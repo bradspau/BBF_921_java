@@ -181,8 +181,13 @@ SELECT ?uni ?ont WHERE {
 ```
 
 Expected on a clean store: **8 rows** (`UNI-001-1`, `UNI-001-2`, `UNI-002-2`, `UNI-003-1`, `UNI-003-2`,
-`UNI-004-1`, `UNI-004-2`, `UNI-005-2`). Two UNIs are deliberately excluded: `UNI-002-1` is already in use
-and `UNI-005-1` is operationally `Down`.
+`UNI-004-1`, `UNI-004-2`, `UNI-005-2`). The inventory has 10 UNI ports; the other two are deliberately
+excluded by the seed data in `BBF_access/pon_resource_data.ttl`, so you can see the filter working:
+
+| UNI | Why it is not listed |
+|---|---|
+| `UNI-002-1` | Defined as **in use** (`pon:inUse true`, assigned to `existing-service-placeholder`), so it fails the `pon:inUse false` condition. It represents a port already serving another subscriber. |
+| `UNI-005-1` | Defined as **operationally down** (`pon:operationalState pon:Down`), so it fails the `pon:operationalState pon:Up` condition. It is not in use, but a faulty port must not be allocated. |
 
 If the query returns no rows, every UNI is allocated or unavailable and the intent cannot reach
 `Fulfilled`; restart from a clean store (`docker compose --profile access down -v`).
