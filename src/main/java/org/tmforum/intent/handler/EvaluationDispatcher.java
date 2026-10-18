@@ -148,13 +148,22 @@ public class EvaluationDispatcher {
 
         // Evaluate (with timeout guard via interruption)
         EvaluationResult result;
+        EvaluationOutcome outcome = null;
         try {
-            EvaluationOutcome outcome = evaluateWithTimeout(expressionTurtle, obsTurtle, resTurtle, heldResources, intentId);
+            outcome = evaluateWithTimeout(expressionTurtle, obsTurtle, resTurtle, heldResources, intentId);
             result = outcome.result();
-            if (outcome.resultGraph() != null) inferredGraphStore.replace(intentId, outcome.resultGraph());
         } catch (Exception e) {
             log.warn("runEvaluation: evaluation failed for intent {}: {}", intentId, e.getMessage());
             result = EvaluationResult.degraded("Evaluation error: " + e.getMessage(), List.of());
+        }
+
+        // Keep the latest result graph; a storage failure must not change the evaluation result
+        if (outcome != null && outcome.resultGraph() != null) {
+            try {
+                inferredGraphStore.replace(intentId, outcome.resultGraph());
+            } catch (Exception e) {
+                log.error("runEvaluation: could not store inferred graph for intent {}", intentId, e);
+            }
         }
 
         // Write OODA working memory
