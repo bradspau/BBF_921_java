@@ -160,10 +160,45 @@ curl -s -X PATCH "$BASE/intent/$INTENT_ID" \
 
 ---
 
-## Step 3 — Verify free UNIs exist in the inventory
+## Step 2b — Verify free UNIs exist in the inventory
 
-Before posting observations, confirm the resource graph has available UNI ports.
-The evaluator will resolve `set:SelectedUNIs` against these.
+Before the intent can be Fulfilled, the resource graph must contain at least one UNI port the evaluator
+can select. `set:SelectedUNIs` in the intent expression picks UNI ports that are not in use
+(`pon:inUse false`), operationally `Up` and provisioning `Ready`.
+
+This reads the TDB2 resource graph directly, which is not exposed through the TMF921 API, so it needs
+the Fuseki profile (`access,fuseki`, see above). Run it in the Fuseki UI query tab at
+<http://localhost:3030> or with curl:
+
+```bash
+curl -s -G http://localhost:3030/intents/sparql \
+  -H 'Accept: text/csv' \
+  --data-urlencode 'query=PREFIX pon: <http://broadband-forum.org/ont/pon-resource#>
+SELECT ?uni ?ont WHERE {
+  GRAPH <http://tmforum.org/api/v5/resources> {
+    ?uni a pon:UNIPort ;
+         pon:inUse false ;
+         pon:operationalState pon:Up ;
+         pon:provisioningState pon:Ready ;
+         pon:belongsToONT ?ont .
+  }
+} ORDER BY ?uni'
+```
+
+Expected on a clean store: **8 rows** (`UNI-001-1`, `UNI-001-2`, `UNI-002-2`, `UNI-003-1`, `UNI-003-2`,
+`UNI-004-1`, `UNI-004-2`, `UNI-005-2`). Two UNIs are deliberately excluded: `UNI-002-1` is already in use
+and `UNI-005-1` is operationally `Down`.
+
+If the query returns no rows, every UNI is allocated or unavailable and the intent cannot reach
+`Fulfilled`; restart from a clean store (`docker compose down -v`).
+
+The evaluator also needs a free C-tag (`pon:CTAGAllocation` with `pon:inUse false`); a clean store has 6.
+
+---
+
+## Step 3 — Check the initial intent report
+
+Before posting observations, read the intent's report to see its starting state:
 
 ```bash
 # List all intent reports to see initial state
