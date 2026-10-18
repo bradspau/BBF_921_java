@@ -100,9 +100,17 @@ public class SchemaInit implements ApplicationRunner {
 
         dataset.begin(ReadWrite.WRITE);
         try {
-            Model resourceModel = dataset.containsNamedModel(Namespaces.RESOURCES_GRAPH)
-                    ? dataset.getNamedModel(Namespaces.RESOURCES_GRAPH)
-                    : ModelFactory.createDefaultModel();
+            // The graph also holds live allocation state (pon:inUse / pon:assignedToService written back by
+            // the handler). Re-reading the seed file would add pon:inUse false back onto allocated resources
+            // and let later intents claim them again, so seed only a store that has no resources graph yet.
+            if (dataset.containsNamedModel(Namespaces.RESOURCES_GRAPH)
+                    && !dataset.getNamedModel(Namespaces.RESOURCES_GRAPH).isEmpty()) {
+                log.info("Resources graph already populated — skipping inventory load to preserve allocations "
+                        + "(clear the TDB2 store to reload {})", resourceInventory);
+                dataset.abort();
+                return;
+            }
+            Model resourceModel = ModelFactory.createDefaultModel();
 
             for (String filePath : new String[]{resourceOntology, resourceInventory}) {
                 if (filePath == null || filePath.isBlank()) continue;

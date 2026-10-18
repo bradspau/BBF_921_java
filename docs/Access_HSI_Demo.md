@@ -57,6 +57,10 @@ Wait for:
 Started Application in N.NNN seconds
 ```
 
+> **Restarts keep allocations.** The PON inventory is loaded only into an empty store, so allocations
+> written back by the handler survive an application restart. If you edit `BBF_access/pon_resource_data.ttl`
+> and want it re-read, start from a clean store (`docker compose down -v`, or `make clean`).
+
 ### Optional: enable Fuseki (SPARQL + web UI on port 3030)
 
 Add the `fuseki` Spring profile to browse the live TDB2 graphs, including the PON resource graph, in a browser:
@@ -150,21 +154,12 @@ echo "Intent ID: $INTENT_ID"
 
 ---
 
-## Step 2 — Activate
+## Step 1b — Verify free UNIs exist in the inventory
 
-```bash
-curl -s -X PATCH "$BASE/intent/$INTENT_ID" \
-  -H "Content-Type: application/json" \
-  -d '{"lifecycleStatus": "ACTIVE"}' | python3 -m json.tool
-```
-
----
-
-## Step 2b — Verify free UNIs exist in the inventory
-
-Before the intent can be Fulfilled, the resource graph must contain at least one UNI port the evaluator
-can select. `set:SelectedUNIs` in the intent expression picks UNI ports that are not in use
-(`pon:inUse false`), operationally `Up` and provisioning `Ready`.
+Before activating the intent, confirm the resource graph contains at least one UNI port the evaluator
+can select; the intent can only reach `Fulfilled`, and allocate resources, if it does.
+`set:SelectedUNIs` in the intent expression picks UNI ports that are not in use (`pon:inUse false`),
+operationally `Up` and provisioning `Ready`.
 
 This reads the TDB2 resource graph directly, which is not exposed through the TMF921 API, so it needs
 the Fuseki profile (`access,fuseki`, see above). Run it in the Fuseki UI query tab at
@@ -193,6 +188,16 @@ If the query returns no rows, every UNI is allocated or unavailable and the inte
 `Fulfilled`; restart from a clean store (`docker compose down -v`).
 
 The evaluator also needs a free C-tag (`pon:CTAGAllocation` with `pon:inUse false`); a clean store has 6.
+
+---
+
+## Step 2 — Activate
+
+```bash
+curl -s -X PATCH "$BASE/intent/$INTENT_ID" \
+  -H "Content-Type: application/json" \
+  -d '{"lifecycleStatus": "ACTIVE"}' | python3 -m json.tool
+```
 
 ---
 
