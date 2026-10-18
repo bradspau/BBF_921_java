@@ -19,6 +19,9 @@ application-local.yml
 ontology/*.ttl
 ontology/*.zip
 
+# TM Forum TR290 Intent Common Model specification (local reference copy, not for redistribution)
+docs/spec/TR290_Intent_Common_Model_v3.8.0.pdf
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db
