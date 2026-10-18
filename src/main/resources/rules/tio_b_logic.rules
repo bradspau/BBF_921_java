@@ -127,28 +127,38 @@
 [operatorNotAList: (?k tmf:argsNotAList tmf:Yes) -> (?k rdf:value "false"^^xsd:boolean)]
 
 # ── 6. Statement evaluation functions (TR292E §3, §6.4-6.9), from stage A's hits and misses ────────────────────
-# Closed world; an incomplete or missing statement, or an empty container, gives false.
+# Closed world; an incomplete or missing statement, or an empty container, gives false. A container match over a
+# container whose membership is not final at the end of stage A (tmf:volatile, tio_a_sets.rules) is decided false in
+# stage A (tmf:valuedInA, tio_a_logic cmatchNotFinal); the container rules below skip it.
 
 [matchT: (?k tmf:function log:match) (?k tmf:hit ?s) -> (?k rdf:value "true"^^xsd:boolean)]
 [matchF: (?k tmf:function log:match) noValue(?k tmf:hit) -> (?k rdf:value "false"^^xsd:boolean)]
 
-[matchAllT: (?k tmf:function log:matchAll) (?k tmf:hit ?m) noValue(?k tmf:miss)
+[matchAllT: (?k tmf:function log:matchAll) (?k tmf:hit ?m) noValue(?k tmf:miss) noValue(?k tmf:valuedInA tmf:Yes)
     -> (?k rdf:value "true"^^xsd:boolean)]
-[matchAllF: (?k tmf:function log:matchAll) (?k tmf:miss ?m) -> (?k rdf:value "false"^^xsd:boolean)]
-[matchAllE: (?k tmf:function log:matchAll) noValue(?k tmf:hit) -> (?k rdf:value "false"^^xsd:boolean)]
+[matchAllF: (?k tmf:function log:matchAll) (?k tmf:miss ?m) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+[matchAllE: (?k tmf:function log:matchAll) noValue(?k tmf:hit) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
 
-[matchAnyT: (?k tmf:function log:matchAny) (?k tmf:hit ?m) -> (?k rdf:value "true"^^xsd:boolean)]
-[matchAnyF: (?k tmf:function log:matchAny) noValue(?k tmf:hit) -> (?k rdf:value "false"^^xsd:boolean)]
-
-[matchNoneT: (?k tmf:function log:matchNone) (?k tmf:matchMember ?m) noValue(?k tmf:hit)
+[matchAnyT: (?k tmf:function log:matchAny) (?k tmf:hit ?m) noValue(?k tmf:valuedInA tmf:Yes)
     -> (?k rdf:value "true"^^xsd:boolean)]
-[matchNoneF: (?k tmf:function log:matchNone) (?k tmf:hit ?m) -> (?k rdf:value "false"^^xsd:boolean)]
-[matchNoneE: (?k tmf:function log:matchNone) noValue(?k tmf:matchMember) -> (?k rdf:value "false"^^xsd:boolean)]
+[matchAnyF: (?k tmf:function log:matchAny) noValue(?k tmf:hit) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
 
-[matchOneT: (?k tmf:function log:matchOne) (?k tmf:hit ?m) noValue(?k tmf:twoHits)
+[matchNoneT: (?k tmf:function log:matchNone) (?k tmf:matchMember ?m) noValue(?k tmf:hit) noValue(?k tmf:valuedInA tmf:Yes)
     -> (?k rdf:value "true"^^xsd:boolean)]
-[matchOneF: (?k tmf:function log:matchOne) (?k tmf:twoHits tmf:Yes) -> (?k rdf:value "false"^^xsd:boolean)]
-[matchOneE: (?k tmf:function log:matchOne) noValue(?k tmf:hit) -> (?k rdf:value "false"^^xsd:boolean)]
+[matchNoneF: (?k tmf:function log:matchNone) (?k tmf:hit ?m) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+[matchNoneE: (?k tmf:function log:matchNone) noValue(?k tmf:matchMember) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+
+[matchOneT: (?k tmf:function log:matchOne) (?k tmf:hit ?m) noValue(?k tmf:twoHits) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "true"^^xsd:boolean)]
+[matchOneF: (?k tmf:function log:matchOne) (?k tmf:twoHits tmf:Yes) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+[matchOneE: (?k tmf:function log:matchOne) noValue(?k tmf:hit) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
 
 [matchStatementT: (?k tmf:function log:matchStatement) (?k tmf:matchMember ?m) noValue(?k tmf:miss)
     -> (?k rdf:value "true"^^xsd:boolean)]

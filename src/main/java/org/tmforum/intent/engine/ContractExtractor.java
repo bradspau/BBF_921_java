@@ -23,6 +23,8 @@ import java.util.*;
  *   <li>{@code ?target rdfs:member ?r} is copied only for a <em>chosen</em> member, marked by the rules with
  *       {@code ?r tmf:chosenFor ?target} ({@link #CHOSEN_FOR}); seed and pool members are never emitted.</li>
  *   <li>Observations are flattened exactly as {@link ResultContract#copyObservation} does.</li>
+ *   <li>A {@code set:forAll} condition template (marked {@code tmf:forAllTemplate}) is not reported: it is evaluated
+ *       once per member through copies, and its own value (with the variable unbound) means nothing.</li>
  *   <li>{@code icm:result} is never emitted. The output is passed through {@link ResultContract#filter}.</li>
  * </ul>
  */
@@ -33,6 +35,9 @@ public final class ContractExtractor {
     /** Rule-engine marker: {@code ?resource tmf:chosenFor ?target}, the resource was chosen for the target. */
     public static final Property CHOSEN_FOR = ResourceFactory.createProperty(Namespaces.TMF + "chosenFor");
 
+    /** Rule-engine marker: a condition template of {@code set:forAll} (tio_a_sets.rules); not reported itself. */
+    static final Property FORALL_TEMPLATE = ResourceFactory.createProperty(Namespaces.TMF + "forAllTemplate");
+
     static final List<Resource> ELEMENT_CLASSES = List.of(
             ResourceFactory.createResource(TioNamespaces.ICM + "Intent"),
             ResourceFactory.createResource(TioNamespaces.ICM + "Expectation"),
@@ -42,6 +47,7 @@ public final class ContractExtractor {
     public static Model extract(InfModel stageB) {
         Model out = ModelFactory.createDefaultModel();
         for (Resource e : elements(stageB, ELEMENT_CLASSES)) {
+            if (stageB.contains(e, FORALL_TEMPLATE)) continue;   // evaluated per member through copies, not itself
             out.add(stageB.listStatements(e, RDF.value, (RDFNode) null));
             for (Statement st : stageB.listStatements(e, ResultContract.ICM_REASON, (RDFNode) null).toList()) {
                 if (!st.getObject().isResource()) continue;

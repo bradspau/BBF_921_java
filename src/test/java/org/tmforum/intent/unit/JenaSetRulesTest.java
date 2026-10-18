@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * TR292C §2), run through the engine's real two-stage chain ({@link JenaEvaluationEngine#infer}) with the input
  * triples and the rules of each stage shuffled by fixed seeds, with and without the licensed ontology.
  *
- * <p>Pool members are the helper facts {@code ?pool tmf:member ?r}; they are never {@code rdfs:member}, so they never
+ * <p>Pool members are the helper facts {@code ?r tmf:memberOf ?pool}; they are never {@code rdfs:member}, so they never
  * reach the result contract (only chosen members do, Task 15). Every run also asserts the whole-model invariants of
  * {@link JenaLogicRulesTest}: each IRI element has exactly one boolean value, and stage B writes {@code rdf:value}
  * only on subjects with a stage-A contributor (or the default false).
@@ -578,6 +578,110 @@ class JenaSetRulesTest {
                 "NoBody", false, "TooFew", false)));
     }
 
+    // ── fail closed: nested forAll, unknown and volatile containers, literal containers ─────────────────────────
+
+    static Check failureContains(String element, String text) {
+        return (m, where) -> assertTrue(JenaLogicRulesTest.failures(m, element).stream().anyMatch(f -> f.contains(text)),
+                () -> element + " failures " + JenaLogicRulesTest.failures(m, element) + where);
+    }
+
+    @Test
+    void aForAllNestedInAForAllIsFalse() {
+        String t = """
+                ex:Gold rdfs:member ex:u1 . ex:Team rdfs:member ex:u1 , ex:u2 .
+                ex:Nested a log:Condition ;
+                    set:forAll ( _:a ex:Gold [ set:forAll ( _:b ex:Team [ set:isMember ( _:b ex:Team ) ] ) ] ) .
+                ex:I a icm:Intent ; log:allOf ( ex:Nested ) .
+                """;
+        allRuns(t, (m, where) -> {
+            values(Map.of("Nested", false, "I", false)).check(m, where);
+            failureContains("Nested", "nested").check(m, where);
+        });
+    }
+
+    @Test
+    void containersWithAFunctionThatIsNotImplementedFailClosed() {
+        String t = """
+                ex:Gold rdfs:member ex:u1 , ex:u2 . ex:u1 ex:availability 0.5 . ex:u2 ex:availability 0.99 .
+                ex:T1 a icm:Target ; rdfs:member ex:u1 , ex:u2 .
+                ex:E2 a icm:Expectation ; icm:target ex:T1 ; log:allOf ( ex:HighAvailability ) .
+                ex:HighAvailability a log:Condition ; set:forAll ( _:x [ icm:valuesOfTargetProperty ( ex:availability ) ]
+                    [ quan:greater ( _:x 0.97 ) ] ) .
+                ex:NoTypes a log:Condition ; set:empty ( [ set:typesOfMembers ( ex:Gold ) ] ) .
+                ex:Newest a log:Condition ; set:includedIn ( [ set:newestMember ( ex:p ex:Gold ) ] ex:Gold ) .
+                ex:Built a log:Condition ; set:isMember ( ex:u1 [ set:union ( ex:Gold [ set:typesOfMembers ( ex:Gold ) ] ) ] ) .
+                ex:Diff set:difference ( ex:Gold [ set:typesOfMembers ( ex:Gold ) ] ) .
+                """;
+        allRuns(t, (m, where) -> {
+            values(Map.of("HighAvailability", false, "E2", false, "NoTypes", false, "Newest", false, "Built", false))
+                    .check(m, where);
+            failureContains("HighAvailability", "not final").check(m, where);
+            failureContains("NoTypes", "not final").check(m, where);
+            assertEquals(set(), members(m, "Diff"), () -> "a difference over an unknown container" + where);
+            assertTrue(m.contains(m.getResource(EX + "Diff"), m.getProperty(TMF + "setFailure")), () -> where);
+        });
+    }
+
+    @Test
+    void containerMatchesOverAContainerDecidedLaterFailClosed() {
+        String t = """
+                ex:A rdfs:member ex:bad1 . ex:bad1 ex:bad true . ex:Cok rdfs:member ex:ok1 .
+                ex:U set:union ( [ set:difference ( ex:A ) ] ex:Cok ) .
+                ex:NoneBad a log:Condition ; log:matchNone ( ex:U ex:bad true ) .
+                ex:E a icm:DeliveryExpectation ; icm:target ex:T ; icm:deliveryType ex:Widget ; icm:chooseFrom ex:P .
+                ex:T a icm:Target ; rdfs:member ex:bad1 .
+                ex:NoneBadT a log:Condition ; log:matchNone ( ex:T ex:bad true ) .
+                ex:AnyOk a log:Condition ; log:matchAny ( ex:Cok ex:bad true ) .
+                """;
+        allRuns(t, (m, where) -> {
+            values(Map.of("NoneBad", false, "NoneBadT", false, "AnyOk", false)).check(m, where);
+            failureContains("NoneBad", "not final").check(m, where);
+            failureContains("NoneBadT", "not final").check(m, where);
+            assertEquals(Set.of(), JenaLogicRulesTest.failures(m, "AnyOk"), () -> where);
+        });
+    }
+
+    @Test
+    void aDifferenceSubtractingAContainerDecidedLaterHasAFailure() {
+        String t = """
+                ex:A rdfs:member ex:a1 , ex:a2 .
+                ex:D set:difference ( ex:A [ set:difference ( ex:A ) ] ) .
+                """;
+        allRuns(t, (m, where) -> {
+            assertEquals(set(), members(m, "D"), () -> where);
+            assertTrue(m.contains(m.getResource(EX + "D"), m.getProperty(TMF + "setFailure")), () -> where);
+        });
+    }
+
+    @Test
+    void aLiteralWhereAContainerIsExpectedIsMissingOperandNodes() {
+        String t = """
+                ex:Gold rdfs:member ex:u1 .
+                ex:Inc a log:Condition ; set:includedIn ( "x" ex:Gold ) .
+                ex:Ident a log:Condition ; set:identical ( ex:Gold 5 ) .
+                ex:Emp a log:Condition ; set:empty ( "x" ) .
+                ex:Mem a log:Condition ; set:isMember ( ex:u1 "x" ) .
+                ex:All a log:Condition ; set:forAll ( _:x "x" [ set:isMember ( _:x ex:Gold ) ] ) .
+                """;
+        InfModel m = allRuns(t, values(Map.of("Inc", false, "Ident", false, "Emp", false, "Mem", false, "All", false)));
+        for (String e : List.of("Inc", "Ident", "Emp", "Mem", "All")) {
+            assertEquals(Set.of("missing operand nodes"), JenaLogicRulesTest.failures(m, e), e);
+        }
+    }
+
+    @Test
+    void aNamedForAllTemplateIsNotReported() {
+        String t = """
+                ex:Gold rdfs:member ex:u1 , ex:u2 .
+                ex:Body a log:Condition ; set:isMember ( _:x ex:Gold ) .
+                ex:All a log:Condition ; set:forAll ( _:x ex:Gold ex:Body ) .
+                """;
+        InfModel m = allRuns(t, values(Map.of("All", true)));
+        Model contract = ContractExtractor.extract(m);
+        assertFalse(contract.contains(m.getResource(EX + "Body"), RDF.value), "a template is not reported");
+        assertTrue(contract.contains(m.getResource(EX + "All"), RDF.value));
+    }
+
     // ── cost: a 1,000-port inventory ──────────────────────────────────────────────
 
     @Test
@@ -598,7 +702,7 @@ class JenaSetRulesTest {
                     new Union(input.getGraph(), JenaLogicRulesTest.ontology().orElseThrow().getGraph())) : input;
             long best = Long.MAX_VALUE;
             InfModel m = null;
-            for (int rep = 0; rep < 4; rep++) {
+            for (int rep = 0; rep < 8; rep++) {
                 long t0 = System.nanoTime();
                 m = JenaEvaluationEngine.infer(base, r -> r);
                 m.size();   // force saturation of both stages
@@ -610,7 +714,7 @@ class JenaSetRulesTest {
                 JenaEvaluationEngine.parseRules(f).forEach(r -> setRules.add(r.getName()));
             }
             long without = Long.MAX_VALUE;
-            for (int rep = 0; rep < 4; rep++) {
+            for (int rep = 0; rep < 8; rep++) {
                 long t0 = System.nanoTime();
                 InfModel w = JenaEvaluationEngine.infer(base,
                         r -> r.stream().filter(x -> !setRules.contains(x.getName())).toList());
@@ -619,7 +723,7 @@ class JenaSetRulesTest {
             }
             Resource pool = m.getResource("http://broadband-forum.org/Intent#AvailableUNIInterfaces");
             int poolSize = members(m, pool).size();
-            System.out.printf("1000-UNI inventory (ontology %s): %d input triples, pool %d members, best of 4: %d ms"
+            System.out.printf("1000-UNI inventory (ontology %s): %d input triples, pool %d members, best of 8: %d ms"
                             + " (without the set rules: %d ms)%n", withOntology, input.size(), poolSize, best, without);
             assertTrue(poolSize >= 1000, "pool " + poolSize);
             assertFalse(ContractExtractor.extract(m).contains(null, RDFS.member));

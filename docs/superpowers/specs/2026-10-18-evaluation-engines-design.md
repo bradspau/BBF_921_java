@@ -195,6 +195,18 @@ saturated facts.
   *do* need a special case. Any other value-producing function used as a quantity argument (for example
   `[ quan:sum ( ... ) ]`) needs its own classification rule. Without one it is taken as a metric, and it must not
   get `rdf:value` derived in stage A, because the classification negates `rdf:value` on input argument nodes.
+- **Sets and pools (Task 14, `tio_a_sets.rules`, `tio_b_sets.rules`).** Pool membership is the helper fact
+  `?r tmf:memberOf ?container`, never `rdfs:member`, so pool members never reach the contract (only chosen members do,
+  as `rdfs:member` with `tmf:chosenFor`). The member is the subject because Jena's duplicate check scans the subject's
+  triples; literal members are skolem proxy nodes (`tmf:proxyOf`). Set constructors (`tmf:producesSet`) are not
+  boolean contributors; boolean set functions are contributions like the quantity functions. A container is
+  **volatile** (`tmf:volatile`) when its members can still grow after stage A: a delivery target (choices are added
+  in a later stratum), a `set:difference` result (computed in stage B), a container with **unknown membership**
+  (`tmf:unknownMembers`, a container function that is not implemented, with `tmf:setFailure`), and every pool built on
+  one. Stage B recomputes volatile pools positively, so members chosen later propagate, but no rule negates a volatile
+  container's membership: boolean set functions, `log:match*` and a subtracting `set:difference` over one fail closed.
+  **Choosing from a volatile pool (`icm:chooseFrom` over the C-tag pool, which follows the S-VLAN choice) needs its
+  own stratum** (a stage per choice level); a stage-B `noValue` over such a pool's members is unsound.
 - `rdf:value` is the associated-value property (TR292C §2-4 and every example). TR292C §11.7 names
   `tio:assumedValue` as the default `fun:resultProperty`; it appears nowhere else in the specification set and
   is not defined in the ontology, so it is treated as an editorial inconsistency.
@@ -233,6 +245,10 @@ chainings agree).
     only when the whole suffix is resolved, so a nested operator's value is simply waited for.
   - Operators read the head cell: allOf true iff `hasFalse No` and `trues` not `N0`; anyOf true iff `trues` not
     `N0`; noneOf true iff `N0`; oneOf true iff `N1`; each is false in the complementary cases.
+- **Sets (Task 14).** Set results are not `rdf:value` facts: pools are `tmf:memberOf` helper facts (stage A, plus a
+  guarded stage-B recomputation for volatile pools); `set:difference` and the boolean set functions' values are stage B,
+  negating only stage-A membership of non-volatile containers. Universal tests ("every member ...") use the builtin
+  `allSubjectsIn`, which reads its universe from the previous stage. See 5.5 "Sets and pools" for volatile containers.
 - **Empty lists (TR292E §6):** allOf, anyOf, oneOf `( )` = false; noneOf `( )` = true. (allOf empty is *false*
   in the PDF, not the vacuous true.)
 - **For Tasks 12-16:** follow the invariant; derive every structural fact a negation needs in stage A; have

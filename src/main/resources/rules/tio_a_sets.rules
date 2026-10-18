@@ -47,16 +47,22 @@
 #   * the icm:target of an expectation with icm:chooseFrom or icm:deliveryType: Task 15 adds the choice as
 #     `?target rdfs:member ?r` in stage B (TR290 §2.5.3);
 #   * the subject of set:difference (members derived in stage B);
+#   * a container with "unknown membership" (`tmf:unknownMembers`): it carries a container function that is not
+#     implemented (set:typesOfMembers, set:newestMember, icm:valuesOfTargetProperty, ...); its members never become
+#     complete, it keeps `?c tmf:setFailure "function not implemented: ..."`;
 #   * a set node with a volatile argument container (union/intersection/difference item, or the container
-#     argument of resourcesWithPropertyObject); its list gets `?l tmf:volatileList tmf:Yes`.
+#     argument of resourcesWithPropertyObject); its list gets `?l tmf:volatileList tmf:Yes`. Unknown membership
+#     propagates the same way.
 # Stage A computes what it can for a volatile node (e.g. nothing, for a filter by a target that has no members yet);
 # tio_b_sets.rules repeats the monotone rules, guarded by tmf:volatile/tmf:volatileList, so a member derived in stage B
 # (a choice, or a difference result) propagates: chosen svA ⇒ SelectedSVLAN rdfs:member svA (Task 15, stage B) ⇒
 # lifted to tmf:memberOf ⇒ the C-tag filter `( pon:fromSVLAN SelectedSVLAN )` matches the C-tags of svA ⇒ the
 # intersection pool. Within one stage a member derived by any earlier rule propagates the same way (RETE).
 # What must NOT happen is a negation over a volatile container's membership in stage B: it is incomplete there.
-# So difference does not subtract a volatile container (tmf:diffUnsound) and a boolean set function with a volatile
-# container argument fails closed here (false, "container membership is not final ..."). Task 15 must apply the same
+# So every consumer fails closed: difference does not subtract a volatile container, nor take an unknown one as its
+# first argument (tmf:diffUnsound: no members, `?s tmf:setFailure`); a boolean set function with a volatile container
+# argument is false here ("container membership is not final ..."); so is log:matchAll/Any/None/One over one
+# (tio_a_logic cmatchNotFinal). A literal where a container is expected is "missing operand nodes". Task 15 must apply the same
 # rule to icm:chooseFrom over a volatile pool (the C-tag pool): a stage-B negation over its members is unsound;
 # it needs its own stratum (e.g. a further stage per choice level), not this one.
 #
@@ -75,6 +81,7 @@
 @prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix fun:  <http://tio.models.tmforum.org/tio/v3.6.0/FunctionOntology/> .
 @prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
 @prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
 @prefix tmf:  <http://tmforum.org/api/v5/> .
@@ -116,6 +123,28 @@
     -> (?s tmf:volatile tmf:Yes) (?l tmf:volatileList tmf:Yes)]
 [volatileFiltered: (?s set:resourcesWithPropertyObject ?l) (?l tmf:rwpoContainer ?x) (?x tmf:volatile tmf:Yes)
     -> (?s tmf:volatile tmf:Yes) (?l tmf:volatileList tmf:Yes)]
+
+# Unknown membership: a container that also carries a container function no rule implements (set:typesOfMembers,
+# set:newestMember, icm:valuesOfTargetProperty, ...). Its members are incomplete for good, so it is treated as
+# volatile (every consumer fails closed) and the reason is kept as `?c tmf:setFailure "..."` for a later report.
+# Recognised: any fun:Function (ontology) not on the implemented list; without the ontology, any set: property and
+# any icm:valuesOf* property that is not implemented.
+[unknownDeclared: (?c tmf:container tmf:Yes) (?c ?f ?a) (?f rdf:type fun:Function) noValue(?f tmf:implemented tmf:Yes)
+    strConcat(?f, ?iri) regex(?iri, '(?:.*[/#])?([^/#]*)', ?n) strConcat('function not implemented: ', ?n, ?t)
+    -> (?c tmf:unknownMembers tmf:Yes) (?c tmf:setFailure ?t)]
+[unknownSetFunction: (?c tmf:container tmf:Yes) (?c ?f ?a) strConcat(?f, ?iri)
+    regex(?iri, 'http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/([^/#]+)', ?n)
+    noValue(?f tmf:implemented tmf:Yes) strConcat('function not implemented: ', ?n, ?t)
+    -> (?c tmf:unknownMembers tmf:Yes) (?c tmf:setFailure ?t)]
+[unknownIcmValues: (?c tmf:container tmf:Yes) (?c ?f ?a) strConcat(?f, ?iri)
+    regex(?iri, 'http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/(valuesOf[^/#]*)', ?n)
+    noValue(?f tmf:implemented tmf:Yes) strConcat('function not implemented: ', ?n, ?t)
+    -> (?c tmf:unknownMembers tmf:Yes) (?c tmf:setFailure ?t)]
+[unknownIsVolatile: (?c tmf:unknownMembers tmf:Yes) -> (?c tmf:volatile tmf:Yes)]
+[unknownCombined: (?l tmf:combinerOf ?s) (?c tmf:cellOf ?l) (?c rdf:first ?x) (?x tmf:unknownMembers tmf:Yes)
+    -> (?s tmf:unknownMembers tmf:Yes)]
+[unknownFiltered: (?s set:resourcesWithPropertyObject ?l) (?l tmf:rwpoContainer ?x) (?x tmf:unknownMembers tmf:Yes)
+    -> (?s tmf:unknownMembers tmf:Yes)]
 
 # ── 3. set:resourcesOfType ( class ... ) (TR292F §4, §8.15): instances of the classes or their subclasses ───────
 
@@ -192,6 +221,12 @@
     -> (?m tmf:excludedFrom ?l)]
 [diffUnsound: (?s set:difference ?l) (?c tmf:cellOf ?l) notEqual(?c, ?l) (?c rdf:first ?b) (?b tmf:volatile tmf:Yes)
     -> (?l tmf:diffUnsound tmf:Yes)]
+# A first container whose membership is unknown can never be complete either.
+[diffUnknownFirst: (?s set:difference ?l) (?l tmf:diffFirst ?a) (?a tmf:unknownMembers tmf:Yes)
+    -> (?l tmf:diffUnsound tmf:Yes)]
+# No members, and a reason a chooseFrom over it (Task 15) can report.
+[diffUnsoundFailure: (?s set:difference ?l) (?l tmf:diffUnsound tmf:Yes)
+    -> (?s tmf:setFailure "set:difference over a container whose membership is not final: no members")]
 
 # ── 9. Boolean set functions (§5): applications ─────────────────────────────────────────────────────────────────
 
@@ -246,9 +281,18 @@
 [setArity: (?k rdf:type tmf:SetPredicate) (?k tmf:function ?f) (?f tmf:minArity ?min) (?k tmf:arguments ?l)
     listLength(?l, ?n) lessThan(?n, ?min)
     -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes") (?k tmf:valuedInA tmf:Yes)]
+# A literal where a container is expected (§8: argument type rdfs:Container) is an error, not an empty container.
+[setLiteralContainer: (?k rdf:type tmf:ContainerPredicate) (?k tmf:function ?f) (?f tmf:allArgsContainers tmf:Yes)
+    (?k tmf:arguments ?l) (?c tmf:cellOf ?l) (?c rdf:first ?x) isLiteral(?x)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes") (?k tmf:valuedInA tmf:Yes)]
+[setLiteralContainerRest: (?k rdf:type tmf:ContainerPredicate) (?k tmf:function ?f) (?f tmf:firstArgElement tmf:Yes)
+    (?k tmf:arguments ?l) (?c tmf:cellOf ?l) notEqual(?c, ?l) (?c rdf:first ?x) isLiteral(?x)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes") (?k tmf:valuedInA tmf:Yes)]
+[forAllLiteralContainer: (?k tmf:forAllContainer ?c) isLiteral(?c)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes") (?k tmf:valuedInA tmf:Yes)]
 [setNotFinal: (?k tmf:containerArg ?x) (?x tmf:volatile tmf:Yes)
     -> (?k rdf:value "false"^^xsd:boolean)
-       (?k tmf:failure "container membership is not final: it depends on a choice or on set:difference")
+       (?k tmf:failure "container membership is not final: it depends on a choice, on set:difference or on a function that is not implemented")
        (?k tmf:valuedInA tmf:Yes)]
 
 # ── 10. Boolean set functions: positive facts for stage B ───────────────────────────────────────────────────────
@@ -290,6 +334,17 @@
     -> (?c tmf:bodyOK tmf:Yes)]
 [forAllBodyRest: (?c tmf:bodyCellOf ?k) (?c rdf:rest ?r) (?r tmf:bodyOK tmf:Yes) (?c rdf:first ?q)
     (?q tmf:contribution ?z) -> (?c tmf:bodyOK tmf:Yes)]
+# The condition templates: nodes reachable from a condition argument through blank nodes (the part forAllCopy
+# copies), following input properties only (not the tmf: helper facts). A template is not reported on its own
+# (ContractExtractor skips tmf:forAllTemplate). A set:forAll inside a template is not supported: the inner copy would
+# need the outer copy, which exists only as a stage-A deduction; fail closed.
+[forAllTemplateRoot: (?c tmf:bodyCellOf ?k) (?c rdf:first ?q) notLiteral(?q)
+    -> (?q tmf:inTemplateOf ?k) (?q tmf:forAllTemplate tmf:Yes)]
+[forAllTemplateNext: (?n tmf:inTemplateOf ?k) (?n ?p ?o) isBNode(?o) strConcat(?p, ?ps)
+    regex(?ps, '(?!http://tmforum.org/api/v5/).*') -> (?o tmf:inTemplateOf ?k)]
+[forAllNested: (?n tmf:inTemplateOf ?k) (?n set:forAll ?l)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "set:forAll nested in set:forAll is not supported")
+       (?k tmf:valuedInA tmf:Yes)]
 [forAllHasMember: (?k tmf:forAllContainer ?s) (?m tmf:memberOf ?s) -> (?k tmf:forAllHasMember tmf:Yes)]
 [forAllCopy: (?c tmf:bodyCellOf ?k) (?c rdf:first ?q) notLiteral(?q) (?k tmf:forAllVar ?x)
     (?k tmf:forAllContainer ?s) (?m tmf:memberOf ?s)

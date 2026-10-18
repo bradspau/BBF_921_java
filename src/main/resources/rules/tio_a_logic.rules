@@ -22,6 +22,7 @@
 
 @prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
 @prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
 @prefix tmf:  <http://tmforum.org/api/v5/> .
 
@@ -83,6 +84,13 @@
 # tmf:memberOf, which lifts the rdfs:member of every tmf:container).
 [cmatchContainer: (?k tmf:matchContainer ?c) -> (?c tmf:container tmf:Yes)]
 [cmatchMember: (?k tmf:matchContainer ?c) (?m tmf:memberOf ?c) -> (?k tmf:matchMember ?m)]
+# A container whose members may still grow after this stage (a delivery target, a set:difference result, a pool built
+# on one, or a container with a function that is not implemented; tio_a_sets.rules) cannot be matched soundly in stage
+# B: fail closed here.
+[cmatchNotFinal: (?k tmf:matchContainer ?c) (?c tmf:volatile tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)
+       (?k tmf:failure "container membership is not final: it depends on a choice, on set:difference or on a function that is not implemented")
+       (?k tmf:valuedInA tmf:Yes)]
 [cmatchHit: (?k tmf:matchContainer ?c) (?k tmf:matchMember ?m) (?k tmf:matchPredicate ?p) (?k tmf:matchObject ?o)
     (?m ?p ?o) -> (?k tmf:hit ?m)]
 [cmatchMiss: (?k tmf:matchContainer ?c) (?k tmf:matchMember ?m) (?k tmf:matchPredicate ?p) (?k tmf:matchObject ?o)
