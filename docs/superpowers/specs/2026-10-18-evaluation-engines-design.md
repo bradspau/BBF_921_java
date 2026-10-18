@@ -203,8 +203,8 @@ members, defaulted members, nesting up to 4 levels; 6-100 fixed-seed shuffles of
 chainings agree).
 
 - **Chaining.** `createInfModel(stageB, stageAInf)` is correct *for rules that obey the invariant below*;
-  copying stage A into a plain `Model` first gives the same results and is slightly faster (~0.8 vs ~1.0 ms for a
-  20-condition intent, rules parsed each time). Either is fine; Tasks 12-16 use chaining and may switch freely.
+  copying stage A into a plain `Model` first gives the same results, with no measurable difference in cost
+  (about 1.2 ms for a 20-condition intent, rules parsed each time). Either is fine; Tasks 12-16 use chaining.
 - **Invariant: `noValue` only over facts that are complete when the stage starts** (input structure or a
   previous, saturated stage), never over facts the same stage derives. Changing the chaining does not rescue
   rules that break it: the naive `allOf` ("true if no member is not true", default false via
@@ -213,7 +213,12 @@ chainings agree).
   - Stage A also derives the structural fact `?c tmf:hasContributor ?p` for every `?c ?p ?args` with
     `?p a fun:Function`.
   - Stage B default: `(?c a log:Condition) noValue(?c tmf:hasContributor) noValue(?c rdf:value) -> false`. Safe
-    because nothing in stage B gives a value to an element without a contributor.
+    because nothing in stage B gives a value to an element without a contributor. Preconditions: (a) the function
+    ontology TTLs (LogicalOperators etc.) are in stage A's input, so `hasContributor` is derived for operator
+    conditions (the spike inlines them as `ONTOLOGY`); (b) every stage-B rule that writes `rdf:value` has a
+    subject with a stage-A-derived `hasContributor`, including the expectation and intent truth values of Tasks
+    14-16; (c) `rdf:type log:Condition` (and any type the default reads) is never derived in stage B: type
+    inference belongs in stage A.
   - Stage B list cells: `(?c log:allOf ?l) -> (?l a tmf:LogCell)` (one rule per operator),
     `(?l a tmf:LogCell) (?l rdf:rest ?r) -> (?r a tmf:LogCell)`. Each cell's member is classified `tmf:arg`
     `T`/`F`/`Skip` (`Skip`: non-boolean value or literal (`notDType`), or no value, no contributor and untyped).
@@ -227,10 +232,27 @@ chainings agree).
 - **For Tasks 12-16:** follow the invariant; derive every structural fact a negation needs in stage A; have
   every stage A function produce an explicit `true`/`false` (an error is `false` plus `icm:reason`), since an
   element whose contributor never resolves leaves the walk waiting and stays without value (a final
-  post-B fill to `false` would not propagate into enclosing operators). Not covered by the spike: TR292A
-  conjunction of *several* contributors on one element. "No contribution that is not true" is the naive pattern
-  again; make it monotone (false if any contribution is false; true once a stage-A-known number or list of
-  contributions are all true, e.g. a count builtin in stage A). No Java builtin was needed for the operators.
+  post-B fill to `false` would not propagate into enclosing operators). Not covered by the spike: conjunction of
+  *several* contributors on one element (TR292A §4; TR292E §4 p.13, which also gives the default `false`).
+  "No contribution that is not true" is the naive pattern again; make it monotone (false if any contribution is
+  false; true once a stage-A-known number or list of contributions are all true, e.g. a count builtin in stage A).
+  Never write per-contributor results directly onto the element's `rdf:value`: a member with conflicting values
+  gets two classifications and its operator two values. No Java builtin was needed for the operators.
+- **Deviations from the Java engine** (`TurtleEvaluator`, the conformance oracle). The spike follows the PDFs:
+  - `log:allOf ( )`: Java true (`applyCombinator`, `allMatch` on an empty list, :1333-1338); TR292E §6.1 false.
+    Empty anyOf/noneOf/oneOf agree with the PDF.
+  - A bare typed `log:Condition` with no properties: Java true ("Unknown/opaque — pass silently", :866-868);
+    TR292E §4 (p.13) false by default.
+  - Literal boolean members (`( true false )`): Java drops them (`filter(RDFNode::isResource)`, :815); TR292E §2
+    makes them boolean arguments, so the spike counts them.
+  - An untyped member with no value: Java counts it true (opaque, :866-868); the spike drops it as non-boolean
+    (TR292E §2).
+  - A list whose children are all opaque: Java fails the operator (`opaqueChildren`, :821-825), so noneOf is false;
+    the spike drops those members and noneOf of the empty remainder is true (TR292E §2, §6.10).
+
+  Task 13 MUST add corpus cases for each of these (`logic-*`, each with `expected.ttl` = the Java engine's output
+  and `expected.jena.ttl` = the PDF result where they differ) and the matching `DEVIATIONS.md` entries, so the
+  Jena column shows no unexplained mismatches. (Not added now: the register test requires an existing case.)
 
 ### 5.6 Conformance and comparison
 
