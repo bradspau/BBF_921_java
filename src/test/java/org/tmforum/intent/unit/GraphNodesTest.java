@@ -12,6 +12,11 @@ class GraphNodesTest {
     private static final String BASE = "http://tmforum.org/api/v5";
 
     @Test
+    void inferredGraphUri() {
+        assertEquals(BASE + "/intents/" + UUID + "/inferred", GraphNodes.inferredGraphUri(UUID));
+    }
+
+    @Test
     void intentGraphUri() {
         assertEquals(BASE + "/intents/" + UUID, GraphNodes.intentGraphUri(UUID));
     }

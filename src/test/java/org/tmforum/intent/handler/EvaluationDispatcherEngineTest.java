@@ -39,7 +39,8 @@ class EvaluationDispatcherEngineTest {
         when(writer.heldResources(anyString())).thenReturn(List.of());
 
         EvaluationDispatcher d = new EvaluationDispatcher(engine, obs, writer, mock(BestEffortLimits.class),
-                intents, reports, mock(NotificationService.class), mock(ReportBuilder.class), mock(Dataset.class));
+                intents, reports, mock(NotificationService.class), mock(ReportBuilder.class), mock(Dataset.class),
+                mock(org.tmforum.intent.engine.InferredGraphStore.class));
         d.scheduleEvaluation("i1");
 
         verify(reports, never()).create(anyString(), any());

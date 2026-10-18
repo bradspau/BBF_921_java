@@ -11,6 +11,8 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.tmforum.intent.engine.EvaluationEngine;
 import org.tmforum.intent.engine.EvaluationInput;
+import org.tmforum.intent.engine.EvaluationOutcome;
+import org.tmforum.intent.engine.InferredGraphStore;
 import org.tmforum.intent.graph.Namespaces;
 import org.tmforum.intent.graph.repositories.IntentRepository;
 import org.tmforum.intent.graph.repositories.IntentReportRepository;
@@ -54,6 +56,7 @@ public class EvaluationDispatcher {
     private final NotificationService notificationService;
     private final ReportBuilder reportBuilder;
     private final Dataset dataset;
+    private final InferredGraphStore inferredGraphStore;
 
     // Per-intent locks guard DEGRADED→ACTIVE auto-transition against concurrent evaluations
     private final ConcurrentHashMap<String, ReentrantLock> transitionLocks = new ConcurrentHashMap<>();
@@ -68,7 +71,9 @@ public class EvaluationDispatcher {
                                   IntentReportRepository reportRepository,
                                   NotificationService notificationService,
                                   ReportBuilder reportBuilder,
-                                  Dataset dataset) {
+                                  Dataset dataset,
+                                  InferredGraphStore inferredGraphStore) {
+        this.inferredGraphStore = inferredGraphStore;
         this.engine = engine;
         this.observationStore = observationStore;
         this.handlerStateWriter = handlerStateWriter;
@@ -144,7 +149,9 @@ public class EvaluationDispatcher {
         // Evaluate (with timeout guard via interruption)
         EvaluationResult result;
         try {
-            result = evaluateWithTimeout(expressionTurtle, obsTurtle, resTurtle, heldResources, intentId);
+            EvaluationOutcome outcome = evaluateWithTimeout(expressionTurtle, obsTurtle, resTurtle, heldResources, intentId);
+            result = outcome.result();
+            if (outcome.resultGraph() != null) inferredGraphStore.replace(intentId, outcome.resultGraph());
         } catch (Exception e) {
             log.warn("runEvaluation: evaluation failed for intent {}: {}", intentId, e.getMessage());
             result = EvaluationResult.degraded("Evaluation error: " + e.getMessage(), List.of());
@@ -285,13 +292,12 @@ public class EvaluationDispatcher {
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    private EvaluationResult evaluateWithTimeout(String expressionTurtle, String obsTurtle,
+    private EvaluationOutcome evaluateWithTimeout(String expressionTurtle, String obsTurtle,
                                                    String resTurtle, List<String> heldResources,
                                                    String intentId) {
         // Run evaluation in current thread (already in evaluationExecutor pool).
         // The pool provides concurrency; we don't add another layer here.
-        return engine.evaluate(new EvaluationInput(intentId, expressionTurtle, obsTurtle, resTurtle, heldResources))
-                .result();
+        return engine.evaluate(new EvaluationInput(intentId, expressionTurtle, obsTurtle, resTurtle, heldResources));
     }
 
     private String getResourcesTurtle() {

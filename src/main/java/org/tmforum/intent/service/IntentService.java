@@ -2,6 +2,7 @@ package org.tmforum.intent.service;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.tmforum.intent.engine.InferredGraphStore;
 import org.tmforum.intent.graph.repositories.IntentRepository;
 import org.tmforum.intent.handler.EvaluationDispatcher;
 
@@ -28,13 +29,16 @@ public class IntentService {
     private final IntentRepository intentRepository;
     private final NotificationService notificationService;
     private final EvaluationDispatcher evaluationDispatcher;
+    private final InferredGraphStore inferredGraphStore;
 
     @Value("${intent.base-url}")
     private String baseUrl;
 
     public IntentService(IntentRepository intentRepository,
                           NotificationService notificationService,
-                          EvaluationDispatcher evaluationDispatcher) {
+                          EvaluationDispatcher evaluationDispatcher,
+                          InferredGraphStore inferredGraphStore) {
+        this.inferredGraphStore = inferredGraphStore;
         this.intentRepository = intentRepository;
         this.notificationService = notificationService;
         this.evaluationDispatcher = evaluationDispatcher;
@@ -141,6 +145,7 @@ public class IntentService {
         if (existing == null) return false;
         boolean deleted = intentRepository.delete(id);
         if (deleted) {
+            inferredGraphStore.drop(id);
             notificationService.fire(NotificationService.INTENT_DELETE,
                     Map.of("id", id, "@type", existing.getOrDefault("@type", "Intent")));
         }

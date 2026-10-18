@@ -38,6 +38,10 @@ public final class GraphNodes {
         return BASE + "/intents/" + intentId + "/observations";
     }
 
+    public static String inferredGraphUri(String intentId) {
+        return BASE + "/intents/" + intentId + "/inferred";
+    }
+
     // Resource node URIs — same value as graph URI
     public static String intentNode(String intentId)  { return intentGraphUri(intentId); }
     public static String reportNode(String reportId)  { return reportGraphUri(reportId); }
