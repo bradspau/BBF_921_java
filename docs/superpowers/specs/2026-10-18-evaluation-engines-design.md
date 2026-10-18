@@ -196,6 +196,42 @@ saturated facts.
   `src/main/resources/rules/` (identical copies). The runtime copy is authoritative; the ontology copy is dropped
   or generated.
 
+#### 5.5.1 Decision from the stage-chaining spike (Task 10)
+
+Proved by `RuleStagesSpikeTest` (all four operators, all 8 true/false combinations, empty lists, non-boolean
+members, defaulted members, nesting up to 4 levels; 6-100 fixed-seed shuffles of triples and rule order; both
+chainings agree).
+
+- **Chaining.** `createInfModel(stageB, stageAInf)` is correct *for rules that obey the invariant below*;
+  copying stage A into a plain `Model` first gives the same results and is slightly faster (~0.8 vs ~1.0 ms for a
+  20-condition intent, rules parsed each time). Either is fine; Tasks 12-16 use chaining and may switch freely.
+- **Invariant: `noValue` only over facts that are complete when the stage starts** (input structure or a
+  previous, saturated stage), never over facts the same stage derives. Changing the chaining does not rescue
+  rules that break it: the naive `allOf` ("true if no member is not true", default false via
+  `noValue(?c rdf:value)`) gives wrong or double (`true` and `false`) values in 80-100% of runs, in both chainings.
+- **Pattern: two stages, logic is monotone.**
+  - Stage A also derives the structural fact `?c tmf:hasContributor ?p` for every `?c ?p ?args` with
+    `?p a fun:Function`.
+  - Stage B default: `(?c a log:Condition) noValue(?c tmf:hasContributor) noValue(?c rdf:value) -> false`. Safe
+    because nothing in stage B gives a value to an element without a contributor.
+  - Stage B list cells: `(?c log:allOf ?l) -> (?l a tmf:LogCell)` (one rule per operator),
+    `(?l a tmf:LogCell) (?l rdf:rest ?r) -> (?r a tmf:LogCell)`. Each cell's member is classified `tmf:arg`
+    `T`/`F`/`Skip` (`Skip`: non-boolean value or literal (`notDType`), or no value, no contributor and untyped).
+  - Each cell carries a summary computed from the tail: `rdf:nil` has `tmf:trues N0`, `tmf:hasFalse No`; a cell's
+    summary is derived from its own `arg` and its `rdf:rest`'s summary (`trues` capped at `N2`). The summary exists
+    only when the whole suffix is resolved, so a nested operator's value is simply waited for.
+  - Operators read the head cell: allOf true iff `hasFalse No` and `trues` not `N0`; anyOf true iff `trues` not
+    `N0`; noneOf true iff `N0`; oneOf true iff `N1`; each is false in the complementary cases.
+- **Empty lists (TR292E §6):** allOf, anyOf, oneOf `( )` = false; noneOf `( )` = true. (allOf empty is *false*
+  in the PDF, not the vacuous true.)
+- **For Tasks 12-16:** follow the invariant; derive every structural fact a negation needs in stage A; have
+  every stage A function produce an explicit `true`/`false` (an error is `false` plus `icm:reason`), since an
+  element whose contributor never resolves leaves the walk waiting and stays without value (a final
+  post-B fill to `false` would not propagate into enclosing operators). Not covered by the spike: TR292A
+  conjunction of *several* contributors on one element. "No contribution that is not true" is the naive pattern
+  again; make it monotone (false if any contribution is false; true once a stage-A-known number or list of
+  contributions are all true, e.g. a count builtin in stage A). No Java builtin was needed for the operators.
+
 ### 5.6 Conformance and comparison
 
 - A **conformance corpus**: cases of (expression, observations, resources, held resources) with the expected
