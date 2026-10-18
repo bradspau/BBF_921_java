@@ -108,21 +108,30 @@ PDF references: TR290 = Intent Common Model v3.8.0 (TR290A v3.6.0 has matching s
 
 - case: logic-untyped-member
 - Java: a member that is neither a known element type nor has a function is "unknown/opaque" and counts as `true`.
-- PDF: TR292E §2 "If arguments are provided that have a different type than boolean ... the respective argument would
-  be ignored. This means the evaluation would be performed with an argument list from which all non-boolean
-  arguments are removed." A node with no type and no value has no boolean value. Reading it as non-boolean is the
-  design's interpretation (§5.5.1); the PDF does not discuss valueless untyped members explicitly.
+- PDF: TR292E §2 "If arguments are provided that have a different type than boolean an error would be issued and
+  the respective argument would be ignored. This means the evaluation would be performed with an argument list from
+  which all non-boolean arguments are removed." A node with no type and no value has no boolean value. Reading it as
+  a non-boolean argument is the design's interpretation (§5.5.1); the PDF does not discuss valueless untyped members
+  explicitly.
 - Decision: the rule engine removes it. `expected.jena.ttl`: `ex:AnyWithUnknown` `false` (`anyOf ( false )`),
   `ex:OneWithUnknown` `true` (`oneOf ( true )`).
+- The error the PDF says is issued for the ignored argument is not surfaced as an `icm:reason`. That is a project
+  policy, not the PDF's ruling: design §5.2 attaches reasons only to elements that are `false`, and the PDF defines no
+  vocabulary for such an error.
 
-## 11. A list whose members are all opaque is not an error (Task 13; design §5.5.1)
+## 11. A list whose members are all opaque: the operator still evaluates (Task 13; design §5.5.1)
 
 - case: logic-opaque-noneof
 - Java: when every member is opaque the operator fails (`opaqueChildren`) with the reason "no evaluable conditions in
   children", so `noneOf ( ex:Unknown1 ex:Unknown2 )` is `false`.
-- PDF: with the members removed as in entry 10 (TR292E §2) the list is empty, and `noneOf ( )` is `true` (§6.10).
-- Decision: the rule engine follows the PDF; no reason. `expected.jena.ttl`: `ex:NoneOfUnknown`, `ex:Expectation`
-  and `ex:Intent` are `true`, without `icm:reason`.
+- PDF: TR292E §2 "an error would be issued and the respective argument would be ignored. This means the evaluation
+  would be performed with an argument list from which all non-boolean arguments are removed." With both members
+  removed (entry 10's reading) the list is empty, and `noneOf ( )` is `true` (§6.10). The PDF issues an error per
+  ignored argument but still evaluates the operator; it does not make the operator fail.
+- Decision: the rule engine follows the PDF for the value. `expected.jena.ttl`: `ex:NoneOfUnknown`, `ex:Expectation`
+  and `ex:Intent` are `true`.
+- No `icm:reason` is emitted for the ignored arguments. As in entry 10 this is a project policy (design §5.2 attaches
+  reasons only to `false` elements), not the PDF's ruling.
 
 ## 12. `log:matchStatement` takes rdf:Statement arguments (Task 13)
 
@@ -133,3 +142,16 @@ PDF references: TR290 = Intent Common Model v3.8.0 (TR290A v3.6.0 has matching s
   `rdf:object`); the function is true iff all of them are true in the knowledge base, false when there is none.
 - Decision: the rule engine implements the PDF form only. `expected.jena.ttl`: `ex:GoldUser`, `ex:Expectation` and
   `ex:Intent` are `true`, without `icm:reason`.
+
+## 13. Several functions on one element combine by conjunction (Task 13)
+
+- case: logic-conjunction
+- Java: `evalNodeCore` evaluates only the first logical operator it finds on a node, in the order allOf, anyOf,
+  noneOf, oneOf, and returns; any other operator or function on the same node is ignored.
+- PDF: TR292E §4 "If multiple properties or functions are used within a condition, they are by default in a logical
+  conjunction. The truth value of the condition gets true if and only if all contributing properties provide the
+  value true as well." TR292A §4: boolean associated values default to "false"; "Default combination method is
+  logical conjunction equivalent to the log:allOf function."
+- Decision: the rule engine combines all contributions by conjunction. `expected.jena.ttl`: `ex:AllAndNone`
+  (`allOf ( true )` and `noneOf ( true )`) and `ex:AnyAndMatch` (`anyOf ( false true )` and a false `log:match`) are
+  `false`, and so are `ex:Expectation` and `ex:Intent` (Java: all `true`).

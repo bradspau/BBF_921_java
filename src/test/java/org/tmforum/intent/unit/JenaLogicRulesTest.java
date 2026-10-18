@@ -400,14 +400,70 @@ class JenaLogicRulesTest {
         assertTrue(m.getRawModel().contains(m.getResource(EX + "b"), HAS_CONTRIBUTOR));
     }
 
-    @Test
-    void anElementWhoseOnlyFunctionIsNotImplementedHasNoDefault() {
-        // with the ontology, mf:logistic is a fun:Function, so ex:c has a contributor and is not defaulted to false;
-        // its value waits for the function (not implemented by any stage yet)
+    /** Runs with the ontology only (mf:logistic is a fun:Function only there), over every seed. */
+    static InfModel assertRunsWithOntology(String turtle, Map<String, Boolean> expected) {
         assumeTrue(ontology().isPresent(), "needs the licensed ontology");
-        InfModel m = run("ex:c a icm:Condition ; mf:logistic ( 1 2 3 ) .\n", 0, true);
+        InfModel last = null;
+        for (long seed : SEEDS) {
+            InfModel m = run(turtle, seed, true);
+            String where = " (seed " + seed + ")\n" + turtle;
+            assertEveryElementHasExactlyOneBooleanValue(m, where);
+            assertStageBWritesOnlyOnContributorsOrDefaults(m, where);
+            for (var e : expected.entrySet()) {
+                assertEquals(Set.of(e.getValue().toString()), values(m, e.getKey()), () -> e.getKey() + where);
+            }
+            last = m;
+        }
+        return last;
+    }
+
+    static Set<String> failures(Model m, String local) {
+        Set<String> out = new TreeSet<>();
+        for (RDFNode k : m.listObjectsOfProperty(m.getResource(EX + local), m.getProperty(TMF + "contribution")).toList()) {
+            m.listObjectsOfProperty(k.asResource(), m.getProperty(TMF + "failure"))
+                    .forEachRemaining(f -> out.add(f.asLiteral().getLexicalForm()));
+        }
+        return out;
+    }
+
+    @Test
+    void anElementWhoseOnlyFunctionIsNotImplementedIsFalseAndOperatorsResolve() {
+        // fail closed: mf:logistic is a declared fun:Function that no rule implements yet
+        String t = """
+                ex:c a icm:Condition ; mf:logistic ( 1 2 3 ) .
+                ex:all a icm:Condition ; log:allOf ( ex:c ) .
+                ex:any a icm:Condition ; log:anyOf ( ex:c ex:t ) .
+                ex:I a icm:Intent ; log:allOf ( ex:all ) .
+                """ + leaf("t", true);
+        InfModel m = assertRunsWithOntology(t, Map.of("c", false, "all", false, "any", true, "t", true, "I", false));
         assertTrue(m.getRawModel().contains(m.getResource(EX + "c"), HAS_CONTRIBUTOR));
-        assertEquals(Set.of(), values(m, "c"));
+        assertEquals(Set.of("function not implemented: logistic"), failures(m, "c"));
+    }
+
+    @Test
+    void anImplementedTrueFunctionAndAnUnimplementedOneAreFalse() {
+        // TR292E §4: true iff ALL contributing properties are true
+        String t = """
+                ex:c a icm:Condition ; quan:atLeast ( 5 3 ) ; mf:logistic ( 1 2 3 ) .
+                ex:all a icm:Condition ; log:allOf ( ex:c ) .
+                """;
+        InfModel m = assertRunsWithOntology(t, Map.of("c", false, "all", false));
+        assertEquals(Set.of("function not implemented: logistic"), failures(m, "c"));
+    }
+
+    @Test
+    void onlyStageADecidedContributionsAreMarkedValuedInA() {
+        // the any-false guard (a negation over a contribution's value) applies only to these
+        String t = KB + """
+                ex:c a icm:Condition ; quan:atLeast ( 5 3 ) ; log:allOf ( ex:t ) ; log:match ( ex:User1 ex:userClass ex:Gold ) .
+                """ + leaf("t", true);
+        InfModel m = assertAllRuns(t, Map.of("c", true));
+        Property valuedInA = m.getProperty(TMF + "valuedInA");
+        Property function = m.getProperty(TMF + "function");
+        for (RDFNode k : m.listObjectsOfProperty(m.getResource(EX + "c"), m.getProperty(TMF + "contribution")).toList()) {
+            String fn = m.getProperty(k.asResource(), function).getResource().getLocalName();
+            assertEquals(fn.equals("atLeast"), m.getRawModel().contains(k.asResource(), valuedInA), fn);
+        }
     }
 
     // ── nesting, including members that only get a value from the default rule ──

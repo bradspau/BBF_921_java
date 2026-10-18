@@ -1,0 +1,32 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix ex:   <http://example.org/> .
+
+# Several functions on one condition are in a logical conjunction (TR292E §4, TR292A §4).
+ex:Intent a icm:Intent ;
+    log:allOf ( ex:Expectation ) .
+
+ex:Expectation a icm:PropertyExpectation ;
+    icm:target ex:Target ;
+    log:allOf ( ex:AllAndNone ex:AnyAndMatch ) .
+
+# allOf ( true ) and noneOf ( true ): first operator only gives true, the conjunction false.
+ex:AllAndNone a icm:Condition ;
+    log:allOf ( ex:Svc1Up ) ;
+    log:noneOf ( ex:Svc1Up ) .
+
+# anyOf ( false true ) and a false statement: first operator only gives true, the conjunction false.
+ex:AnyAndMatch a icm:Condition ;
+    log:anyOf ( ex:Svc3Up ex:Svc1Up ) ;
+    log:match ( ex:Svc3 ex:status ex:Up ) .
+
+ex:Svc1Up a icm:Condition ; log:match ( ex:Svc1 ex:status ex:Up ) .
+ex:Svc3Up a icm:Condition ; log:match ( ex:Svc3 ex:status ex:Up ) .
+
+ex:Svc1 ex:status ex:Up .
+ex:Svc3 ex:status ex:Down .
+
+ex:Target a icm:Target ; rdfs:member ex:Svc1, ex:Svc3 .

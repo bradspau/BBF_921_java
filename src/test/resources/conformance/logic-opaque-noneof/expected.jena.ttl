@@ -5,7 +5,7 @@
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-ex:NoneOfUnknown rdf:value true .  # both members removed (TR292E §2); noneOf ( ) is true (§6.10). No error, no reason
+ex:NoneOfUnknown rdf:value true .  # both members ignored (TR292E §2: an error is issued per ignored argument); noneOf ( ) is true (§6.10). No icm:reason: project policy (DEVIATIONS.md entry 11)
 
 ex:Expectation rdf:value true .
 

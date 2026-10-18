@@ -85,6 +85,11 @@
     -> (?s tmf:contribution ?k) (?k tmf:function quan:inRange) (?k tmf:arguments ?l)
        (?k rdf:type tmf:RangeComparison)]
 
+# Quantity contributions are decided in this stage (tio_a_core: tmf:valuedInA).
+[quanValuedInA1: (?k rdf:type tmf:BinaryComparison)  -> (?k tmf:valuedInA tmf:Yes)]
+[quanValuedInA2: (?k rdf:type tmf:ExactlyComparison) -> (?k tmf:valuedInA tmf:Yes)]
+[quanValuedInA3: (?k rdf:type tmf:RangeComparison)   -> (?k tmf:valuedInA tmf:Yes)]
+
 # Argument cells and positions.
 [quanCellHead: (?k tmf:arguments ?l) (?l rdf:first ?x) -> (?l rdf:type tmf:QuanCell) (?k tmf:arg1 ?l)]
 [quanCellNext: (?c rdf:type tmf:QuanCell) (?c rdf:rest ?r) (?r rdf:first ?x) -> (?r rdf:type tmf:QuanCell)]

@@ -3,8 +3,11 @@
 #
 # Pattern decided by the stage-chaining spike (design §5.5.1, RuleStagesSpikeTest):
 #   * noValue only over facts that are complete when stage B starts: input, ontology and stage A's output
-#     (tio_a_core: tmf:Element, tmf:hasContributor, the contribution order; tio_a_logic: hits and misses;
-#     tio_a_quantity: quantity contributions with their values). Never over a fact this stage derives.
+#     (tio_a_core: tmf:Element, tmf:hasContributor, tmf:valuedInA, the contribution order and the values of
+#     stage-A-valued contributions; tio_a_logic: hits and misses). Never over a fact this stage derives: in
+#     particular, the rdf:value of a contribution is negated only when stage A decided it (tmf:valuedInA), and the
+#     rdf:value of an operator member only when the member has no contributor (its values are then input, or the
+#     default, which fires only when it has none).
 #   * Everything else is monotone: a value is derived only once everything it depends on is known.
 #   * Every rule here that writes rdf:value writes it on a subject with a stage-A-derived tmf:hasContributor (an
 #     element with contributions, or a contribution node), except the default, which writes false on a typed element
@@ -16,8 +19,8 @@
 #   ?e tmf:result tmf:T|tmf:F          # the same, as a helper the operator members read (see 3.)
 #   ?e rdf:value false                 # default: typed element (tmf:Element) with no contributor and no value
 #
-# Nothing here writes a value on [ met:lastValue ( ... ) ] or other argument nodes (they are not elements), and no
-# rule gives a value to a contribution that has none (stage A gives every quantity contribution an explicit value).
+# Nothing here writes a value on [ met:lastValue ( ... ) ] (not a function application, not an element), and no rule
+# gives a value to a contribution that has none: stage A decides every quantity and every unimplemented function.
 
 @prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
@@ -30,12 +33,16 @@
 [default: (?e rdf:type tmf:Element) noValue(?e tmf:hasContributor) noValue(?e rdf:value)
     -> (?e rdf:value "false"^^xsd:boolean)]
 
-# ── 2. Conjunction of the contributions of one element (TR292A §4; TR292E §4 p.13) ─────────────────────────────
-# A contribution is T when true and not also false, F when false: a contribution with both values (degenerate input)
-# counts as false. The element is false as soon as one contribution is F; it is true once every contribution, walked
-# in tio_a_core's fixed order from the last, is T. Both are monotone; exactly one of them fires.
+# ── 2. Conjunction of the contributions of one element (TR292A §4; TR292E §4 p.14) ─────────────────────────────
+# A contribution is F when false. A stage-A-valued contribution (tmf:valuedInA) is T when true and not also false,
+# so a degenerate two-valued one counts as false; its values are complete, so the noValue is sound. A stage-B-valued
+# contribution (operators, match functions) is single-valued by construction and is T when true; nothing about its
+# own value is negated. The element is false as soon as one contribution is F; it is true once every contribution,
+# walked in tio_a_core's fixed order from the last, is T. Both are monotone; exactly one of them fires.
 
-[contribT: (?k tmf:function ?f) (?k rdf:value "true"^^xsd:boolean) noValue(?k rdf:value "false"^^xsd:boolean)
+[contribTA: (?k tmf:valuedInA tmf:Yes) (?k rdf:value "true"^^xsd:boolean)
+    noValue(?k rdf:value "false"^^xsd:boolean) -> (?k tmf:cls tmf:T)]
+[contribTB: (?k tmf:function ?f) noValue(?k tmf:valuedInA tmf:Yes) (?k rdf:value "true"^^xsd:boolean)
     -> (?k tmf:cls tmf:T)]
 [contribF: (?k tmf:function ?f) (?k rdf:value "false"^^xsd:boolean) -> (?k tmf:cls tmf:F)]
 
@@ -76,6 +83,8 @@
     noValue(?m rdf:value "true"^^xsd:boolean) noValue(?m rdf:value "false"^^xsd:boolean)
     -> (?x tmf:logArg tmf:Skip)]
 # No value and none to come: no contributor and not an element (an element gets the default false).
+# The tmf:Element guard is load-bearing for soundness: it is what makes noValue(?m rdf:value) read a complete fact.
+# Without it, a typed member could be skipped before the default gives it false, and get two classifications.
 [argNoValue: (?x rdf:type tmf:LogCell) (?x rdf:first ?m) notLiteral(?m) noValue(?m tmf:hasContributor)
     noValue(?m rdf:type tmf:Element) noValue(?m rdf:value) -> (?x tmf:logArg tmf:Skip)]
 

@@ -18,14 +18,33 @@
 #   ?k tmf:contribHasEarlier/Later     # ?k is not the first / not the last. Stage B walks this order to combine
 #                                      # the contributions by conjunction (TR292A §4, TR292E §4) monotonically.
 #
-# An element with a contributor whose function no rule implements gets no value at all (it is never defaulted to
-# false): the default applies only to elements with nothing determining their value (TR292E §4, p.13).
+#   ?f tmf:implemented tmf:Yes        # axioms: the functions some stage A/B rule evaluates (last section)
+#   ?k tmf:valuedInA tmf:Yes           # contribution node whose rdf:value is decided in stage A (quantity functions,
+#                                      # unimplemented functions); stage B may negate its rdf:value (any false wins).
+#                                      # Every other contribution is valued in stage B, single-valued by construction.
+#
+# Fail closed (TR292E §4: true iff ALL contributing properties are true). Every application `?c ?f ?args` of a
+# declared fun:Function gets a contribution node (the same skolem the implementing rules use, so the two coincide).
+# When no rule implements ?f, that node is decided here: rdf:value false plus
+# `tmf:failure "function not implemented: <local name>"`. An unimplemented conjunct therefore makes its element
+# false, never silently true and never valueless.
+#
+# THE IMPLEMENTED LIST MUST GROW WITH THE RULES. Tasks 14-16 MUST add an axiom below for every function they
+# implement (set:*, mf:*, quan:sum and the other quantity functions, ...), in the same change, or the function stays
+# "not implemented" and its contribution false. Non-boolean functions (set:*, quan:sum, ...) also get a contribution
+# node from `contributionDeclared`; their implementing rules decide what, if anything, that node contributes.
+#
+# Negation in stage A: `notImplemented` uses noValue over the implemented axioms only. Jena's RETE engine adds every
+# axiom to the deductions graph before it processes any data triple (RETEEngine.init: findAndProcessAxioms, then
+# fastInit; addTriple(t, true) writes the deduction at once), so this reads a complete fact.
 
 @prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix fun:  <http://tio.models.tmforum.org/tio/v3.6.0/FunctionOntology/> .
 @prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
 @prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
 @prefix tmf:  <http://tmforum.org/api/v5/> .
 
 # ── Intent elements (TR292A §4, design §5.2) ───────────────────────────────────────────────────────────────────
@@ -47,3 +66,22 @@
 [contribGap: (?a tmf:contribBefore ?c) (?c tmf:contribBefore ?b) -> (?a tmf:contribGap ?b)]
 [contribEarlier: (?a tmf:contribBefore ?b) -> (?b tmf:contribHasEarlier tmf:Yes)]
 [contribLater: (?a tmf:contribBefore ?b) -> (?a tmf:contribHasLater tmf:Yes)]
+
+# ── Implemented functions (axioms; see the header: Tasks 14-16 extend this list) ───────────────────────────────
+
+[implementedQuantity: -> (quan:atLeast tmf:implemented tmf:Yes) (quan:atMost tmf:implemented tmf:Yes)
+                         (quan:greater tmf:implemented tmf:Yes) (quan:smaller tmf:implemented tmf:Yes)
+                         (quan:exactly tmf:implemented tmf:Yes) (quan:inRange tmf:implemented tmf:Yes)]
+[implementedLogic: -> (log:allOf tmf:implemented tmf:Yes) (log:anyOf tmf:implemented tmf:Yes)
+                      (log:noneOf tmf:implemented tmf:Yes) (log:oneOf tmf:implemented tmf:Yes)
+                      (log:match tmf:implemented tmf:Yes) (log:matchAll tmf:implemented tmf:Yes)
+                      (log:matchAny tmf:implemented tmf:Yes) (log:matchNone tmf:implemented tmf:Yes)
+                      (log:matchOne tmf:implemented tmf:Yes) (log:matchStatement tmf:implemented tmf:Yes)]
+
+# ── Every declared function application contributes; unimplemented ones are false (fail closed) ────────────────
+
+[contributionDeclared: (?f rdf:type fun:Function) (?c ?f ?args) makeSkolem(?k, ?c, ?f, ?args)
+    -> (?c tmf:contribution ?k) (?k tmf:function ?f) (?k tmf:arguments ?args)]
+[notImplemented: (?k tmf:function ?f) noValue(?f tmf:implemented tmf:Yes)
+    strConcat(?f, ?iri) regex(?iri, '(?:.*[/#])?([^/#]*)', ?n) strConcat('function not implemented: ', ?n, ?t)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure ?t) (?k tmf:valuedInA tmf:Yes)]
