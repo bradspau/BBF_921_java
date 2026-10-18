@@ -41,8 +41,12 @@ class ResultGraphWriterTest {
     }
 
     private Model graph(String intentTtl, String inv, String... obs) {
+        return graphHolding(intentTtl, inv, java.util.List.of(), obs);
+    }
+
+    private Model graphHolding(String intentTtl, String inv, java.util.Collection<String> held, String... obs) {
         String obsTtl = obs.length == 0 ? null : observations(obs);
-        EvaluationResult r = evaluator.evaluate(intentTtl, obsTtl, inv);
+        EvaluationResult r = evaluator.evaluate(intentTtl, obsTtl, inv, held);
         Model o = ModelFactory.createDefaultModel();
         if (obsTtl != null) o.read(new StringReader(obsTtl), "http://tmforum.org/", "TURTLE");
         return ResultGraphWriter.write(r.report(), o);
@@ -153,5 +157,52 @@ class ResultGraphWriterTest {
         assertEquals(1, count(m, "bbf:SelectedUNIInterface rdfs:member ?r"));
         assertFalse(ask(m, "bbf:SelectedUNIInterface rdfs:member pon:UNI-001-1"), "choice comes from the 1000-port pool");
         assertEquals(3, count(m, "?t rdfs:member ?r"));
+    }
+
+    @Test
+    void filterStripsEverythingOutsideTheContractFamilies() {
+        Model all = ModelFactory.createDefaultModel();
+        all.read(new StringReader(intent + "\n" + observations(ALL_OK)), "http://tmforum.org/", "TURTLE");
+        all.add(all.createResource(BBF + "HSIIntent"), all.createProperty(
+                "http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/result"), all.createTypedLiteral(true));
+        all.add(all.createResource(BBF + "HSI_LatencyCondition"), org.apache.jena.vocabulary.RDF.value, all.createTypedLiteral(5));
+        all.add(all.createResource(BBF + "HSI_LatencyCondition"),
+                all.createProperty("urn:tmf921:evaluation#observation"), all.createResource("http://example.org/obs/x"));
+        Model f = ResultContract.filter(all);
+
+        assertFalse(ask(f, "?s icm:result ?o"));
+        assertFalse(ask(f, "?s ?p ?o . FILTER(STRSTARTS(STR(?p), \"urn:tmf921:evaluation#\"))"));
+        assertFalse(ask(f, "?s rdf:value ?v . FILTER(datatype(?v) != xsd:boolean)"));
+        assertFalse(ask(f, "?s a ?t"));
+        // Seed target members (e.g. bbf:HSIServiceTarget rdfs:member ...) are IRI-to-IRI members: the filter
+        // cannot tell them from chosen ones; restricting to chosen members is the extractor's job (class javadoc).
+    }
+
+    @Test
+    void filterFlattensANestedObservationQuantity() {
+        Model in = ModelFactory.createDefaultModel();
+        in.read(new StringReader("""
+                @prefix met: <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+                @prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+                @prefix bbf: <http://broadband-forum.org/Intent#> .
+                bbf:C met:observed <http://example.org/o> .
+                <http://example.org/o> a met:Observation ; met:observedMetric bbf:LatencyMetric ;
+                   <http://www.w3.org/1999/02/22-rdf-syntax-ns#value> [ <http://www.w3.org/1999/02/22-rdf-syntax-ns#value> 8 ; quan:unit "ms" ] .
+                """), "http://tmforum.org/", "TURTLE");
+        Model f = ResultContract.filter(in);
+        assertTrue(ask(f, "bbf:C met:observed ?o . ?o rdf:value 8 ; quan:unit \"ms\""));
+        assertEquals(0, count(f, "?s ?p ?o . FILTER(isBlank(?o))"));
+    }
+
+    @Test
+    void reevaluationWhileHoldingTheResources_givesAnIdenticalGraph() {
+        Model first = graph(intent, inventory, ALL_OK);
+        String allocated = inventory
+                .replaceFirst("(pon:UNI-001-1\\s[^.]*?)pon:inUse\\s+false", "$1pon:inUse true ;\n pon:assignedToService \"a\"")
+                .replaceFirst("(pon:CTAG-N-001\\s[^.]*?)pon:inUse\\s+false", "$1pon:inUse true ;\n pon:assignedToService \"a\"");
+        var held = java.util.List.of("http://broadband-forum.org/ont/pon-resource#UNI-001-1",
+                "http://broadband-forum.org/ont/pon-resource#CTAG-N-001");
+        Model second = graphHolding(intent, allocated, held, ALL_OK);
+        assertTrue(ResultContract.sameResults(first, second));
     }
 }

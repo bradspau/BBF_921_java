@@ -22,7 +22,7 @@ public final class Reasons {
         return plain(value) + (unit != null ? " " + unit : "");
     }
 
-    static String plain(Object v) {
+    public static String plain(Object v) {
         return v instanceof BigDecimal bd ? bd.toPlainString() : String.valueOf(v);
     }
 }

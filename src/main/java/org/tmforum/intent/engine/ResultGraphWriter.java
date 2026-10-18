@@ -30,8 +30,9 @@ public final class ResultGraphWriter {
     }
 
     private static void element(Model m, ElementResult e, Model observations, Set<String> seen) {
+        if (!seen.add(e.uri())) return;                    // one element, one set of triples
         Resource r = m.createResource(e.uri());
-        if (seen.add(e.uri())) r.addLiteral(RDF.value, e.passed());
+        r.addLiteral(RDF.value, e.passed());
         for (ElementResult child : e.children()) element(m, child, observations, seen);
 
         for (Map<String, Object> d : e.details()) {
@@ -62,25 +63,12 @@ public final class ResultGraphWriter {
         Literal value = null;
         Literal unit = null;
         if (known) {
-            Statement metric = observations.getProperty(src, ResultContract.MET_OBSERVED_METRIC);
-            if (metric != null) obs.addProperty(ResultContract.MET_OBSERVED_METRIC, metric.getObject());
-            Statement vs = observations.getProperty(src, RDF.value);
-            Statement us = observations.getProperty(src, ResultContract.QUAN_UNIT);
-            if (vs != null && vs.getObject().isResource()) {          // nested quantity
-                Resource q = vs.getObject().asResource();
-                Statement inner = observations.getProperty(q, RDF.value);
-                Statement qu = observations.getProperty(q, ResultContract.QUAN_UNIT);
-                if (inner != null && inner.getObject().isLiteral()) value = inner.getObject().asLiteral();
-                if (qu != null && qu.getObject().isLiteral()) unit = qu.getObject().asLiteral();
-            } else if (vs != null && vs.getObject().isLiteral()) {
-                value = vs.getObject().asLiteral();
-            }
-            if (unit == null && us != null && us.getObject().isLiteral()) unit = us.getObject().asLiteral();
-        } else {
-            if (d.get("metric") != null) obs.addProperty(ResultContract.MET_OBSERVED_METRIC, m.createResource(d.get("metric").toString()));
-            if (d.get("observed") instanceof BigDecimal bd) value = m.createTypedLiteral(bd);
-            if (d.get("observedUnit") != null) unit = m.createLiteral(d.get("observedUnit").toString());
+            ResultContract.copyObservation(observations, m, src);
+            return obs;
         }
+        if (d.get("metric") != null) obs.addProperty(ResultContract.MET_OBSERVED_METRIC, m.createResource(d.get("metric").toString()));
+        if (d.get("observed") instanceof BigDecimal bd) value = m.createTypedLiteral(bd);
+        if (d.get("observedUnit") != null) unit = m.createLiteral(d.get("observedUnit").toString());
         if (value != null) obs.addLiteral(RDF.value, value);
         if (unit != null) obs.addLiteral(ResultContract.QUAN_UNIT, unit);
         return obs;

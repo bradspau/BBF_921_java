@@ -132,7 +132,7 @@ public class ReportBuilder {
                     Resource obs = m.createResource();
                     obs.addProperty(RDF.type, m.createResource(MET + "Observation"));
                     obs.addProperty(m.createProperty(MET + "observedMetric"), m.createResource(d.get("metric").toString()));
-                    obs.addProperty(RDF.value, m.createTypedLiteral(plain(d.get("observed")), XSDDatatype.XSDdecimal));
+                    obs.addProperty(RDF.value, m.createTypedLiteral(Reasons.plain(d.get("observed")), XSDDatatype.XSDdecimal));
                     if (d.get("observedUnit") != null) {
                         obs.addProperty(m.createProperty(TioNamespaces.QUAN + "unit"), d.get("observedUnit").toString());
                     }
@@ -184,10 +184,6 @@ public class ReportBuilder {
             case "ReportingExpectation" -> "ReportingExpectationReport";
             default -> "ExpectationReport";
         };
-    }
-
-    private static String plain(Object v) {
-        return v instanceof BigDecimal bd ? bd.toPlainString() : String.valueOf(v);
     }
 
     private static String safe(String uri) {

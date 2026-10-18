@@ -5,8 +5,6 @@ import org.junit.jupiter.api.Test;
 import org.tmforum.intent.handler.TurtleEvaluator;
 import org.tmforum.intent.model.EvaluationResult;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 

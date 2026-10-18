@@ -10,8 +10,6 @@ import org.tmforum.intent.handler.TurtleEvaluator;
 import org.tmforum.intent.model.EvaluationResult;
 
 import java.io.StringReader;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
 
 import static org.tmforum.intent.unit.TestInputs.*;
