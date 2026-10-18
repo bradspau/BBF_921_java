@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 
+import static org.tmforum.intent.unit.TestInputs.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** TR290 §4 reports built from the real seed intent and PON inventory. */
@@ -44,36 +45,10 @@ class ReportBuilderTest {
     void setUp() throws Exception {
         evaluator = new TurtleEvaluator();
         builder = new ReportBuilder();
-        intent = Files.readString(Path.of("seed_data/hsionlyintent_v0.5.ttl"));
-        inventory = Files.readString(Path.of("BBF_access/pon_resource_onto.ttl"))
-                + "\n" + Files.readString(Path.of("BBF_access/pon_resource_data.ttl"));
+        intent = TestInputs.seedIntent();
+        inventory = TestInputs.inventory();
     }
 
-    /** Observations as (metric, value, unit) triples; an empty unit means a value without unit. */
-    private static String observations(String... metricValueUnit) {
-        StringBuilder sb = new StringBuilder("""
-                @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-                @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-                @prefix met: <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
-                @prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
-                """);
-        for (int i = 0; i < metricValueUnit.length; i += 3) {
-            sb.append("<http://example.org/obs/").append(i).append("> a met:Observation ;\n")
-              .append("  met:observedMetric <").append(BBF).append(metricValueUnit[i]).append("> ;\n")
-              .append("  rdf:value \"").append(metricValueUnit[i + 1]).append("\"^^xsd:decimal ;\n");
-            if (!metricValueUnit[i + 2].isEmpty()) {
-                sb.append("  quan:unit \"").append(metricValueUnit[i + 2]).append("\" ;\n");
-            }
-            sb.append("  met:obtainedAt \"2026-06-11T10:00:0").append(i / 3).append("Z\"^^xsd:dateTime .\n");
-        }
-        return sb.toString();
-    }
-
-    private static final String[] ALL_OK = {
-            "DownstreamBandwidthMetric", "150", "Mbps", "UpstreamBandwidthMetric", "30", "Mbps",
-            "LatencyMetric", "8", "ms", "JitterMetric", "1.2", "ms", "PacketLossMetric", "0.02", "percent"};
-    private static final String[] BANDWIDTH_ONLY = {
-            "DownstreamBandwidthMetric", "150", "Mbps", "UpstreamBandwidthMetric", "30", "Mbps"};
 
     private Model report(String intentTtl, String... obs) {
         EvaluationResult r = evaluator.evaluate(intentTtl, obs.length == 0 ? null : observations(obs), inventory);

@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
+import static org.tmforum.intent.unit.TestInputs.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -26,34 +27,10 @@ class HsiSeedIntentTest {
     @BeforeEach
     void setUp() throws Exception {
         evaluator = new TurtleEvaluator();
-        intent = Files.readString(Path.of("seed_data/hsionlyintent_v0.5.ttl"));
-        inventory = Files.readString(Path.of("BBF_access/pon_resource_onto.ttl"))
-                + "\n" + Files.readString(Path.of("BBF_access/pon_resource_data.ttl"));
+        intent = TestInputs.seedIntent();
+        inventory = TestInputs.inventory();
     }
 
-    /** Observations as (metric, value, unit) triples; an empty unit means a value without unit. */
-    private static String observations(String... metricValueUnit) {
-        StringBuilder sb = new StringBuilder("""
-                @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-                @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-                @prefix met: <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
-                @prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
-                """);
-        for (int i = 0; i < metricValueUnit.length; i += 3) {
-            sb.append("<http://example.org/obs/").append(i).append("> a met:Observation ;\n")
-              .append("  met:observedMetric <").append(BBF).append(metricValueUnit[i]).append("> ;\n")
-              .append("  rdf:value \"").append(metricValueUnit[i + 1]).append("\"^^xsd:decimal ;\n");
-            if (!metricValueUnit[i + 2].isEmpty()) {
-                sb.append("  quan:unit \"").append(metricValueUnit[i + 2]).append("\" ;\n");
-            }
-            sb.append("  met:obtainedAt \"2026-06-11T10:00:0").append(i / 3).append("Z\"^^xsd:dateTime .\n");
-        }
-        return sb.toString();
-    }
-
-    private static final String[] ALL_METRICS_OK = {
-            "DownstreamBandwidthMetric", "150", "Mbps", "UpstreamBandwidthMetric", "30", "Mbps",
-            "LatencyMetric", "8", "ms", "JitterMetric", "1.2", "ms", "PacketLossMetric", "0.02", "percent"};
 
     private List<Map<String, Object>> deliveries(EvaluationResult r) {
         return r.conditions().stream().filter(c -> "DeliveryExpectation".equals(c.get("type"))).toList();
@@ -61,7 +38,7 @@ class HsiSeedIntentTest {
 
     @Test
     void allMetricsOk_fulfilled_withUniStagAndCtagSelected() {
-        EvaluationResult r = evaluator.evaluate(intent, observations(ALL_METRICS_OK), inventory);
+        EvaluationResult r = evaluator.evaluate(intent, observations(ALL_OK), inventory);
 
         assertEquals("Fulfilled", r.intentHandlingState(), r.reason());
         assertEquals(8, r.conditions().size(), "3 delivery + 5 metric conditions");
@@ -124,7 +101,7 @@ class HsiSeedIntentTest {
     void noHsiSVlans_stagAndCtagCannotBeDelivered() {
         // Same inventory but with the HSI service type removed from every S-VLAN
         String noHsi = inventory.replace("pon:serviceType   pon:HSIService ;", "pon:serviceType   pon:VoIPService ;");
-        EvaluationResult r = evaluator.evaluate(intent, observations(ALL_METRICS_OK), noHsi);
+        EvaluationResult r = evaluator.evaluate(intent, observations(ALL_OK), noHsi);
 
         assertEquals("Degraded", r.intentHandlingState());
         assertEquals(1, deliveries(r).stream().filter(d -> Boolean.TRUE.equals(d.get("passed"))).count(),
@@ -136,7 +113,7 @@ class HsiSeedIntentTest {
         // Rename the South C-tags so they sort before every North one; the S-tag chosen is still SVLAN-N-HSI,
         // so the C-tag must still come from it
         String renamed = inventory.replace("pon:CTAG-S-", "pon:CTAG-A-");
-        EvaluationResult r = evaluator.evaluate(intent, observations(ALL_METRICS_OK), renamed);
+        EvaluationResult r = evaluator.evaluate(intent, observations(ALL_OK), renamed);
 
         assertEquals("Fulfilled", r.intentHandlingState(), r.reason());
         String ctag = deliveries(r).stream()
@@ -156,7 +133,7 @@ class HsiSeedIntentTest {
 
     @Test
     void reevaluationAfterAllocation_keepsTheAllocatedResources() {
-        EvaluationResult r = evaluator.evaluate(intent, observations(ALL_METRICS_OK), allocatedToIntentA(), HELD_BY_A);
+        EvaluationResult r = evaluator.evaluate(intent, observations(ALL_OK), allocatedToIntentA(), HELD_BY_A);
 
         assertEquals("Fulfilled", r.intentHandlingState(), r.reason());
         Map<String, String> sel = new java.util.HashMap<>();
@@ -168,7 +145,7 @@ class HsiSeedIntentTest {
     @Test
     void withoutHoldings_reevaluationAfterAllocationPicksDifferentResources() {
         // Documents the problem the holdings solve
-        EvaluationResult r = evaluator.evaluate(intent, observations(ALL_METRICS_OK), allocatedToIntentA());
+        EvaluationResult r = evaluator.evaluate(intent, observations(ALL_OK), allocatedToIntentA());
         String uni = deliveries(r).stream().filter(d -> (PON + "UNIPort").equals(d.get("deliveryType")))
                 .map(d -> (String) d.get("selected")).findFirst().orElseThrow();
         assertEquals(PON + "UNI-001-2", uni);
@@ -179,16 +156,16 @@ class HsiSeedIntentTest {
         String othersTookTheRest = allocatedToIntentA().replaceAll(
                 "(pon:UNI-(?!001-1)\\d+-\\d\\s[^.]*?)pon:inUse\\s+false", "$1pon:inUse true");
 
-        assertEquals("Degraded", evaluator.evaluate(intent, observations(ALL_METRICS_OK), othersTookTheRest)
+        assertEquals("Degraded", evaluator.evaluate(intent, observations(ALL_OK), othersTookTheRest)
                 .intentHandlingState());
-        assertEquals("Fulfilled", evaluator.evaluate(intent, observations(ALL_METRICS_OK), othersTookTheRest, HELD_BY_A)
+        assertEquals("Fulfilled", evaluator.evaluate(intent, observations(ALL_OK), othersTookTheRest, HELD_BY_A)
                 .intentHandlingState());
     }
 
     @Test
     void everyUniInUse_uniDeliveryFails() {
         String allUsed = inventory.replace("pon:inUse         false ;", "pon:inUse         true ;");
-        EvaluationResult r = evaluator.evaluate(intent, observations(ALL_METRICS_OK), allUsed);
+        EvaluationResult r = evaluator.evaluate(intent, observations(ALL_OK), allUsed);
 
         assertEquals("Degraded", r.intentHandlingState());
         assertTrue(r.reason().contains("no candidate of type UNIPort"), r.reason());

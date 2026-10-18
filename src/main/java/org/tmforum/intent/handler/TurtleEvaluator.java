@@ -40,7 +40,7 @@ public class TurtleEvaluator {
     private static final Property SET_P_difference = ResourceFactory.createProperty(SET + "difference");
 
     /** An observed value together with its unit (null = dimensionless). */
-    private record Observed(Literal value, String unit) {}
+    private record Observed(Literal value, String unit, Resource source) {}
 
     // ── Combinator descriptors ───────────────────────────────────────────────
     private enum Combinator { ALL, ANY, NONE, ONE }
@@ -90,6 +90,8 @@ public class TurtleEvaluator {
 
     /** Evaluation context carried in the model: the resources the intent being evaluated already holds. */
     private static final Resource EVAL_CONTEXT = ResourceFactory.createResource("urn:tmf921:evaluation");
+    /** Helper triple: the observation individual that supplied a metric node's value (reported as met:observed). */
+    private static final Property OBSERVATION_USED = ResourceFactory.createProperty("urn:tmf921:evaluation#observation");
     private static final Property EVAL_HOLDS = ResourceFactory.createProperty("urn:tmf921:evaluation#holds");
 
     private EvaluationResult doEvaluate(String expressionTurtle,
@@ -390,6 +392,7 @@ public class TurtleEvaluator {
             if (vs != null) g.add(fn, RDF.value, vs.getObject());
             Statement us = g.getProperty(obs, QUAN_unit);
             if (us != null) g.add(fn, QUAN_unit, us.getObject());
+            if (obs.isURIResource()) g.add(fn, OBSERVATION_USED, obs);
         }
 
         // Pattern A: direct metric URI as rdf:first of a quantity condition
@@ -414,6 +417,7 @@ public class TurtleEvaluator {
     /** Makes the metric (or function result) node carry the observed value and unit as a quantity. */
     private void assignObserved(Model g, Resource node, Observed o) {
         g.addLiteral(node, RDF.value, o.value());
+        if (o.source() != null && o.source().isURIResource()) g.add(node, OBSERVATION_USED, o.source());
         if (o.unit() != null) g.add(node, QUAN_unit, g.createLiteral(o.unit()));
     }
 
@@ -444,14 +448,14 @@ public class TurtleEvaluator {
         Statement vs = g.getProperty(obs, RDF.value);
         if (vs == null) return null;
         if (vs.getObject().isLiteral()) {
-            return new Observed(vs.getObject().asLiteral(), unitOf(g, obs));
+            return new Observed(vs.getObject().asLiteral(), unitOf(g, obs), obs);
         }
         if (vs.getObject().isResource()) {
             Resource q = vs.getObject().asResource();
             Statement inner = g.getProperty(q, RDF.value);
             if (inner != null && inner.getObject().isLiteral()) {
                 String unit = unitOf(g, q);
-                return new Observed(inner.getObject().asLiteral(), unit != null ? unit : unitOf(g, obs));
+                return new Observed(inner.getObject().asLiteral(), unit != null ? unit : unitOf(g, obs), obs);
             }
         }
         return null;
@@ -924,6 +928,10 @@ public class TurtleEvaluator {
         if (obsUnit != null) c.put("observedUnit", obsUnit);
         if (bndUnit != null) c.put("boundUnit", bndUnit);
         if (metricUri != null) c.put("metric", metricUri);
+        if (firstStmt.getObject().isResource()) {
+            Statement used = g.getProperty(firstStmt.getObject().asResource(), OBSERVATION_USED);
+            if (used != null && used.getObject().isURIResource()) c.put("observation", used.getObject().asResource().getURI());
+        }
         if (node.isURIResource()) c.put("element", node.getURI());
         boolean passed;
         try {

@@ -10,6 +10,7 @@ import org.apache.jena.riot.RDFDataMgr;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.springframework.stereotype.Component;
+import org.tmforum.intent.engine.Reasons;
 import org.tmforum.intent.graph.GraphNodes;
 import org.tmforum.intent.graph.Namespaces;
 import org.tmforum.intent.graph.TioNamespaces;
@@ -119,7 +120,7 @@ public class ReportBuilder {
 
             for (Map<String, Object> d : e.details()) {
                 if (!Boolean.TRUE.equals(d.get("passed"))) {
-                    String why = reason(d);
+                    String why = Reasons.of(d);
                     if (why != null) {
                         Resource reason = m.createResource(base + "reason/" + (++reasons));
                         reason.addProperty(RDF.type, m.createResource(ICM + "Reason"));
@@ -183,20 +184,6 @@ public class ReportBuilder {
             case "ReportingExpectation" -> "ReportingExpectationReport";
             default -> "ExpectationReport";
         };
-    }
-
-    /** Human-readable explanation of why a leaf element is false. */
-    private static String reason(Map<String, Object> d) {
-        if (d.get("error") != null) return d.get("error").toString();
-        if (d.get("observed") != null && d.get("operator") != null && d.get("bound") != null) {
-            return withUnit(d.get("observed"), d.get("observedUnit")) + " " + d.get("operator") + " "
-                    + withUnit(d.get("bound"), d.get("boundUnit")) + " is false";
-        }
-        return null;
-    }
-
-    private static String withUnit(Object value, Object unit) {
-        return plain(value) + (unit != null ? " " + unit : "");
     }
 
     private static String plain(Object v) {
