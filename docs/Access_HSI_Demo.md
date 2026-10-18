@@ -220,11 +220,14 @@ Expected: `intentHandlingState: Fulfilled`
 
 ### Verify resource write-back
 
-The TDB2 resource graph now has `pon:inUse true` on the allocated port.
-Use the SPARQL query endpoint embedded via the health check:
+When the intent becomes `Fulfilled`, the handler picks one free UNI port and one free C-TAG from the
+PON inventory and records the allocation on them in the resource graph:
+`pon:inUse true` and `pon:assignedToService "<intent-id>"`.
+
+**1. Confirm the intent itself is still active.** This only reads the intent resource (its type and
+`lifecycleStatus`); it does *not* show the allocation:
 
 ```bash
-# Check handler state (OODA working memory)
 curl -s "$BASE/intent/$INTENT_ID" \
   | python3 -c "
 import sys, json
@@ -234,19 +237,53 @@ print('lifecycleStatus: ', d.get('lifecycleStatus'))
 "
 ```
 
-**With Fuseki enabled** (`access,fuseki` profiles), run this in the Fuseki UI query tab at
-<http://localhost:3030>, or via curl, to see allocated ports directly:
+Expected: `@type: Intent`, `lifecycleStatus: ACTIVE`.
+
+**2. Show what this intent allocated.** The allocation lives only in the TDB2 resource graph, so it
+cannot be read through the TMF921 API. With Fuseki enabled (`access,fuseki` profiles, see above) query
+it by intent ID, either in the Fuseki UI query tab at <http://localhost:3030> or with curl:
 
 ```bash
 curl -s -G http://localhost:3030/intents/sparql \
-  -H 'Accept: application/sparql-results+json' \
-  --data-urlencode 'query=PREFIX pon: <http://broadband-forum.org/ont/pon-resource#>
-SELECT ?port ?svc WHERE {
+  -H 'Accept: text/csv' \
+  --data-urlencode "query=PREFIX pon: <http://broadband-forum.org/ont/pon-resource#>
+SELECT ?resource ?type ?cTag ?sTag WHERE {
   GRAPH <http://tmforum.org/api/v5/resources> {
-    ?port pon:inUse true ; pon:assignedToService ?svc .
+    ?resource a ?type ;
+              pon:inUse true ;
+              pon:assignedToService \"$INTENT_ID\" .
+    OPTIONAL { ?resource pon:cTag ?cTag ;
+                         pon:fromSVLAN ?svlan .
+               ?svlan pon:sTag ?sTag }
   }
-}'
+}"
 ```
+
+Expected: two rows for your intent ID:
+
+| Row | `type` | `cTag` / `sTag` | Meaning |
+|---|---|---|---|
+| 1 | `pon:UNIPort` | empty | The subscriber-facing port allocated to the service (e.g. `UNI-003-1`) |
+| 2 | `pon:CTAGAllocation` | e.g. `201` / `100` | The inner VLAN (C-tag) taken from the S-VLAN pool (S-tag 100); the `N`/`S` in `CTAG-N-002` / `CTAG-S-002` is the North/South pool, not "S-tag" |
+
+Both rows must carry your intent ID. Resources that belonged to the initial inventory (`UNI-002-1`,
+`CTAG-N-002`) show `existing-service-placeholder` instead; those were already in use before the demo.
+
+To list every allocation in the graph, whichever service owns it, drop the intent filter:
+
+```sparql
+PREFIX pon: <http://broadband-forum.org/ont/pon-resource#>
+SELECT ?resource ?svc WHERE {
+  GRAPH <http://tmforum.org/api/v5/resources> {
+    ?resource pon:inUse true ; pon:assignedToService ?svc .
+  }
+}
+```
+
+Each resource should appear **once**. If the same port or C-tag appears with two different service IDs,
+two intents were allocated the same resource. The write-back only claims a resource that is still
+`pon:inUse false`, so this should not happen; start from a clean store (`docker compose down -v`) and
+repeat to confirm.
 
 Without Fuseki, for direct TDB2 verification, run the AccessDemoIT integration test which performs
 a SPARQL ASK query against the embedded dataset:
@@ -260,9 +297,13 @@ Expected:
 Tests run: 6, Failures: 0, Errors: 0, Skipped: 0
 ```
 
-The test class `AccessDemoIT` uses `@Autowired Dataset` to execute:
+The test class `AccessDemoIT` uses `@Autowired Dataset` to execute the query below. It also works as-is in the
+Fuseki UI (`access,fuseki` profiles): replace `INTENT_ID` with your intent's UUID, and keep the `PREFIX` line,
+without it Fuseki rejects the query with "Unresolved prefixed name: pon:UNIPort". It returns `true` if the intent
+has been allocated a UNI port.
 
 ```sparql
+PREFIX pon: <http://broadband-forum.org/ont/pon-resource#>
 ASK {
   GRAPH <http://tmforum.org/api/v5/resources> {
     ?port a pon:UNIPort ;
