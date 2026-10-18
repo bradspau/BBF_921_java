@@ -1,0 +1,290 @@
+# tio_a_quantity.rules — stage A: quantity comparison functions (TR292D §5.2, §8) with units, and
+# met:lastValue / bare metric arguments resolved through the newest observation (TR292G).
+#
+# Input shape is the specification form (TR292C §2): a function applied as a property whose object is the
+# rdf:List of its arguments, `?s quan:atLeast ( arg1 arg2 )`.
+#
+# Stage A derives positive facts only. Every application of a function gets its own result node
+# ("contribution") with exactly one explicit rdf:value true or false, so enclosing operators never wait on it.
+# The element's own rdf:value is NOT written here: several functions on one element combine by conjunction
+# (TR292A §4), which is stage B's job (design §5.5.1, Task 13).
+#
+#   ?s tmf:contribution ?k .                         # ?k = makeSkolem(?s, function, argument list)
+#   ?k tmf:function quan:atLeast ; tmf:arguments ?list ;
+#      rdf:value true|false ;
+#      tmf:failure "text" .                          # only for an error; text = the Java engine's (Reasons.of)
+#
+# Argument cells (the list's cons cells) carry what each argument resolved to:
+#   ?cell tmf:argValue ?literal ; tmf:argUnit "Mbps" ("" = no unit) ; tmf:argName "LocalName" ;
+#         tmf:argObservation ?obs                    # metric arguments: the observation that was used
+#   ?cell tmf:argMissing "LocalName"                 # metric without observation, quantity without value
+#
+# All helper predicates are in the tmf: namespace and never reach the result contract (ContractExtractor copies
+# only rdf:value / icm:reason / met:observed of IRI intent elements; ResultContract.filter drops the rest).
+#
+# Negation (noValue) is used only over input facts (rdf:value / quan:unit / met:lastValue / rdf:first of input
+# nodes), which are complete when the stage starts (design §5.5.1). The observation builtins likewise read only
+# input observations. Constraint for later stage A rules: do not derive rdf:value on nodes that can be quantity
+# arguments (only on contribution nodes), or the argument classification below would race.
+#
+# Supported: quan:atLeast, atMost, greater, smaller, exactly (n-ary, TR292D §8.5) and inRange (value, lower,
+# upper; inclusive; TR292D §8.9), plus the accepted legacy aliases quan:quanatLeast ... as predicates and the
+# legacy type form `?s a quan:quanatMost ; rdf:first ?a ; rdf:rest ( ?b )` (DEVIATIONS.md entry 5).
+# Extra arguments to the fixed-arity functions are ignored, as in the Java engine.
+#
+# Needs the builtins of JenaBuiltins.register(): unitCompare, unitMismatch, isNumber, notNumber,
+# newestObservation, noObservation.
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix met:  <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix tmf:  <http://tmforum.org/api/v5/> .
+
+# ── 0. Accepted legacy forms, rewritten to the specification form ──────────────────────────────────────────
+
+[quanAliasAtLeast: (?s quan:quanatLeast ?l) -> (?s quan:atLeast ?l)]
+[quanAliasAtMost:  (?s quan:quanatMost ?l)  -> (?s quan:atMost ?l)]
+[quanAliasGreater: (?s quan:quangreater ?l) -> (?s quan:greater ?l)]
+[quanAliasSmaller: (?s quan:quansmaller ?l) -> (?s quan:smaller ?l)]
+[quanAliasExactly: (?s quan:quanexactly ?l) -> (?s quan:exactly ?l)]
+[quanAliasInRange: (?s quan:quaninRange ?l) -> (?s quan:inRange ?l)]
+
+# Type form: the subject is itself the argument list.
+[quanTypeAtLeast:  (?s rdf:type quan:quanatLeast) (?s rdf:first ?x) -> (?s quan:atLeast ?s)]
+[quanTypeAtLeast2: (?s rdf:type quan:atLeast)     (?s rdf:first ?x) -> (?s quan:atLeast ?s)]
+[quanTypeAtMost:   (?s rdf:type quan:quanatMost)  (?s rdf:first ?x) -> (?s quan:atMost ?s)]
+[quanTypeAtMost2:  (?s rdf:type quan:atMost)      (?s rdf:first ?x) -> (?s quan:atMost ?s)]
+[quanTypeGreater:  (?s rdf:type quan:quangreater) (?s rdf:first ?x) -> (?s quan:greater ?s)]
+[quanTypeGreater2: (?s rdf:type quan:greater)     (?s rdf:first ?x) -> (?s quan:greater ?s)]
+[quanTypeSmaller:  (?s rdf:type quan:quansmaller) (?s rdf:first ?x) -> (?s quan:smaller ?s)]
+[quanTypeSmaller2: (?s rdf:type quan:smaller)     (?s rdf:first ?x) -> (?s quan:smaller ?s)]
+[quanTypeExactly:  (?s rdf:type quan:quanexactly) (?s rdf:first ?x) -> (?s quan:exactly ?s)]
+[quanTypeExactly2: (?s rdf:type quan:exactly)     (?s rdf:first ?x) -> (?s quan:exactly ?s)]
+[quanTypeInRange:  (?s rdf:type quan:quaninRange) (?s rdf:first ?x) -> (?s quan:inRange ?s)]
+[quanTypeInRange2: (?s rdf:type quan:inRange)     (?s rdf:first ?x) -> (?s quan:inRange ?s)]
+
+# ── 1. Applications: one contribution node per (subject, function, argument list) ──────────────────────────
+
+[quanApplyAtLeast: (?s quan:atLeast ?l) makeSkolem(?k, ?s, quan:atLeast, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function quan:atLeast) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:BinaryComparison)]
+[quanApplyAtMost: (?s quan:atMost ?l) makeSkolem(?k, ?s, quan:atMost, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function quan:atMost) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:BinaryComparison)]
+[quanApplyGreater: (?s quan:greater ?l) makeSkolem(?k, ?s, quan:greater, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function quan:greater) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:BinaryComparison)]
+[quanApplySmaller: (?s quan:smaller ?l) makeSkolem(?k, ?s, quan:smaller, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function quan:smaller) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:BinaryComparison)]
+[quanApplyExactly: (?s quan:exactly ?l) makeSkolem(?k, ?s, quan:exactly, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function quan:exactly) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:ExactlyComparison)]
+[quanApplyInRange: (?s quan:inRange ?l) makeSkolem(?k, ?s, quan:inRange, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function quan:inRange) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:RangeComparison)]
+
+# Argument cells and positions.
+[quanCellHead: (?k tmf:arguments ?l) (?l rdf:first ?x) -> (?l rdf:type tmf:QuanCell) (?k tmf:arg1 ?l)]
+[quanCellNext: (?c rdf:type tmf:QuanCell) (?c rdf:rest ?r) (?r rdf:first ?x) -> (?r rdf:type tmf:QuanCell)]
+[quanArg2: (?k tmf:arg1 ?a) (?a rdf:rest ?b) (?b rdf:type tmf:QuanCell) -> (?k tmf:arg2 ?b)]
+[quanArg3: (?k tmf:arg2 ?b) (?b rdf:rest ?h) (?h rdf:type tmf:QuanCell) -> (?k tmf:arg3 ?h)]
+[quanArity: (?k tmf:arguments ?l) listLength(?l, ?n) -> (?k tmf:arity ?n)]
+
+# Arguments that are not a list at all: no operands.
+[quanArgsLiteral: (?k tmf:arguments ?l) isLiteral(?l)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes")]
+[quanArgsNotList: (?k tmf:arguments ?l) notLiteral(?l) notEqual(?l, rdf:nil) noValue(?l rdf:first)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes")]
+
+# ── 2. Argument resolution (per cell): value + unit, or missing ─────────────────────────────────────────────
+
+# Name used in "no observation: <name>": local name of an IRI, "?" otherwise.
+[quanArgNameIri: (?c rdf:type tmf:QuanCell) (?c rdf:first ?a) notLiteral(?a) notBNode(?a)
+    strConcat(?a, ?iri) regex(?iri, '(?:.*[/#])?([^/#]*)', ?n) -> (?c tmf:argName ?n)]
+[quanArgNameOther: (?c rdf:type tmf:QuanCell) (?c rdf:first ?a) isBNode(?a) -> (?c tmf:argName "?")]
+[quanArgNameLiteral: (?c rdf:type tmf:QuanCell) (?c rdf:first ?a) isLiteral(?a) -> (?c tmf:argName "?")]
+
+# A literal is a unitless quantity (TR292D §2.2).
+[quanArgLiteral: (?c rdf:type tmf:QuanCell) (?c rdf:first ?a) isLiteral(?a)
+    -> (?c tmf:argValue ?a) (?c tmf:argUnit "")]
+
+# A node with its own rdf:value is a quantity (TR292D §2), even if it is also a metric.
+[quanArgQuantity: (?c rdf:type tmf:QuanCell) (?c rdf:first ?a) notLiteral(?a) (?a rdf:value ?x)
+    -> (?c tmf:argNode ?a)]
+
+# [ met:lastValue ( ?m ) ]: the newest observation of ?m (TR292G). A bare metric object is accepted too.
+[quanLastValueList: (?a met:lastValue ?ml) (?ml rdf:first ?m) -> (?a tmf:lastValueOf ?m)]
+[quanLastValueBare: (?a met:lastValue ?m) notLiteral(?m) notEqual(?m, rdf:nil) noValue(?m rdf:first)
+    -> (?a tmf:lastValueOf ?m)]
+[quanArgLastValue: (?c rdf:type tmf:QuanCell) (?c rdf:first ?a) (?a tmf:lastValueOf ?m)
+    newestObservation(?m, ?o) -> (?c tmf:argNode ?o) (?c tmf:argObservation ?o)]
+[quanArgLastValueNone: (?c rdf:type tmf:QuanCell) (?c rdf:first ?a) (?a tmf:lastValueOf ?m)
+    noObservation(?m) notBNode(?m) strConcat(?m, ?iri) regex(?iri, '(?:.*[/#])?([^/#]*)', ?n)
+    -> (?c tmf:argMissing ?n)]
+[quanArgLastValueNoneBlank: (?c rdf:type tmf:QuanCell) (?c rdf:first ?a) (?a tmf:lastValueOf ?m)
+    isBNode(?m) noObservation(?m) -> (?c tmf:argMissing "?")]
+[quanArgLastValueEmpty: (?c rdf:type tmf:QuanCell) (?c rdf:first ?a) (?a met:lastValue rdf:nil)
+    -> (?c tmf:argMissing "?")]
+[quanArgLastValueLiteral: (?c rdf:type tmf:QuanCell) (?c rdf:first ?a) (?a met:lastValue ?x) isLiteral(?x)
+    -> (?c tmf:argMissing "?")]
+
+# Any other node is a metric: the newest observation of it (DEVIATIONS.md entry 5; TR290 §2.2.2 uses it).
+[quanArgMetric: (?c rdf:type tmf:QuanCell) (?c rdf:first ?a) notLiteral(?a)
+    noValue(?a rdf:value) noValue(?a met:lastValue)
+    newestObservation(?a, ?o) -> (?c tmf:argNode ?o) (?c tmf:argObservation ?o)]
+[quanArgMetricNone: (?c rdf:type tmf:QuanCell) (?c rdf:first ?a) notLiteral(?a)
+    noValue(?a rdf:value) noValue(?a met:lastValue)
+    noObservation(?a) (?c tmf:argName ?n) -> (?c tmf:argMissing ?n)]
+
+# Value and unit of a quantity node or observation: a literal rdf:value with quan:unit on the node, or a nested
+# quantity (rdf:value [ rdf:value 10 ; quan:unit "ms" ]) whose unit falls back to the outer node's (TR292C §4).
+[quanNodeValue: (?c tmf:argNode ?n) (?n rdf:value ?v) isLiteral(?v) -> (?c tmf:argValue ?v)]
+[quanNodeUnit: (?c tmf:argNode ?n) (?n rdf:value ?v) isLiteral(?v) (?n quan:unit ?u) isLiteral(?u)
+    -> (?c tmf:argUnit ?u)]
+[quanNodeUnitNotLiteral: (?c tmf:argNode ?n) (?n rdf:value ?v) isLiteral(?v) (?n quan:unit ?u) notLiteral(?u)
+    -> (?c tmf:argUnit "")]
+[quanNodeNoUnit: (?c tmf:argNode ?n) (?n rdf:value ?v) isLiteral(?v) noValue(?n quan:unit)
+    -> (?c tmf:argUnit "")]
+
+[quanNestedValue: (?c tmf:argNode ?n) (?n rdf:value ?q) notLiteral(?q) (?q rdf:value ?v) isLiteral(?v)
+    -> (?c tmf:argValue ?v)]
+[quanNestedUnit: (?c tmf:argNode ?n) (?n rdf:value ?q) notLiteral(?q) (?q rdf:value ?v) isLiteral(?v)
+    (?q quan:unit ?u) isLiteral(?u) -> (?c tmf:argUnit ?u)]
+[quanNestedOuterUnit: (?c tmf:argNode ?n) (?n rdf:value ?q) notLiteral(?q) (?q rdf:value ?v) isLiteral(?v)
+    noValue(?q quan:unit) (?n quan:unit ?u) isLiteral(?u) -> (?c tmf:argUnit ?u)]
+[quanNestedNoUnit: (?c tmf:argNode ?n) (?n rdf:value ?q) notLiteral(?q) (?q rdf:value ?v) isLiteral(?v)
+    noValue(?q quan:unit) noValue(?n quan:unit) -> (?c tmf:argUnit "")]
+
+# A quantity without a usable value (TR292D §6.1 "Quantity has no value"); deeper nesting is not read.
+[quanNestedNoValue: (?c tmf:argNode ?n) (?n rdf:value ?q) notLiteral(?q) noValue(?q rdf:value)
+    (?c tmf:argName ?name) -> (?c tmf:argMissing ?name)]
+[quanNestedTooDeep: (?c tmf:argNode ?n) (?n rdf:value ?q) notLiteral(?q) (?q rdf:value ?w) notLiteral(?w)
+    (?c tmf:argName ?name) -> (?c tmf:argMissing ?name)]
+
+# ── 3. Two-argument comparisons: atLeast, atMost, greater, smaller ─────────────────────────────────────────
+# Order of checks as in the Java engine: operands present, first value, bound value, units, comparison.
+
+[binNoOperands: (?k rdf:type tmf:BinaryComparison) (?k tmf:arity ?n) equal(?n, 0)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes")]
+[binNoBound: (?k rdf:type tmf:BinaryComparison) (?k tmf:arity ?n) equal(?n, 1)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing bound node")]
+
+[binFirstMissing: (?k rdf:type tmf:BinaryComparison) (?k tmf:arity ?n) ge(?n, 2)
+    (?k tmf:arg1 ?a) (?a tmf:argMissing ?name) strConcat('no observation: ', ?name, ?t)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure ?t)]
+[binFirstNotNumber: (?k rdf:type tmf:BinaryComparison) (?k tmf:arity ?n) ge(?n, 2)
+    (?k tmf:arg1 ?a) (?a tmf:argValue ?va) notNumber(?va) (?a tmf:argName ?name)
+    strConcat('no observation: ', ?name, ?t)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure ?t)]
+[binBoundMissing: (?k rdf:type tmf:BinaryComparison) (?k tmf:arg1 ?a) (?a tmf:argValue ?va) isNumber(?va)
+    (?k tmf:arg2 ?b) (?b tmf:argMissing ?x)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing bound value")]
+[binBoundNotNumber: (?k rdf:type tmf:BinaryComparison) (?k tmf:arg1 ?a) (?a tmf:argValue ?va) isNumber(?va)
+    (?k tmf:arg2 ?b) (?b tmf:argValue ?vb) notNumber(?vb)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing bound value")]
+[binMismatch: (?k rdf:type tmf:BinaryComparison)
+    (?k tmf:arg1 ?a) (?a tmf:argValue ?va) (?a tmf:argUnit ?ua) isNumber(?va)
+    (?k tmf:arg2 ?b) (?b tmf:argValue ?vb) (?b tmf:argUnit ?ub) isNumber(?vb)
+    unitMismatch(?ua, ?ub, ?msg)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure ?msg)]
+
+# The comparison itself: ?cmp is -1/0/1 for first <, =, > second (after unit conversion).
+[binCompare: (?k rdf:type tmf:BinaryComparison)
+    (?k tmf:arg1 ?a) (?a tmf:argValue ?va) (?a tmf:argUnit ?ua)
+    (?k tmf:arg2 ?b) (?b tmf:argValue ?vb) (?b tmf:argUnit ?ub)
+    unitCompare(?va, ?ua, ?vb, ?ub, ?cmp) -> (?k tmf:cmp ?cmp)]
+
+[atLeastTrue:  (?k tmf:function quan:atLeast) (?k tmf:cmp ?c) ge(?c, 0)          -> (?k rdf:value "true"^^xsd:boolean)]
+[atLeastFalse: (?k tmf:function quan:atLeast) (?k tmf:cmp ?c) lessThan(?c, 0)    -> (?k rdf:value "false"^^xsd:boolean)]
+[atMostTrue:   (?k tmf:function quan:atMost)  (?k tmf:cmp ?c) le(?c, 0)          -> (?k rdf:value "true"^^xsd:boolean)]
+[atMostFalse:  (?k tmf:function quan:atMost)  (?k tmf:cmp ?c) greaterThan(?c, 0) -> (?k rdf:value "false"^^xsd:boolean)]
+[greaterTrue:  (?k tmf:function quan:greater) (?k tmf:cmp ?c) greaterThan(?c, 0) -> (?k rdf:value "true"^^xsd:boolean)]
+[greaterFalse: (?k tmf:function quan:greater) (?k tmf:cmp ?c) le(?c, 0)          -> (?k rdf:value "false"^^xsd:boolean)]
+[smallerTrue:  (?k tmf:function quan:smaller) (?k tmf:cmp ?c) lessThan(?c, 0)    -> (?k rdf:value "true"^^xsd:boolean)]
+[smallerFalse: (?k tmf:function quan:smaller) (?k tmf:cmp ?c) ge(?c, 0)          -> (?k rdf:value "false"^^xsd:boolean)]
+
+# ── 4. exactly: true if all arguments are the same quantity (TR292D §8.5, at least two arguments) ──────────
+
+[exNoOperands: (?k rdf:type tmf:ExactlyComparison) (?k tmf:arity ?n) equal(?n, 0)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes")]
+[exNoBound: (?k rdf:type tmf:ExactlyComparison) (?k tmf:arity ?n) equal(?n, 1)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing bound node")]
+
+[exCellHead: (?k rdf:type tmf:ExactlyComparison) (?k tmf:arg1 ?a) -> (?a tmf:exactlyCellOf ?k)]
+[exCellNext: (?c tmf:exactlyCellOf ?k) (?c rdf:rest ?r) (?r rdf:type tmf:QuanCell) -> (?r tmf:exactlyCellOf ?k)]
+
+[exFirstMissing: (?k rdf:type tmf:ExactlyComparison) (?k tmf:arity ?n) ge(?n, 2)
+    (?k tmf:arg1 ?a) (?a tmf:argMissing ?name) strConcat('no observation: ', ?name, ?t)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure ?t)]
+[exFirstNotNumber: (?k rdf:type tmf:ExactlyComparison) (?k tmf:arity ?n) ge(?n, 2)
+    (?k tmf:arg1 ?a) (?a tmf:argValue ?va) notNumber(?va) (?a tmf:argName ?name)
+    strConcat('no observation: ', ?name, ?t)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure ?t)]
+[exOtherMissing: (?k tmf:arg1 ?a) (?a tmf:argValue ?va) isNumber(?va)
+    (?c tmf:exactlyCellOf ?k) notEqual(?c, ?a) (?c tmf:argMissing ?x)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing bound value")]
+[exOtherNotNumber: (?k tmf:arg1 ?a) (?a tmf:argValue ?va) isNumber(?va)
+    (?c tmf:exactlyCellOf ?k) notEqual(?c, ?a) (?c tmf:argValue ?v) notNumber(?v)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing bound value")]
+
+# Neighbouring arguments: mismatch, unequal, or equal.
+[exPairMismatch: (?c tmf:exactlyCellOf ?k) (?c rdf:rest ?r) (?r rdf:type tmf:QuanCell)
+    (?c tmf:argValue ?v1) (?c tmf:argUnit ?u1) isNumber(?v1)
+    (?r tmf:argValue ?v2) (?r tmf:argUnit ?u2) isNumber(?v2)
+    unitMismatch(?u1, ?u2, ?msg)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure ?msg)]
+[exPairUnequal: (?c tmf:exactlyCellOf ?k) (?c rdf:rest ?r) (?r rdf:type tmf:QuanCell)
+    (?c tmf:argValue ?v1) (?c tmf:argUnit ?u1) (?r tmf:argValue ?v2) (?r tmf:argUnit ?u2)
+    unitCompare(?v1, ?u1, ?v2, ?u2, ?cmp) notEqual(?cmp, 0)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+
+# All equal from this cell to the end of the list (a summary computed from the tail, so it exists only when
+# every remaining argument resolved and is equal to its neighbour).
+[exTailLast: (?c tmf:exactlyCellOf ?k) (?c rdf:rest rdf:nil) (?c tmf:argValue ?v) isNumber(?v)
+    -> (?c tmf:allEqualFrom tmf:Yes)]
+[exTailNext: (?c tmf:exactlyCellOf ?k) (?c rdf:rest ?r) (?r tmf:allEqualFrom tmf:Yes)
+    (?c tmf:argValue ?v1) (?c tmf:argUnit ?u1) (?r tmf:argValue ?v2) (?r tmf:argUnit ?u2)
+    unitCompare(?v1, ?u1, ?v2, ?u2, ?cmp) equal(?cmp, 0)
+    -> (?c tmf:allEqualFrom tmf:Yes)]
+[exTrue: (?k rdf:type tmf:ExactlyComparison) (?k tmf:arity ?n) ge(?n, 2)
+    (?k tmf:arg1 ?a) (?a tmf:allEqualFrom tmf:Yes)
+    -> (?k rdf:value "true"^^xsd:boolean)]
+
+# ── 5. inRange ( value lower upper ): lower <= value <= upper, inclusive (TR292D §8.9) ─────────────────────
+
+[rangeNoOperands: (?k rdf:type tmf:RangeComparison) (?k tmf:arity ?n) lessThan(?n, 3)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes")]
+
+[rangeArg1: (?k rdf:type tmf:RangeComparison) (?k tmf:arg1 ?c) -> (?k tmf:rangeArg ?c)]
+[rangeArg2: (?k rdf:type tmf:RangeComparison) (?k tmf:arg2 ?c) -> (?k tmf:rangeArg ?c)]
+[rangeArg3: (?k rdf:type tmf:RangeComparison) (?k tmf:arg3 ?c) -> (?k tmf:rangeArg ?c)]
+[rangeMissing: (?k tmf:rangeArg ?c) (?c tmf:argMissing ?x)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing rdf:value")]
+[rangeNotNumber: (?k tmf:rangeArg ?c) (?c tmf:argValue ?v) notNumber(?v)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing rdf:value")]
+
+# lower vs value first, then value vs upper (the second is not evaluated when the first already fails).
+[rangeLowerMismatch: (?k rdf:type tmf:RangeComparison)
+    (?k tmf:arg1 ?a) (?a tmf:argValue ?va) (?a tmf:argUnit ?ua) isNumber(?va)
+    (?k tmf:arg2 ?b) (?b tmf:argValue ?vb) (?b tmf:argUnit ?ub) isNumber(?vb)
+    (?k tmf:arg3 ?h) (?h tmf:argValue ?vh) isNumber(?vh)
+    unitMismatch(?ub, ?ua, ?msg)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure ?msg)]
+[rangeLower: (?k rdf:type tmf:RangeComparison)
+    (?k tmf:arg1 ?a) (?a tmf:argValue ?va) (?a tmf:argUnit ?ua)
+    (?k tmf:arg2 ?b) (?b tmf:argValue ?vb) (?b tmf:argUnit ?ub)
+    (?k tmf:arg3 ?h) (?h tmf:argValue ?vh) isNumber(?vh)
+    unitCompare(?vb, ?ub, ?va, ?ua, ?cmp) -> (?k tmf:cmpLower ?cmp)]
+[rangeBelow: (?k tmf:cmpLower ?c) greaterThan(?c, 0) -> (?k rdf:value "false"^^xsd:boolean)]
+[rangeUpperMismatch: (?k tmf:cmpLower ?c) le(?c, 0)
+    (?k tmf:arg1 ?a) (?a tmf:argUnit ?ua) (?k tmf:arg3 ?h) (?h tmf:argUnit ?uh)
+    unitMismatch(?ua, ?uh, ?msg)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure ?msg)]
+[rangeUpper: (?k tmf:cmpLower ?c) le(?c, 0)
+    (?k tmf:arg1 ?a) (?a tmf:argValue ?va) (?a tmf:argUnit ?ua)
+    (?k tmf:arg3 ?h) (?h tmf:argValue ?vh) (?h tmf:argUnit ?uh)
+    unitCompare(?va, ?ua, ?vh, ?uh, ?cmp) -> (?k tmf:cmpUpper ?cmp)]
+[rangeAbove:  (?k tmf:cmpUpper ?c) greaterThan(?c, 0) -> (?k rdf:value "false"^^xsd:boolean)]
+[rangeInside: (?k tmf:cmpUpper ?c) le(?c, 0)          -> (?k rdf:value "true"^^xsd:boolean)]

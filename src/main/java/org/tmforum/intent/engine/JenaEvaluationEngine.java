@@ -44,9 +44,9 @@ public class JenaEvaluationEngine implements EvaluationEngine {
     public static final boolean READY = false;
 
     /** Stage A rule files (positive facts), classpath resources under {@code rules/}, in load order. */
-    static final List<String> STAGE_A = List.of();
+    public static final List<String> STAGE_A = List.of("tio_a_quantity.rules");
     /** Stage B rule files (defaults, combination, negation, choice), classpath resources under {@code rules/}. */
-    static final List<String> STAGE_B = List.of();
+    public static final List<String> STAGE_B = List.of();
 
     private static final Map<String, List<Rule>> RULES = new ConcurrentHashMap<>();
 
@@ -118,7 +118,7 @@ public class JenaEvaluationEngine implements EvaluationEngine {
     }
 
     /** Parses one rule file from the classpath ({@code rules/<name>}); a listed file that is missing is a bug. */
-    static List<Rule> parseRules(String name) {
+    public static List<Rule> parseRules(String name) {
         String path = "rules/" + name;
         InputStream s = JenaEvaluationEngine.class.getClassLoader().getResourceAsStream(path);
         if (s == null) throw new IllegalStateException("rule file not on the classpath: " + path);
