@@ -1,0 +1,40 @@
+# Specification expectation (TR292F §5, §8; DEVIATIONS.md entry 14): each boolean set function evaluated.
+@prefix bbf: <http://broadband-forum.org/Intent#> .
+@prefix ex: <http://example.org/> .
+@prefix icm: <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix met: <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix pon: <http://broadband-forum.org/ont/pon-resource#> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ex:AllAvailable
+    rdf:value true .
+
+ex:Expectation
+    rdf:value false .
+
+ex:Hot
+    rdf:value false .
+
+ex:InRegion
+    rdf:value true .
+
+ex:Included
+    rdf:value true .
+
+ex:Intent
+    rdf:value false .
+
+ex:Intersects
+    rdf:value true .
+
+ex:IsGold
+    rdf:value true .
+
+ex:NoneEmpty
+    rdf:value false .
+
+ex:NotGold
+    rdf:value false .

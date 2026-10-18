@@ -1,0 +1,13 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix ex:   <http://example.org/> .
+
+ex:GoldUsers a rdfs:Container ; rdfs:member ex:User1 , ex:User2 , ex:User4 .
+ex:Others a rdfs:Container ; rdfs:member ex:User3 .
+ex:Team1 a rdfs:Container ; rdfs:member ex:User2 , ex:User3 , ex:User4 .
+ex:Team2 a rdfs:Container ; rdfs:member ex:User1 , ex:User2 , ex:User4 .
+ex:Team3 a rdfs:Container ; rdfs:member ex:User3 , ex:User5 .
+ex:Node1 ex:region ex:SubnetA ; ex:temp 30 .
+ex:Node2 ex:region ex:SubnetB .
+ex:Slice1 ex:availability 0.99 .
+ex:Slice2 ex:availability 0.98 .

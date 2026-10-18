@@ -31,10 +31,17 @@
 #
 # THE IMPLEMENTED LIST MUST GROW WITH THE RULES. Tasks 14-16 MUST add an axiom below for every function they
 # implement (set:*, mf:*, quan:sum and the other quantity functions, ...), in the same change, or the function stays
-# "not implemented" and its contribution false. Non-boolean functions (set:*, quan:sum, ...) also get a contribution
-# node from `contributionDeclared`; their implementing rules decide what, if anything, that node contributes.
+# "not implemented" and its contribution false.
 #
-# Negation in stage A: `notImplemented` uses noValue over the implemented axioms only. Jena's RETE engine adds every
+# Functions that produce a container (the implemented set constructors: tmf:producesSet axioms, last section) are not
+# contributors: they determine the members of their subject (tio_a_sets.rules, `?r tmf:memberOf ?s`), not a boolean.
+# `contributorDeclared`/`contributionDeclared` skip them, so a pool node gets no contribution and no value, and an
+# element whose only function is a set constructor has no contributor and gets the default false (TR292E §4).
+# Other non-boolean functions (quan:sum, ...) still get a contribution node: unimplemented, it is false (fail
+# closed); once implemented, the implementing task adds a tmf:producesSet-like exclusion or values the node.
+#
+# Negation in stage A: `notImplemented`, `contributorDeclared` and `contributionDeclared` use noValue over the
+# implemented / producesSet axioms only. Jena's RETE engine adds every
 # axiom to the deductions graph before it processes any data triple (RETEEngine.init: findAndProcessAxioms, then
 # fastInit; addTriple(t, true) writes the deduction at once), so this reads a complete fact.
 
@@ -44,6 +51,7 @@
 @prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
 @prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
 @prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
 @prefix tmf:  <http://tmforum.org/api/v5/> .
 
@@ -56,7 +64,8 @@
 
 # ── Contributors ───────────────────────────────────────────────────────────────────────────────────────────────
 
-[contributorDeclared: (?f rdf:type fun:Function) (?c ?f ?args) -> (?c tmf:hasContributor ?f)]
+[contributorDeclared: (?f rdf:type fun:Function) noValue(?f tmf:producesSet tmf:Yes) (?c ?f ?args)
+    -> (?c tmf:hasContributor ?f)]
 [contributorApplied: (?c tmf:contribution ?k) (?k tmf:function ?f) -> (?c tmf:hasContributor ?f)]
 [contributorOfResult: (?k tmf:function ?f) -> (?k tmf:hasContributor ?f)]
 
@@ -77,10 +86,28 @@
                       (log:match tmf:implemented tmf:Yes) (log:matchAll tmf:implemented tmf:Yes)
                       (log:matchAny tmf:implemented tmf:Yes) (log:matchNone tmf:implemented tmf:Yes)
                       (log:matchOne tmf:implemented tmf:Yes) (log:matchStatement tmf:implemented tmf:Yes)]
+[implementedSets: -> (set:resourcesOfType tmf:implemented tmf:Yes) (set:resourcesWithProperty tmf:implemented tmf:Yes)
+                     (set:resourcesWithPropertyObject tmf:implemented tmf:Yes)
+                     (set:valuesOfObjectProperty tmf:implemented tmf:Yes)
+                     (set:union tmf:implemented tmf:Yes) (set:intersection tmf:implemented tmf:Yes)
+                     (set:difference tmf:implemented tmf:Yes)
+                     (set:isMember tmf:implemented tmf:Yes) (set:elementOf tmf:implemented tmf:Yes)
+                     (set:empty tmf:implemented tmf:Yes) (set:includedIn tmf:implemented tmf:Yes)
+                     (set:intersectsWith tmf:implemented tmf:Yes) (set:identical tmf:implemented tmf:Yes)
+                     (set:forAll tmf:implemented tmf:Yes)]
+
+# Implemented functions whose result is a container, not a boolean (TR292F §3, §4; fun:resultType rdfs:Container).
+# They are not contributors: no tmf:hasContributor, no contribution node (see the header).
+[producesSet: -> (set:resourcesOfType tmf:producesSet tmf:Yes) (set:resourcesWithProperty tmf:producesSet tmf:Yes)
+                 (set:resourcesWithPropertyObject tmf:producesSet tmf:Yes)
+                 (set:valuesOfObjectProperty tmf:producesSet tmf:Yes)
+                 (set:union tmf:producesSet tmf:Yes) (set:intersection tmf:producesSet tmf:Yes)
+                 (set:difference tmf:producesSet tmf:Yes)]
 
 # ── Every declared function application contributes; unimplemented ones are false (fail closed) ────────────────
 
-[contributionDeclared: (?f rdf:type fun:Function) (?c ?f ?args) makeSkolem(?k, ?c, ?f, ?args)
+[contributionDeclared: (?f rdf:type fun:Function) noValue(?f tmf:producesSet tmf:Yes) (?c ?f ?args)
+    makeSkolem(?k, ?c, ?f, ?args)
     -> (?c tmf:contribution ?k) (?k tmf:function ?f) (?k tmf:arguments ?args)]
 [notImplemented: (?k tmf:function ?f) noValue(?f tmf:implemented tmf:Yes)
     strConcat(?f, ?iri) regex(?iri, '(?:.*[/#])?([^/#]*)', ?n) strConcat('function not implemented: ', ?n, ?t)

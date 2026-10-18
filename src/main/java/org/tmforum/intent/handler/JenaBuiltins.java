@@ -1,6 +1,7 @@
 package org.tmforum.intent.handler;
 
 import org.apache.jena.datatypes.xsd.XSDDatatype;
+import org.apache.jena.graph.Graph;
 import org.apache.jena.graph.Node;
 import org.apache.jena.graph.NodeFactory;
 import org.apache.jena.graph.Triple;
@@ -8,10 +9,14 @@ import org.apache.jena.reasoner.rulesys.BuiltinRegistry;
 import org.apache.jena.reasoner.rulesys.RuleContext;
 import org.apache.jena.reasoner.rulesys.builtins.BaseBuiltin;
 import org.apache.jena.util.iterator.ClosableIterator;
+import org.apache.jena.util.iterator.ExtendedIterator;
 import org.apache.jena.vocabulary.RDF;
+import org.tmforum.intent.graph.Namespaces;
 import org.tmforum.intent.graph.TioNamespaces;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -34,6 +39,20 @@ import java.time.format.DateTimeParseException;
  *       decimal number (as the Java engine reads values). Exactly one of the two succeeds for any bound node.</li>
  *   <li>{@code newestObservation(?metric, ?obs)}: binds the {@code met:Observation} of {@code ?metric} with the
  *       greatest {@code met:obtainedAt}; {@code noObservation(?metric)} succeeds when there is none.</li>
+ *   <li>{@code allSubjectsIn(?p1, ?o1, ?p2, ?o2)}: every subject {@code s} of {@code (s ?p1 ?o1)} in the <em>previous
+ *       stage</em> (the inference graph's raw graph) also has {@code (s ?p2 ?o2)} in the current graph. A universal
+ *       ("for all members ...") test that a single {@code noValue} cannot express. Its universe is complete when the
+ *       stage starts, and the tested facts only grow, so once it succeeds it stays true: it is monotone and safe in a
+ *       later stage (tio_b_sets.rules). In stage A the raw graph is the input, so it must not be used there for
+ *       facts that stage A derives.</li>
+ *   <li>{@code forAllCopy(?k, ?q, ?x, ?m)} (rule head only): copies the condition template {@code ?q} of the
+ *       {@code set:forAll} application {@code ?k} for member {@code ?m}, replacing the variable {@code ?x} by
+ *       {@code ?m} (or by the literal of {@code ?m tmf:proxyOf}, a literal member's proxy node), and adds
+ *       {@code ?q2 tmf:copyFor ?k ; tmf:copyOf ?q ; tmf:copyMember ?m}. The template is
+ *       {@code ?q} and the blank nodes reachable from it, read from the raw (input) graph; every copied node is a
+ *       blank node named deterministically from (k, node, m). All triples of one copy are added in one rule firing,
+ *       so a {@code noValue} test on a copied node never sees a partial copy (RETEEngine.addTriple writes the
+ *       deduction at once).</li>
  * </ul>
  *
  * <p>Every builtin fails (never throws) on unbound or unexpected input. Values whose decimal exponent exceeds
@@ -60,6 +79,8 @@ public final class JenaBuiltins {
         BuiltinRegistry.theRegistry.register(new IsNumber(false));
         BuiltinRegistry.theRegistry.register(new NewestObservation());
         BuiltinRegistry.theRegistry.register(new NoObservation());
+        BuiltinRegistry.theRegistry.register(new AllSubjectsIn());
+        BuiltinRegistry.theRegistry.register(new ForAllCopy());
     }
 
     private static final Node RDF_TYPE = RDF.type.asNode();
@@ -201,6 +222,121 @@ public final class JenaBuiltins {
             } catch (RuntimeException e) {
                 return false;                     // backstop: a builtin fails, never throws
             }
+        }
+    }
+
+    /** {@code allSubjectsIn(?p1, ?o1, ?p2, ?o2)}: see the class comment. */
+    static final class AllSubjectsIn extends BaseBuiltin {
+        @Override
+        public String getName() { return "allSubjectsIn"; }
+
+        @Override
+        public int getArgLength() { return 4; }
+
+        @Override
+        public boolean bodyCall(Node[] args, int length, RuleContext context) {
+            if (length != 4) return false;
+            Node p1 = getArg(0, args, context), o1 = getArg(1, args, context);
+            Node p2 = getArg(2, args, context), o2 = getArg(3, args, context);
+            for (Node n : new Node[]{p1, o1, p2, o2}) if (n == null || n.isVariable()) return false;
+            if (!p1.isURI() || !p2.isURI()) return false;
+            ExtendedIterator<Triple> it = previousStage(context).find(Node.ANY, p1, o1);
+            try {
+                while (it.hasNext()) {
+                    if (!context.contains(it.next().getSubject(), p2, o2)) return false;
+                }
+                return true;
+            } catch (RuntimeException e) {
+                return false;                     // backstop: a builtin fails, never throws
+            } finally {
+                it.close();
+            }
+        }
+    }
+
+    /** The graph the current stage reads as its input: the raw graph of the inference graph. */
+    private static Graph previousStage(RuleContext context) {
+        return context.getGraph().getRawGraph();
+    }
+
+    private static final Node TMF_COPY_FOR = NodeFactory.createURI(Namespaces.TMF + "copyFor");
+    private static final Node TMF_PROXY_OF = NodeFactory.createURI(Namespaces.TMF + "proxyOf");
+    private static final Node TMF_COPY_OF = NodeFactory.createURI(Namespaces.TMF + "copyOf");
+    private static final Node TMF_COPY_MEMBER = NodeFactory.createURI(Namespaces.TMF + "copyMember");
+
+    /** {@code forAllCopy(?k, ?q, ?x, ?m)} in a rule head: see the class comment. */
+    static final class ForAllCopy extends BaseBuiltin {
+        @Override
+        public String getName() { return "forAllCopy"; }
+
+        @Override
+        public int getArgLength() { return 4; }
+
+        @Override
+        public boolean bodyCall(Node[] args, int length, RuleContext context) {
+            return false;                         // only meaningful in a rule head
+        }
+
+        @Override
+        public void headAction(Node[] args, int length, RuleContext context) {
+            if (length != 4) return;
+            Node k = getArg(0, args, context), q = getArg(1, args, context);
+            Node x = getArg(2, args, context), m = getArg(3, args, context);
+            for (Node n : new Node[]{k, q, x, m}) if (n == null || n.isVariable()) return;
+            if (q.isLiteral() || q.equals(x)) return;
+            try {
+                Node value = m;                   // a literal member is represented by its proxy node
+                ClosableIterator<Triple> proxy = context.find(m, TMF_PROXY_OF, null);
+                try {
+                    if (proxy.hasNext()) value = proxy.next().getObject();
+                } finally {
+                    proxy.close();
+                }
+                List<Triple> copy = copy(previousStage(context), k, q, x, m, value);
+                for (Triple t : copy) context.add(t);
+            } catch (RuntimeException e) {
+                // backstop: never throw from a rule; without a copy the forAll stays undecided for this member
+            }
+        }
+
+        /** The copy of template {@code q} for member {@code m}; {@code x} is replaced by {@code value}. */
+        static List<Triple> copy(Graph raw, Node k, Node q, Node x, Node m, Node value) {
+            Set<Node> template = new LinkedHashSet<>();
+            Deque<Node> todo = new ArrayDeque<>(List.of(q));
+            while (!todo.isEmpty()) {
+                Node n = todo.pop();
+                if (!template.add(n)) continue;
+                ExtendedIterator<Triple> it = raw.find(n, Node.ANY, Node.ANY);
+                try {
+                    while (it.hasNext()) {
+                        Node o = it.next().getObject();
+                        if (o.isBlank() && !o.equals(x) && !template.contains(o)) todo.push(o);
+                    }
+                } finally {
+                    it.close();
+                }
+            }
+            Map<Node, Node> names = new HashMap<>();
+            for (Node n : template) names.put(n, copyName(k, n, m));
+            List<Triple> out = new ArrayList<>();
+            for (Node n : template) {
+                for (Triple t : raw.find(n, Node.ANY, Node.ANY).toList()) {
+                    Node o = t.getObject();
+                    Node o2 = o.equals(x) ? value : names.getOrDefault(o, o);
+                    out.add(Triple.create(names.get(n), t.getPredicate(), o2));
+                }
+            }
+            Node q2 = names.get(q);
+            out.add(Triple.create(q2, TMF_COPY_FOR, k));
+            out.add(Triple.create(q2, TMF_COPY_OF, q));
+            out.add(Triple.create(q2, TMF_COPY_MEMBER, m));
+            return out;
+        }
+
+        private static Node copyName(Node k, Node n, Node m) {
+            String key = k + "\u0000" + n + "\u0000" + m;
+            return NodeFactory.createBlankNode(
+                    "forall-" + UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)));
         }
     }
 

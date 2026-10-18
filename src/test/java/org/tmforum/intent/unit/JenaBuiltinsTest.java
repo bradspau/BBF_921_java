@@ -3,15 +3,19 @@ package org.tmforum.intent.unit;
 import org.apache.jena.rdf.model.InfModel;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.reasoner.rulesys.GenericRuleReasoner;
 import org.apache.jena.reasoner.rulesys.Rule;
+import org.apache.jena.vocabulary.RDF;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.tmforum.intent.graph.Namespaces;
 import org.tmforum.intent.handler.JenaBuiltins;
 
 import java.io.StringReader;
+import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -306,5 +310,50 @@ class JenaBuiltinsTest {
         assertEquals(Set.of(), objects(inf, "t", "none"));
         assertEquals(Set.of(), objects(inf, "u", "newest"));
         assertEquals(Set.of(), objects(inf, "u", "none"));
+    }
+
+    // ── allSubjectsIn, forAllCopy ─────────────────────────────────────────────────
+
+    @Test
+    void allSubjectsIn_readsItsUniverseFromTheRawGraph() {
+        // universe: subjects of (? ex:in ex:A) in the input; each must have (? ex:ok ex:A) now
+        String data = "ex:a ex:in ex:A ; ex:ok ex:A . ex:b ex:in ex:A . ex:t ex:c ex:A . ex:e ex:c ex:E .";
+        String rules = """
+                [ok: (?x ex:in ?c) (?x ex:mark ex:yes) -> (?x ex:ok ?c)]
+                [all: (?t ex:c ?c) allSubjectsIn(ex:in, ?c, ex:ok, ?c) -> (?t ex:all 'yes')]
+                """;
+        assertEquals(Set.of(), objects(run(data, rules), "t", "all"), "ex:b is not ok");
+        assertEquals(Set.of("yes"), objects(run(data + " ex:b ex:mark ex:yes .", rules), "t", "all"));
+        assertEquals(Set.of("yes"), objects(run(data, rules), "e", "all"), "an empty universe: true");
+    }
+
+    @Test
+    void allSubjectsIn_failsWithoutThrowingOnOddInput() {
+        InfModel inf = run("ex:t ex:p 1 .", """
+                [u1: (?t ex:p ?x) allSubjectsIn(?unbound, ex:A, ex:ok, ex:A) -> (?t ex:all 'yes')]
+                [u2: (?t ex:p ?x) allSubjectsIn(?x, ex:A, ex:ok, ex:A) -> (?t ex:all2 'yes')]
+                """);
+        assertEquals(Set.of(), objects(inf, "t", "all"));
+        assertEquals(Set.of(), objects(inf, "t", "all2"));
+    }
+
+    @Test
+    void forAllCopy_copiesTheTemplateWithTheMemberAndIgnoresOddInput() {
+        String data = """
+                ex:k ex:var _:x ; ex:body _:q ; ex:member ex:m1 .
+                _:q ex:f ( _:x 5 ) ; ex:label "q" .
+                """;
+        InfModel inf = run(data, """
+                [c: (?k ex:var ?x) (?k ex:body ?q) (?k ex:member ?m) -> forAllCopy(?k, ?q, ?x, ?m)]
+                [odd: (?k ex:var ?x) (?k ex:body ?q) -> forAllCopy(?k, 'literal', ?x, ex:m2) forAllCopy(?k, ?x, ?x, ex:m3)]
+                """);
+        Property copyFor = inf.getProperty(Namespaces.TMF + "copyFor");
+        List<Resource> copies = inf.listSubjectsWithProperty(copyFor).toList();
+        assertEquals(1, copies.size());
+        Resource q2 = copies.get(0);
+        assertEquals("q", inf.getProperty(q2, inf.getProperty(EX + "label")).getString());
+        Resource list = inf.getProperty(q2, inf.getProperty(EX + "f")).getResource();
+        assertEquals(EX + "m1", inf.getProperty(list, RDF.first).getResource().getURI());
+        assertFalse(inf.contains(null, RDF.first, inf.getResource(EX + "m2")));
     }
 }

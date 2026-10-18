@@ -1,0 +1,104 @@
+# tio_b_sets.rules — stage B: set:difference, members that appear only in stage B, and the values of the boolean set
+# functions (TR292F §3, §5). Conventions and helper facts: tio_a_sets.rules (header) and tio_b_logic.rules.
+#
+# Negation here is only over facts complete when stage B starts (design §5.5.1):
+#   * tmf:excludedFrom, tmf:diffUnsound, tmf:setHit, tmf:inAllFrom of non-volatile lists, tmf:bodyOK,
+#     tmf:forAllHasMember, tmf:valuedInA: stage A facts that no rule of this stage derives;
+#   * tmf:memberOf a NON-volatile container: only stage A derives it (every rule below that derives tmf:memberOf is
+#     guarded by tmf:volatile / tmf:volatileList, or is the difference, whose subject is volatile). A boolean function
+#     with a volatile container argument is decided false in stage A (tmf:valuedInA), so the rules below, all guarded
+#     by noValue(?k tmf:valuedInA), never negate a volatile container's members.
+# Every rdf:value written here is on a contribution node (tmf:hasContributor from tio_a_core), exactly one per node:
+# each function has a true rule and a false rule with complementary conditions.
+#
+# Why set:difference is here and not in stage A: "m is in A and in none of B..." negates membership of B, which stage
+# A derives; in stage A that negation could run before B's members are complete (design §5.5.1). Here B's membership
+# is complete (B is not volatile, else tmf:diffUnsound), and the difference's own members are new positive facts.
+# A pool built on a difference is volatile, so it is recomputed by section 2 and never negated (header of
+# tio_a_sets.rules).
+#
+# Needs the builtins of JenaBuiltins.register(): allSubjectsIn (reads its universe from stage A).
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+@prefix tmf:  <http://tmforum.org/api/v5/> .
+
+# ── 1. set:difference ( A B ... ): members of A that are in none of the others (§3, §8.1) ───────────────────────
+# Subtracting a volatile container is not decidable here (its members may still grow): no members (diffUnsound).
+
+[difference: (?s set:difference ?l) (?l tmf:diffFirst ?a) (?m tmf:memberOf ?a) noValue(?l tmf:diffUnsound tmf:Yes)
+    noValue(?m tmf:excludedFrom ?l) -> (?m tmf:memberOf ?s)]
+
+# ── 2. Volatile containers: the monotone rules of tio_a_sets again, so members derived in this stage (a choice added
+#       as rdfs:member of a target, a difference result) propagate to the pools built on them ─────────────────────
+
+[bLiftMember: (?c tmf:volatile tmf:Yes) (?c tmf:container tmf:Yes) (?c rdfs:member ?m) notLiteral(?m)
+    -> (?m tmf:memberOf ?c)]
+[bLiftLiteral: (?c tmf:volatile tmf:Yes) (?c tmf:container tmf:Yes) (?c rdfs:member ?v) isLiteral(?v)
+    makeSkolem(?n, tmf:LiteralMember, ?v) -> (?n tmf:proxyOf ?v) (?n tmf:memberOf ?c)]
+[bRwpoMatch: (?l tmf:volatileList tmf:Yes) (?s set:resourcesWithPropertyObject ?l) (?l tmf:rwpoProp ?p)
+    (?l tmf:rwpoContainer ?c) (?m tmf:memberOf ?c) (?x ?p ?m) -> (?x tmf:memberOf ?s)]
+[bRwpoMatchLiteral: (?l tmf:volatileList tmf:Yes) (?s set:resourcesWithPropertyObject ?l) (?l tmf:rwpoProp ?p)
+    (?l tmf:rwpoContainer ?c) (?n tmf:memberOf ?c) (?n tmf:proxyOf ?v) (?x ?p ?v) -> (?x tmf:memberOf ?s)]
+[bUnionMember: (?l tmf:volatileList tmf:Yes) (?s set:union ?l) (?c tmf:cellOf ?l) (?c rdf:first ?x)
+    (?m tmf:memberOf ?x) -> (?m tmf:memberOf ?s)]
+[bInAllLast: (?l tmf:volatileList tmf:Yes) (?l tmf:needsAll tmf:Yes) (?c tmf:cellOf ?l) (?c rdf:rest rdf:nil)
+    (?c rdf:first ?x) (?m tmf:memberOf ?x) -> (?m tmf:inAllFrom ?c)]
+[bInAllNext: (?l tmf:volatileList tmf:Yes) (?l tmf:needsAll tmf:Yes) (?c tmf:cellOf ?l) (?c rdf:rest ?r)
+    (?m tmf:inAllFrom ?r) (?c rdf:first ?x) (?m tmf:memberOf ?x) -> (?m tmf:inAllFrom ?c)]
+[bInterMember: (?l tmf:volatileList tmf:Yes) (?s set:intersection ?l) (?m tmf:inAllFrom ?l) -> (?m tmf:memberOf ?s)]
+
+# ── 3. isMember, elementOf, intersectsWith: true iff stage A found a hit; empty: true iff it found none ──────────
+
+[setHitMeaning: -> (set:isMember tmf:hitMeans tmf:T) (set:elementOf tmf:hitMeans tmf:T)
+                   (set:intersectsWith tmf:hitMeans tmf:T) (set:empty tmf:hitMeans tmf:F)]
+
+[hitT: (?k tmf:function ?f) (?f tmf:hitMeans tmf:T) (?k tmf:setHit tmf:Yes) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "true"^^xsd:boolean)]
+[hitF: (?k tmf:function ?f) (?f tmf:hitMeans tmf:T) noValue(?k tmf:setHit tmf:Yes) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+[emptyF: (?k tmf:function ?f) (?f tmf:hitMeans tmf:F) (?k tmf:setHit tmf:Yes) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+[emptyT: (?k tmf:function ?f) (?f tmf:hitMeans tmf:F) noValue(?k tmf:setHit tmf:Yes)
+    noValue(?k tmf:valuedInA tmf:Yes) -> (?k rdf:value "true"^^xsd:boolean)]
+
+# ── 4. includedIn ( C1 C2 ... ): every member of C1 is in all the others (§8.5); an empty C1 is included ─────────
+
+[includedInT: (?k tmf:function set:includedIn) (?k tmf:arguments ?l) (?l rdf:first ?c1) (?l rdf:rest ?r)
+    noValue(?k tmf:valuedInA tmf:Yes) allSubjectsIn(tmf:memberOf, ?c1, tmf:inAllFrom, ?r)
+    -> (?k rdf:value "true"^^xsd:boolean)]
+[includedInF: (?k tmf:function set:includedIn) (?k tmf:arguments ?l) (?l rdf:first ?c1) (?l rdf:rest ?r)
+    (?m tmf:memberOf ?c1) noValue(?m tmf:inAllFrom ?r) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+
+# ── 5. identical ( C ... ): all containers have the same members (§5); no or one argument: true ───────────────────
+
+[identSame: (?k tmf:function set:identical) (?k tmf:arguments ?l) (?l rdf:first ?c1) (?c tmf:cellOf ?l)
+    (?c rdf:first ?x) allSubjectsIn(tmf:memberOf, ?c1, tmf:memberOf, ?x)
+    allSubjectsIn(tmf:memberOf, ?x, tmf:memberOf, ?c1) -> (?c tmf:sameAsFirst ?k)]
+[identFromLast: (?c tmf:sameAsFirst ?k) (?c rdf:rest rdf:nil) -> (?c tmf:identicalFrom ?k)]
+[identFromNext: (?c tmf:sameAsFirst ?k) (?c rdf:rest ?r) (?r tmf:identicalFrom ?k) -> (?c tmf:identicalFrom ?k)]
+[identicalT: (?k tmf:function set:identical) (?k tmf:arguments ?l) (?l tmf:identicalFrom ?k)
+    noValue(?k tmf:valuedInA tmf:Yes) -> (?k rdf:value "true"^^xsd:boolean)]
+[identicalEmpty: (?k tmf:function set:identical) (?k tmf:arguments rdf:nil) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "true"^^xsd:boolean)]
+[identicalF1: (?k tmf:function set:identical) (?k tmf:arguments ?l) (?l rdf:first ?c1) (?c tmf:cellOf ?l)
+    (?c rdf:first ?x) (?m tmf:memberOf ?c1) noValue(?m tmf:memberOf ?x) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+[identicalF2: (?k tmf:function set:identical) (?k tmf:arguments ?l) (?l rdf:first ?c1) (?c tmf:cellOf ?l)
+    (?c rdf:first ?x) (?m tmf:memberOf ?x) noValue(?m tmf:memberOf ?c1) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+
+# ── 6. forAll ( X C Q ... ): every copy true (§8.4); no member: true; a condition without a function: false ────────
+
+[forAllTrueCopy: (?q tmf:copyFor ?k) (?q tmf:result tmf:T) -> (?q tmf:trueCopyFor ?k)]
+[forAllT: (?q tmf:trueCopyFor ?k) (?k tmf:forAllBodies ?b) (?b tmf:bodyOK tmf:Yes) noValue(?k tmf:valuedInA tmf:Yes)
+    allSubjectsIn(tmf:copyFor, ?k, tmf:trueCopyFor, ?k) -> (?k rdf:value "true"^^xsd:boolean)]
+[forAllF: (?q tmf:copyFor ?k) (?q tmf:result tmf:F) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+[forAllNoMember: (?k tmf:forAllBodies ?b) (?b tmf:bodyOK tmf:Yes) noValue(?k tmf:forAllHasMember tmf:Yes)
+    noValue(?k tmf:valuedInA tmf:Yes) -> (?k rdf:value "true"^^xsd:boolean)]
+[forAllNoFunction: (?k tmf:forAllBodies ?b) noValue(?b tmf:bodyOK tmf:Yes) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "set:forAll: a condition argument has no function")]

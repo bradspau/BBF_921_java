@@ -1,0 +1,23 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+@prefix ex:   <http://example.org/> .
+
+# A set node with an explicit member as well (TR292F §3 examples: ex:C3 / ex:C4 "next to ex:RBS4, which is explicitly
+# added"). DEVIATIONS.md entry 15.
+ex:Intent a icm:Intent ;
+    log:allOf ( ex:E ) .
+
+ex:E a icm:DeliveryExpectation ;
+    icm:target ex:T ;
+    icm:deliveryType ex:Widget ;
+    icm:chooseFrom ex:Pool .
+
+ex:T a icm:Target .
+
+ex:Pool a icm:Target ;
+    set:resourcesOfType ( ex:Widget ) ;
+    rdfs:member ex:z9 .

@@ -9,7 +9,7 @@
 #
 #   ?k tmf:argsNotAList tmf:Yes        # the object of allOf/anyOf/noneOf/oneOf is a literal or a node that is not a
 #                                      # list (no rdf:first, not rdf:nil): the function has no argument list
-#   ?k tmf:matchMember ?m              # log:matchAll/Any/None/One: a member of the subject container (rdfs:member);
+#   ?k tmf:matchMember ?m              # log:matchAll/Any/None/One: a member of the subject container (tmf:memberOf);
 #                                      # log:matchStatement: an argument (a statement node)
 #   ?k tmf:hit ?m / tmf:miss ?m        # the constituent statement for ?m is / is not in the knowledge base
 #   ?k tmf:twoHits tmf:Yes             # at least two constituent statements are true (matchOne)
@@ -79,7 +79,10 @@
 [cmatchArgs: (?k rdf:type tmf:ContainerMatch) (?k tmf:arguments ?l) listLength(?l, ?n) equal(?n, 3)
     listEntry(?l, 0, ?c) listEntry(?l, 1, ?p) listEntry(?l, 2, ?o) notLiteral(?c) notLiteral(?p) notBNode(?p)
     -> (?k tmf:matchContainer ?c) (?k tmf:matchPredicate ?p) (?k tmf:matchObject ?o)]
-[cmatchMember: (?k tmf:matchContainer ?c) (?c rdfs:member ?m) -> (?k tmf:matchMember ?m)]
+# Members of the container: its rdfs:member and, for a set node, the members its set functions define (tio_a_sets:
+# tmf:memberOf, which lifts the rdfs:member of every tmf:container).
+[cmatchContainer: (?k tmf:matchContainer ?c) -> (?c tmf:container tmf:Yes)]
+[cmatchMember: (?k tmf:matchContainer ?c) (?m tmf:memberOf ?c) -> (?k tmf:matchMember ?m)]
 [cmatchHit: (?k tmf:matchContainer ?c) (?k tmf:matchMember ?m) (?k tmf:matchPredicate ?p) (?k tmf:matchObject ?o)
     (?m ?p ?o) -> (?k tmf:hit ?m)]
 [cmatchMiss: (?k tmf:matchContainer ?c) (?k tmf:matchMember ?m) (?k tmf:matchPredicate ?p) (?k tmf:matchObject ?o)

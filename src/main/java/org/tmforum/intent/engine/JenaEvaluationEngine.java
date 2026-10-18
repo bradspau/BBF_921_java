@@ -46,9 +46,9 @@ public class JenaEvaluationEngine implements EvaluationEngine {
 
     /** Stage A rule files (positive facts), classpath resources under {@code rules/}, in load order. */
     public static final List<String> STAGE_A =
-            List.of("tio_a_core.rules", "tio_a_quantity.rules", "tio_a_logic.rules");
+            List.of("tio_a_core.rules", "tio_a_quantity.rules", "tio_a_logic.rules", "tio_a_sets.rules");
     /** Stage B rule files (defaults, combination, negation, choice), classpath resources under {@code rules/}. */
-    public static final List<String> STAGE_B = List.of("tio_b_logic.rules");
+    public static final List<String> STAGE_B = List.of("tio_b_logic.rules", "tio_b_sets.rules");
 
     private static final Map<String, List<Rule>> RULES = new ConcurrentHashMap<>();
 

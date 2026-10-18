@@ -155,3 +155,36 @@ PDF references: TR290 = Intent Common Model v3.8.0 (TR290A v3.6.0 has matching s
 - Decision: the rule engine combines all contributions by conjunction. `expected.jena.ttl`: `ex:AllAndNone`
   (`allOf ( true )` and `noneOf ( true )`) and `ex:AnyAndMatch` (`anyOf ( false true )` and a false `log:match`) are
   `false`, and so are `ex:Expectation` and `ex:Intent` (Java: all `true`).
+
+## 14. Boolean set functions in the function form are evaluated (Task 14)
+
+- case: set-boolean-functions
+- Java: `set:isMember`, `elementOf`, `empty`, `includedIn`, `intersectsWith` and `forAll` are read only in a legacy
+  type form (`a set:setisMember`, ... with a precomputed `rdf:value`, or `a set:setforAll ; rdf:first ...`); in the
+  function form `?c set:isMember ( x C )` a condition is "unknown/opaque". All children of the expectation are opaque,
+  so it fails with "no evaluable conditions in children" and the conditions get no value. Java also has no
+  `set:resourcesWithProperty`, `set:valuesOfObjectProperty` or `set:identical`.
+- PDF: TR292F §5 and §8.2-8.5, §8.7, §8.8 define each function's boolean result over the members of its argument
+  containers (TR292C §2 function form); §4 and §8.16, §8.20 define the two constructors. `set:intersectsWith` follows
+  the §5 example (the first container shares a member with each of the others: "It does not matter that
+  ex:UserGroup2 and ex:UserGroup3 do not have common members"), which §8.7's "members in all other containers" is
+  read with.
+- Decision: the rule engine implements the PDF. `expected.jena.ttl`: `ex:IsGold`, `ex:InRegion`, `ex:Included`,
+  `ex:Intersects`, `ex:AllAvailable` `true`; `ex:NotGold`, `ex:NoneEmpty`, `ex:Hot`, `ex:Expectation`, `ex:Intent`
+  `false`, without `icm:reason` (the PDF defines no reason for a plain false result).
+- Rule-engine limits (sound, fail closed, not specification behaviour): a boolean set function whose container is
+  decided later (a delivery target filled by a choice, a `set:difference` result or a pool built on one) is `false`
+  with the failure "container membership is not final ..." (tio_a_sets.rules header); `set:forAll` copies its
+  condition per member and is `false` when a condition argument has no function.
+
+## 15. A set node keeps its explicit members (Task 14)
+
+- case: pool-explicit-member
+- Java: a node that already has an `rdfs:member` is taken as "already materialised" (`materialiseSet`), so its set
+  functions are ignored: the pool is only `ex:z9` (a gadget), nothing of type `ex:Widget` can be chosen and `ex:E` is
+  `false` ("no candidate of type Widget in chooseFrom pool").
+- PDF: TR292F §3, examples of `set:union` and `set:intersection`: the container gains the function's members "next to
+  ex:RBS4, which is explicitly added"; the explicit members and the function's members are combined.
+- Decision: the rule engine implements the PDF (explicit members are lifted to the pool's members alongside the
+  functions'). `expected.jena.ttl`: pool `ex:w1`, `ex:w2`, `ex:z9`; `ex:T rdfs:member ex:w1`; `ex:E` and `ex:Intent`
+  `true`. The choice itself is Task 15's; the pool membership is tested by `JenaSetRulesTest`.
