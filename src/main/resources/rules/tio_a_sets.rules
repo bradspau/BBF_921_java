@@ -128,7 +128,7 @@
 # set:newestMember, icm:valuesOfTargetProperty, ...). Its members are incomplete for good, so it is treated as
 # volatile (every consumer fails closed) and the reason is kept as `?c tmf:setFailure "..."` for a later report.
 # Recognised: any fun:Function (ontology) not on the implemented list; without the ontology, any set: property and
-# any icm:valuesOf* property that is not implemented.
+# any icm:valuesOf* or icm:intentElements property that is not implemented (the container functions of TR290).
 [unknownDeclared: (?c tmf:container tmf:Yes) (?c ?f ?a) (?f rdf:type fun:Function) noValue(?f tmf:implemented tmf:Yes)
     strConcat(?f, ?iri) regex(?iri, '(?:.*[/#])?([^/#]*)', ?n) strConcat('function not implemented: ', ?n, ?t)
     -> (?c tmf:unknownMembers tmf:Yes) (?c tmf:setFailure ?t)]
@@ -137,7 +137,7 @@
     noValue(?f tmf:implemented tmf:Yes) strConcat('function not implemented: ', ?n, ?t)
     -> (?c tmf:unknownMembers tmf:Yes) (?c tmf:setFailure ?t)]
 [unknownIcmValues: (?c tmf:container tmf:Yes) (?c ?f ?a) strConcat(?f, ?iri)
-    regex(?iri, 'http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/(valuesOf[^/#]*)', ?n)
+    regex(?iri, 'http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/(valuesOf[^/#]*|intentElements)', ?n)
     noValue(?f tmf:implemented tmf:Yes) strConcat('function not implemented: ', ?n, ?t)
     -> (?c tmf:unknownMembers tmf:Yes) (?c tmf:setFailure ?t)]
 [unknownIsVolatile: (?c tmf:unknownMembers tmf:Yes) -> (?c tmf:volatile tmf:Yes)]

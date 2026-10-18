@@ -328,17 +328,24 @@ class JenaLogicRulesTest {
     @Test
     void conjunctionOfFourContributionsWithTheFalseOneAnywhere() {
         // each element has four quantity contributions, one of them false; over all elements the false one sits at
-        // every position of the fixed contribution order, including the inner ones
+        // every position of the fixed contribution order, including the inner ones. The engine orders contributions
+        // by the label of their skolem node, a hash of (element, function, argument list). The argument lists are
+        // therefore IRI-named (an anonymous list's label is random at parse time, which made the positions covered,
+        // and so this test, random): the order, and which positions the false contribution takes, are fixed.
         StringBuilder t = new StringBuilder();
         Map<String, Boolean> exp = new HashMap<>();
         for (int i = 0; i < 12; i++) {
             t.append("ex:c").append(i).append(" a icm:Condition");
+            StringBuilder lists = new StringBuilder();
             for (int j = 0; j < 4; j++) {
                 boolean bad = j == i % 4;
                 int big = 10 + i * 4 + j;
-                t.append(" ; quan:atLeast ( ").append(bad ? "1 " + big : big + " 1").append(" )");
+                String l = "ex:args" + i + "_" + j;
+                t.append(" ; quan:atLeast ").append(l);
+                lists.append(l).append(" rdf:first ").append(bad ? 1 : big)
+                     .append(" ; rdf:rest ( ").append(bad ? big : 1).append(" ) .\n");
             }
-            t.append(" .\n");
+            t.append(" .\n").append(lists);
             exp.put("c" + i, false);
         }
         t.append("ex:all a icm:Condition ; quan:atLeast ( 2 1 ), ( 3 1 ), ( 4 1 ), ( 5 1 ) .\n");

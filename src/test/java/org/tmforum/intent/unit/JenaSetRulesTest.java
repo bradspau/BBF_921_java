@@ -623,6 +623,20 @@ class JenaSetRulesTest {
     }
 
     @Test
+    void anIntentElementsContainerFailsClosedWithAndWithoutTheOntology() {
+        // icm:intentElements is a container function no rule implements; without the ontology it is recognised by
+        // name (like icm:valuesOf*), so an empty test over it is false, never vacuously true
+        String t = """
+                ex:x a icm:Condition .
+                ex:NoElements a log:Condition ; set:empty ( [ icm:intentElements ( ex:x ) ] ) .
+                """;
+        allRuns(t, (m, where) -> {
+            values(Map.of("NoElements", false)).check(m, where);
+            failureContains("NoElements", "not final").check(m, where);
+        });
+    }
+
+    @Test
     void containerMatchesOverAContainerDecidedLaterFailClosed() {
         String t = """
                 ex:A rdfs:member ex:bad1 . ex:bad1 ex:bad true . ex:Cok rdfs:member ex:ok1 .
