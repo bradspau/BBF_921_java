@@ -9,6 +9,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.tmforum.intent.engine.EvaluationEngine;
+import org.tmforum.intent.engine.EvaluationInput;
 import org.tmforum.intent.graph.Namespaces;
 import org.tmforum.intent.graph.repositories.IntentRepository;
 import org.tmforum.intent.graph.repositories.IntentReportRepository;
@@ -43,7 +45,7 @@ public class EvaluationDispatcher {
     @Value("${intent.base-url}")
     private String baseUrl;
 
-    private final TurtleEvaluator evaluator;
+    private final EvaluationEngine engine;
     private final ObservationStore observationStore;
     private final HandlerStateWriter handlerStateWriter;
     private final BestEffortLimits bestEffortLimits;
@@ -58,7 +60,7 @@ public class EvaluationDispatcher {
     // Per-intent locks serialise whole evaluations (see runEvaluation)
     private final ConcurrentHashMap<String, ReentrantLock> evaluationLocks = new ConcurrentHashMap<>();
 
-    public EvaluationDispatcher(TurtleEvaluator evaluator,
+    public EvaluationDispatcher(EvaluationEngine engine,
                                   ObservationStore observationStore,
                                   HandlerStateWriter handlerStateWriter,
                                   BestEffortLimits bestEffortLimits,
@@ -67,7 +69,7 @@ public class EvaluationDispatcher {
                                   NotificationService notificationService,
                                   ReportBuilder reportBuilder,
                                   Dataset dataset) {
-        this.evaluator = evaluator;
+        this.engine = engine;
         this.observationStore = observationStore;
         this.handlerStateWriter = handlerStateWriter;
         this.bestEffortLimits = bestEffortLimits;
@@ -126,6 +128,11 @@ public class EvaluationDispatcher {
         String expressionTurtle = (String) expr.get("expressionValue");
         if (expressionTurtle == null || expressionTurtle.isBlank()) {
             log.info("runEvaluation: intent {} has empty expressionValue — skipping", intentId);
+            return;
+        }
+
+        if (!engine.status().ready()) {
+            log.error("evaluator '{}' is not ready: {}", engine.name(), engine.status().reason());
             return;
         }
 
@@ -283,7 +290,8 @@ public class EvaluationDispatcher {
                                                    String intentId) {
         // Run evaluation in current thread (already in evaluationExecutor pool).
         // The pool provides concurrency; we don't add another layer here.
-        return evaluator.evaluate(expressionTurtle, obsTurtle, resTurtle, heldResources);
+        return engine.evaluate(new EvaluationInput(intentId, expressionTurtle, obsTurtle, resTurtle, heldResources))
+                .result();
     }
 
     private String getResourcesTurtle() {
