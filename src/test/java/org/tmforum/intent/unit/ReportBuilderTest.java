@@ -4,8 +4,6 @@ import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.tmforum.intent.engine.ResultGraphWriter;
 import org.tmforum.intent.handler.ReportBuilder;
 import org.tmforum.intent.handler.TurtleEvaluator;
@@ -18,12 +16,10 @@ import static org.tmforum.intent.unit.TestInputs.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * TR290 §4 reports built from the real seed intent and PON inventory, over both builder inputs: the evaluator's
- * in-memory tree (TREE) and the expression plus the shared result graph of the same evaluation (GRAPH).
+ * TR290 §4 reports built from the real seed intent and PON inventory: the expression plus the shared result
+ * graph of the same evaluation.
  */
 class ReportBuilderTest {
-
-    enum Path { TREE, GRAPH }
 
     private static final String REPORT = "http://tmforum.org/api/v5/reports/r1";
     private static final String BBF = "http://broadband-forum.org/Intent#";
@@ -55,15 +51,14 @@ class ReportBuilderTest {
     }
 
 
-    private Model report(Path path, String intentTtl, String... obs) {
+    private Model report(String intentTtl, String... obs) {
         String obsTtl = obs.length == 0 ? null : observations(obs);
         EvaluationResult r = evaluator.evaluate(intentTtl, obsTtl, inventory);
-        return build(path, r, intentTtl, obsTtl, new ReportBuilder.ReportContext(REPORT, r.intentHandlingState(), 3,
+        return build(r, intentTtl, obsTtl, new ReportBuilder.ReportContext(REPORT, r.intentHandlingState(), 3,
                 Instant.parse("2026-06-11T10:00:00Z")));
     }
 
-    private Model build(Path path, EvaluationResult r, String intentTtl, String obsTtl, ReportBuilder.ReportContext ctx) {
-        if (path == Path.TREE) return builder.build(r.report(), ctx);
+    private Model build(EvaluationResult r, String intentTtl, String obsTtl, ReportBuilder.ReportContext ctx) {
         Model resultGraph = ResultGraphWriter.write(r.report(), obsTtl == null ? null : parse(obsTtl));
         return builder.build(parse(intentTtl), resultGraph, ctx);
     }
@@ -85,10 +80,9 @@ class ReportBuilderTest {
 
     // ── Structure and results ─────────────────────────────────────────────────
 
-    @ParameterizedTest
-    @EnumSource(Path.class)
-    void fulfilled_everyReportedElementIsTrue_andCarriesTheReportHeader(Path path) {
-        Model m = report(path, intent, ALL_OK);
+    @org.junit.jupiter.api.Test
+    void fulfilled_everyReportedElementIsTrue_andCarriesTheReportHeader() {
+        Model m = report(intent, ALL_OK);
 
         assertTrue(ask(m, "?ir a icm:IntentReport ; icm:about bbf:HSIIntent ; icm:result true ; "
                 + "imo:handlingState imo:StateCompliant ; icm:reportNumber 3"));
@@ -98,10 +92,9 @@ class ReportBuilderTest {
         assertEquals(5, count(m, "?r a icm:ConditionReport"));
     }
 
-    @ParameterizedTest
-    @EnumSource(Path.class)
-    void partialObservations_showWhichConditionsAreNotMet_andWhy(Path path) {
-        Model m = report(path, intent, BANDWIDTH_ONLY);
+    @org.junit.jupiter.api.Test
+    void partialObservations_showWhichConditionsAreNotMet_andWhy() {
+        Model m = report(intent, BANDWIDTH_ONLY);
 
         assertTrue(ask(m, "?ir a icm:IntentReport ; icm:result false ; imo:handlingState imo:StateDegraded"));
         // bandwidth conditions true, latency/jitter/loss false with a reason
@@ -115,20 +108,18 @@ class ReportBuilderTest {
         assertEquals(3, count(m, "?e a icm:DeliveryExpectationReport ; icm:result true"));
     }
 
-    @ParameterizedTest
-    @EnumSource(Path.class)
-    void aViolatedCondition_isExplainedByItsValues(Path path) {
-        Model m = report(path, intent, "DownstreamBandwidthMetric", "150", "Mbps", "UpstreamBandwidthMetric", "30", "Mbps",
+    @org.junit.jupiter.api.Test
+    void aViolatedCondition_isExplainedByItsValues() {
+        Model m = report(intent, "DownstreamBandwidthMetric", "150", "Mbps", "UpstreamBandwidthMetric", "30", "Mbps",
                 "LatencyMetric", "40", "ms", "JitterMetric", "1.2", "ms", "PacketLossMetric", "0.02", "percent");
 
         assertTrue(ask(m, "?c icm:about bbf:HSI_LatencyCondition ; icm:result false ; "
                 + "icm:reason [ rdfs:label \"40 ms < 25 ms is false\" ]"));
     }
 
-    @ParameterizedTest
-    @EnumSource(Path.class)
-    void resultFrom_followsTheIntentHierarchy(Path path) {
-        Model m = report(path, intent, ALL_OK);
+    @org.junit.jupiter.api.Test
+    void resultFrom_followsTheIntentHierarchy() {
+        Model m = report(intent, ALL_OK);
 
         // intent <- 5 expectations (UNI, S-tag, C-tag, performance, monitoring) ; performance <- 5 conditions
         assertEquals(5, count(m, "?ir a icm:IntentReport ; icm:resultFrom ?e . ?e icm:about ?x"));
@@ -141,10 +132,9 @@ class ReportBuilderTest {
         assertEquals(0, count(m, "?e a icm:ExpectationReport"), "there is no composite expectation any more");
     }
 
-    @ParameterizedTest
-    @EnumSource(Path.class)
-    void deliveryReports_listTheResourcesChosen_inTargetReports(Path path) {
-        Model m = report(path, intent, ALL_OK);
+    @org.junit.jupiter.api.Test
+    void deliveryReports_listTheResourcesChosen_inTargetReports() {
+        Model m = report(intent, ALL_OK);
 
         assertTrue(ask(m, "?e icm:about bbf:HSIServiceProvisioningExpectation ; icm:targetReport ?t . "
                 + "?t a icm:TargetReport ; icm:about bbf:SelectedUNIInterface ; icm:targetCount 1 ; rdfs:member pon:UNI-001-1"));
@@ -154,12 +144,11 @@ class ReportBuilderTest {
                 + "?t icm:targetCount 1 ; rdfs:member pon:CTAG-N-001"));
     }
 
-    @ParameterizedTest
-    @EnumSource(Path.class)
-    void aFailedDeliveryHasAReasonAndNoChosenResource(Path path) {
+    @org.junit.jupiter.api.Test
+    void aFailedDeliveryHasAReasonAndNoChosenResource() {
         String noFreeUni = inventory;
         inventory = noFreeUni.replace("pon:inUse         false ;", "pon:inUse         true ;");
-        Model m = report(path, intent, ALL_OK);
+        Model m = report(intent, ALL_OK);
 
         assertTrue(ask(m, "?e a icm:DeliveryExpectationReport ; icm:about bbf:HSIServiceProvisioningExpectation ; "
                 + "icm:result false ; icm:reason [ rdfs:label ?why ] . FILTER(CONTAINS(?why, \"no candidate of type UNIPort\"))"));
@@ -168,14 +157,13 @@ class ReportBuilderTest {
 
     // ── Scope (TR290 §4.2) and observations (§4.6) ────────────────────────────
 
-    @ParameterizedTest
-    @EnumSource(Path.class)
-    void onlyElementsInTheReportingTargetAreReported_andTheIntentAlwaysIs(Path path) {
+    @org.junit.jupiter.api.Test
+    void onlyElementsInTheReportingTargetAreReported_andTheIntentAlwaysIs() {
         // Keep just the intent and the five conditions in the reporting target
         String narrowed = intent.replaceFirst("(?s)bbf:HSIMonitoringTarget a icm:Target ;.*?bbf:HSIServiceTarget \\.",
                 "bbf:HSIMonitoringTarget a icm:Target ; rdfs:member bbf:HSI_DownstreamBandwidthCondition , "
                         + "bbf:HSI_LatencyCondition .");
-        Model m = report(path, narrowed, ALL_OK);
+        Model m = report(narrowed, ALL_OK);
 
         assertTrue(ask(m, "?ir a icm:IntentReport"), "the intent is always reported");
         assertEquals(2, count(m, "?c a icm:ConditionReport"));
@@ -184,35 +172,32 @@ class ReportBuilderTest {
         assertEquals(2, count(m, "?ir a icm:IntentReport ; icm:resultFrom ?c . ?c a icm:ConditionReport"));
     }
 
-    @ParameterizedTest
-    @EnumSource(Path.class)
-    void withoutAReportingExpectation_onlyTheIntentReportExists(Path path) {
+    @org.junit.jupiter.api.Test
+    void withoutAReportingExpectation_onlyTheIntentReportExists() {
         String noReporting = intent.replaceAll("(?s)bbf:HSIMonitoringExpectation a icm:ReportingExpectation ;.*?bbf:Periodic15m \\] \\.", "")
                 .replace("bbf:HSIMonitoringExpectation )", ")");
-        Model m = report(path, noReporting, ALL_OK);
+        Model m = report(noReporting, ALL_OK);
 
         assertEquals(1, count(m, "?r icm:about ?x"));
         assertTrue(ask(m, "?ir a icm:IntentReport ; icm:result true"));
     }
 
-    @ParameterizedTest
-    @EnumSource(Path.class)
-    void observedValues_areOnlyIncludedForAnObservationReportingExpectation(Path path) {
-        Model plain = report(path, intent, ALL_OK);
+    @org.junit.jupiter.api.Test
+    void observedValues_areOnlyIncludedForAnObservationReportingExpectation() {
+        Model plain = report(intent, ALL_OK);
         assertEquals(0, count(plain, "?c met:observed ?o"), "a basic reporting expectation omits observations");
 
         String observed = intent.replace("a icm:ReportingExpectation", "a icm:ObservationReportingExpectation");
-        Model m = report(path, observed, ALL_OK);
+        Model m = report(observed, ALL_OK);
         assertEquals(5, count(m, "?c a icm:ConditionReport ; met:observed ?o"));
         assertTrue(ask(m, "?c icm:about bbf:HSI_LatencyCondition ; met:observed [ a met:Observation ; "
                 + "met:observedMetric bbf:LatencyMetric ; rdf:value 8 ; quan:unit \"ms\" ]"));
     }
 
-    @ParameterizedTest
-    @EnumSource(Path.class)
-    void observationReportingIncludesUnits(Path path) {
+    @org.junit.jupiter.api.Test
+    void observationReportingIncludesUnits() {
         String observed = intent.replace("a icm:ReportingExpectation", "a icm:ObservationReportingExpectation");
-        Model m = report(path, observed, ALL_OK);
+        Model m = report(observed, ALL_OK);
 
         assertEquals(5, count(m, "?c a icm:ConditionReport ; met:observed [ quan:unit ?u ]"), "every observation has its unit");
         assertTrue(ask(m, "?c icm:about bbf:HSI_DownstreamBandwidthCondition ; met:observed [ met:observedMetric "
@@ -220,9 +205,8 @@ class ReportBuilderTest {
         assertTrue(ask(m, "?c icm:about bbf:HSI_PacketLossCondition ; met:observed [ rdf:value 0.02 ; quan:unit \"percent\" ]"));
     }
 
-    @ParameterizedTest
-    @EnumSource(Path.class)
-    void blankNodeConditionIsNotReportedButAffectsItsParent(Path path) {
+    @org.junit.jupiter.api.Test
+    void blankNodeConditionIsNotReportedButAffectsItsParent() {
         // A blank-node latency condition (< 5 ms, observed 8 ms) inside a blank-node log:allOf that also holds an
         // IRI condition: the blank nodes get no report (TR290 §4.2) but make the performance expectation false.
         String withBlank = intent.replace("bbf:HSI_PacketLossCondition ) .",
@@ -230,7 +214,7 @@ class ReportBuilderTest {
                         + "  [ a icm:Condition ; quan:smaller ( bbf:LatencyMetric [ rdf:value \"5\"^^xsd:decimal ; "
                         + "quan:unit \"ms\"^^xsd:string ] ) ] ) ] ) .");
         assertNotEquals(intent, withBlank);
-        Model m = report(path, withBlank, ALL_OK);
+        Model m = report(withBlank, ALL_OK);
 
         assertEquals(0, count(m, "?r icm:about ?x . FILTER(isBlank(?x))"), "blank-node elements are not reported");
         assertEquals(5, count(m, "?c a icm:ConditionReport ; icm:result true"), "every IRI condition holds");
@@ -241,21 +225,36 @@ class ReportBuilderTest {
     }
 
     @org.junit.jupiter.api.Test
-    void bothPathsBuildTheSameReport() {
-        String observed = intent.replace("a icm:ReportingExpectation", "a icm:ObservationReportingExpectation");
-        for (String ttl : new String[]{intent, observed}) {
-            for (String[] obs : new String[][]{ALL_OK, BANDWIDTH_ONLY}) {
-                assertTrue(report(Path.TREE, ttl, obs).isIsomorphicWith(report(Path.GRAPH, ttl, obs)));
-            }
-        }
+    void shortCircuitedElements_areReportedFalse_notOmitted() {
+        // Deliberate: when a failed iv:validIf gate stops evaluation, the old tree omitted the gated children;
+        // the graph has no rdf:value for them, so they are reported false (default false).
+        String ttl = """
+                @prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+                @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+                @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+                @prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+                @prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+                @prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+                @prefix iv:   <http://tio.models.tmforum.org/tio/v3.6.0/IntentValidityOntology/> .
+                @prefix ex:   <http://example.org/> .
+                ex:I a icm:Intent ; log:allOf ( ex:E ex:R ) .
+                ex:E a icm:PropertyExpectation ; iv:ivvalidIf ex:ctx ; log:allOf ( ex:C ) .
+                ex:ctx iv:ivisValid "false"^^xsd:boolean .
+                ex:C a quan:quanatLeast ; rdf:first [ rdf:value "99"^^xsd:decimal ] ;
+                     rdf:rest [ rdf:first [ rdf:value "50"^^xsd:decimal ] ] .
+                ex:R a icm:ReportingExpectation ; icm:target ex:T .
+                ex:T a icm:Target ; rdfs:member ex:E , ex:C .
+                """;
+        Model m = report(ttl);
+        assertTrue(ask(m, "?r a icm:PropertyExpectationReport ; icm:about <http://example.org/E> ; icm:result false"));
+        assertTrue(ask(m, "?r a icm:ConditionReport ; icm:about <http://example.org/C> ; icm:result false"));
     }
 
     // ── Plumbing ──────────────────────────────────────────────────────────────
 
-    @ParameterizedTest
-    @EnumSource(Path.class)
-    void theReportIsLinkedToItsTmfIntentReport_andSerialisesToTurtleThatParsesBack(Path path) {
-        Model m = report(path, intent, ALL_OK);
+    @org.junit.jupiter.api.Test
+    void theReportIsLinkedToItsTmfIntentReport_andSerialisesToTurtleThatParsesBack() {
+        Model m = report(intent, ALL_OK);
 
         assertTrue(ask(m, "<" + REPORT + "> tmf:icmReport ?ir . ?ir a icm:IntentReport"));
         String ttl = ReportBuilder.toTurtle(m);
@@ -264,9 +263,8 @@ class ReportBuilderTest {
         assertTrue(back.isIsomorphicWith(m));
     }
 
-    @ParameterizedTest
-    @EnumSource(Path.class)
-    void anExpressionWithoutAnIntentHasNothingToReportOn(Path path) {
+    @org.junit.jupiter.api.Test
+    void anExpressionWithoutAnIntentHasNothingToReportOn() {
         String metricOnly = """
                 @prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
                 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
@@ -275,7 +273,7 @@ class ReportBuilderTest {
                 _:b rdf:value "10"^^xsd:decimal .
                 """;
         EvaluationResult r = evaluator.evaluate(metricOnly, null, null);
-        assertNull(build(path, r, metricOnly, null,
+        assertNull(build(r, metricOnly, null,
                 new ReportBuilder.ReportContext(REPORT, r.intentHandlingState(), 1, Instant.now())));
     }
 }

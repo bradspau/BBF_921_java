@@ -22,6 +22,7 @@ import org.tmforum.intent.service.StateMachine;
 
 import java.io.StringWriter;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.tmforum.intent.graph.GraphNodes;
 import java.time.Instant;
 import java.util.*;
@@ -176,9 +177,15 @@ public class EvaluationDispatcher {
         Map<String, Object> reportData = buildReportData(reportId, reportHref, intentId, now, result);
 
         // TR290 intent report (icm:result per intent element), carried as the report's Turtle expression
-        Model tioReport = reportBuilder.build(result.report(), new ReportBuilder.ReportContext(
-                GraphNodes.reportNode(reportId), result.intentHandlingState(),
-                reportRepository.count(intentId) + 1, Instant.parse(now)));
+        // Built from the expression and the engine's result graph; none if the evaluation produced no graph
+        Model tioReport = null;
+        if (outcome != null && outcome.resultGraph() != null) {
+            Model expressionModel = ModelFactory.createDefaultModel();
+            expressionModel.read(new java.io.StringReader(expressionTurtle), "http://tmforum.org/", "TURTLE");
+            tioReport = reportBuilder.build(expressionModel, outcome.resultGraph(), new ReportBuilder.ReportContext(
+                    GraphNodes.reportNode(reportId), result.intentHandlingState(),
+                    reportRepository.count(intentId) + 1, Instant.parse(now)));
+        }
         if (tioReport != null) {
             Map<String, Object> expression = new LinkedHashMap<>();
             expression.put("@type", "TurtleExpression");

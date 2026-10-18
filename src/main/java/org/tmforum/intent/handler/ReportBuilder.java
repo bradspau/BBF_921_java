@@ -14,22 +14,20 @@ import org.apache.jena.riot.RDFDataMgr;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.springframework.stereotype.Component;
-import org.tmforum.intent.engine.Reasons;
 import org.tmforum.intent.engine.ResultContract;
 import org.tmforum.intent.graph.GraphNodes;
 import org.tmforum.intent.graph.Namespaces;
 import org.tmforum.intent.graph.TioNamespaces;
 import org.tmforum.intent.model.ElementResult;
-import org.tmforum.intent.model.ReportTree;
 
 import java.io.StringWriter;
 import java.time.Instant;
 import java.util.*;
 
 /**
- * Builds a TR290 (Intent Common Model, §4) intent report, either from an evaluation's {@link ReportTree} or
- * from the expression plus the shared result graph (spec 5.3). Both inputs are first turned into the same
- * {@link Element} tree, which one renderer turns into report triples, so the two paths cannot diverge.
+ * Builds a TR290 (Intent Common Model, §4) intent report from the expression plus the shared result
+ * graph (spec 5.3). The inputs are first turned into an {@link Element} tree, which a renderer turns into
+ * report triples.
  *
  * <p>From the result graph the builder only takes what the engine decided: each element's truth value
  * ({@code rdf:value}), chosen target members, reasons and observations. From the expression it takes what to
@@ -44,6 +42,14 @@ import java.util.*;
  *       If an element is out of scope, its in-scope descendants are linked from the nearest reported ancestor.</li>
  *   <li>Observed values ({@code met:observed}) are included only for an icm:ObservationReportingExpectation (§4.6).</li>
  * </ul>
+ *
+ * <p>Known differences from the former in-memory-tree report, accepted deliberately:
+ * <ul>
+ *   <li>Observed values are copied as stored (e.g. {@code "150.0"^^xsd:decimal}), not re-rendered as "150".</li>
+ *   <li>When evaluation short-circuits (an {@code iv:validIf} gate fails, or {@code opaqueChildren}), the
+ *       expression's children are still reported, with no {@code rdf:value} in the graph so false, where the
+ *       tree omitted them.</li>
+ * </ul>
  */
 @Component
 public class ReportBuilder {
@@ -57,16 +63,6 @@ public class ReportBuilder {
 
     /** What the builder needs to know about the report being created. */
     public record ReportContext(String reportUri, String intentHandlingState, long reportNumber, Instant generated) {}
-
-    /**
-     * @return the report triples, or null if the evaluation has no icm:Intent to report on
-     */
-    public Model build(ReportTree tree, ReportContext ctx) {
-        if (tree == null || tree.elements().isEmpty()) return null;
-        ElementResult intent = tree.elements().stream().filter(e -> "Intent".equals(e.kind())).findFirst().orElse(null);
-        if (intent == null) return null;
-        return render(fromTree(intent), tree.scope(), tree.includeObservations(), ctx);
-    }
 
     /**
      * Builds the report from the parsed expression and the result graph of its evaluation (spec 5.2).
@@ -146,24 +142,6 @@ public class ReportBuilder {
     /** An observation used by a condition: metric IRI, value literal and unit (either may be null). */
     private record Observation(String metric, Literal value, String unit) {}
 
-    private static Element fromTree(ElementResult e) {
-        List<String> reasons = new ArrayList<>();
-        List<Observation> observations = new ArrayList<>();
-        for (Map<String, Object> d : e.details()) {
-            if (!Boolean.TRUE.equals(d.get("passed"))) {
-                String why = Reasons.of(d);
-                if (why != null) reasons.add(why);
-            }
-            if (d.get("metric") != null && d.get("observed") != null) {
-                observations.add(new Observation(d.get("metric").toString(),
-                        ResourceFactory.createTypedLiteral(Reasons.plain(d.get("observed")), XSDDatatype.XSDdecimal),
-                        d.get("observedUnit") == null ? null : d.get("observedUnit").toString()));
-            }
-        }
-        return new Element(e.uri(), e.kind(), e.passed(), e.children().stream().map(ReportBuilder::fromTree).toList(),
-                reasons, observations, e.targetUri(), e.targetCount(), e.targetMembers());
-    }
-
     /** Reads elements from the expression (structure) and the result graph (truth, choices, reasons, observations). */
     private static final class GraphReader {
         final Model expr;
@@ -188,7 +166,10 @@ public class ReportBuilder {
             }
 
             Statement vs = graph.getProperty(graph.createResource(node.getURI()), RDF.value);
-            boolean result = vs != null && vs.getObject().isLiteral() && vs.getObject().asLiteral().getBoolean();
+            // only an xsd:boolean literal counts; anything else (absent, other datatype, malformed) is false
+            boolean result = vs != null && vs.getObject().isLiteral()
+                    && XSDDatatype.XSDboolean.equals(vs.getObject().asLiteral().getDatatype())
+                    && vs.getObject().asLiteral().getValue() instanceof Boolean bv && bv;
 
             List<String> reasons = new ArrayList<>();
             graph.listObjectsOfProperty(graph.createResource(node.getURI()), ResultContract.ICM_REASON).forEachRemaining(r -> {
