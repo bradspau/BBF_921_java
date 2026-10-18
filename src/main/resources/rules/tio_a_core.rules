@@ -1,0 +1,49 @@
+# tio_a_core.rules — stage A: structural facts that stage B negates (design §5.5.1). Loaded first in STAGE_A.
+#
+# Stage B may use noValue only over facts that are complete when it starts. Everything it needs to negate about the
+# shape of the intent is therefore derived here, positively:
+#
+#   ?e rdf:type tmf:Element            # an intent element that must end with a boolean value: an instance of
+#                                      # icm:Intent, icm:Expectation, icm:Condition, log:Condition or of any of their
+#                                      # subclasses known to the model (the ontology). Type inference belongs here,
+#                                      # never in stage B (precondition (c)).
+#   ?c tmf:hasContributor ?f           # ?c has a function determining its value (precondition (a)): any property
+#                                      # declared `a fun:Function` (the ontology), or any function application a
+#                                      # stage A rule recognised (`?c tmf:contribution ?k`), which also covers the
+#                                      # legacy quantity forms tio_a_quantity rewrites (aliases and the type form)
+#                                      # and works without the ontology. A contribution node itself also gets one
+#                                      # (its value is written by a function rule, never by the default).
+#   ?a tmf:contribBefore ?b            # two contributions of the same element, in a fixed order (lexLess on the
+#   ?a tmf:contribGap ?b               # node labels); a third one lies between them;
+#   ?k tmf:contribHasEarlier/Later     # ?k is not the first / not the last. Stage B walks this order to combine
+#                                      # the contributions by conjunction (TR292A §4, TR292E §4) monotonically.
+#
+# An element with a contributor whose function no rule implements gets no value at all (it is never defaulted to
+# false): the default applies only to elements with nothing determining their value (TR292E §4, p.13).
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix fun:  <http://tio.models.tmforum.org/tio/v3.6.0/FunctionOntology/> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix tmf:  <http://tmforum.org/api/v5/> .
+
+# ── Intent elements (TR292A §4, design §5.2) ───────────────────────────────────────────────────────────────────
+
+[elementClasses: -> (icm:Intent rdf:type tmf:ElementClass) (icm:Expectation rdf:type tmf:ElementClass)
+                    (icm:Condition rdf:type tmf:ElementClass) (log:Condition rdf:type tmf:ElementClass)]
+[elementSubclass: (?d rdf:type tmf:ElementClass) (?c rdfs:subClassOf ?d) -> (?c rdf:type tmf:ElementClass)]
+[elementInstance: (?c rdf:type tmf:ElementClass) (?e rdf:type ?c) -> (?e rdf:type tmf:Element)]
+
+# ── Contributors ───────────────────────────────────────────────────────────────────────────────────────────────
+
+[contributorDeclared: (?f rdf:type fun:Function) (?c ?f ?args) -> (?c tmf:hasContributor ?f)]
+[contributorApplied: (?c tmf:contribution ?k) (?k tmf:function ?f) -> (?c tmf:hasContributor ?f)]
+[contributorOfResult: (?k tmf:function ?f) -> (?k tmf:hasContributor ?f)]
+
+# ── Order of the contributions of one element ──────────────────────────────────────────────────────────────────
+
+[contribOrder: (?e tmf:contribution ?a) (?e tmf:contribution ?b) lexLess(?a, ?b) -> (?a tmf:contribBefore ?b)]
+[contribGap: (?a tmf:contribBefore ?c) (?c tmf:contribBefore ?b) -> (?a tmf:contribGap ?b)]
+[contribEarlier: (?a tmf:contribBefore ?b) -> (?b tmf:contribHasEarlier tmf:Yes)]
+[contribLater: (?a tmf:contribBefore ?b) -> (?a tmf:contribHasLater tmf:Yes)]

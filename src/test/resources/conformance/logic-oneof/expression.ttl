@@ -1,0 +1,31 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix ex:   <http://example.org/> .
+
+# log:oneOf over conditions (TR292E §2, §6.11).
+ex:Intent a icm:Intent ;
+    log:allOf ( ex:Expectation ) .
+
+ex:Expectation a icm:PropertyExpectation ;
+    icm:target ex:Target ;
+    log:oneOf ( ex:OneOfOne ex:OneOfTwo ex:OneOfNone ) .
+
+ex:OneOfOne a icm:Condition ; log:oneOf ( ex:Svc1Up ex:Svc3Up ) .
+ex:OneOfTwo a icm:Condition ; log:oneOf ( ex:Svc1Up ex:Svc2Up ) .
+ex:OneOfNone a icm:Condition ; log:oneOf ( ex:Svc3Up ex:Svc4Up ) .
+
+# Leaf conditions: statements about the services (TR292E §3, log:match against the knowledge base).
+ex:Svc1Up a icm:Condition ; log:match ( ex:Svc1 ex:status ex:Up ) .
+ex:Svc2Up a icm:Condition ; log:match ( ex:Svc2 ex:status ex:Up ) .
+ex:Svc3Up a icm:Condition ; log:match ( ex:Svc3 ex:status ex:Up ) .
+ex:Svc4Up a icm:Condition ; log:match ( ex:Svc4 ex:status ex:Up ) .
+
+ex:Svc1 ex:status ex:Up .
+ex:Svc2 ex:status ex:Up .
+ex:Svc3 ex:status ex:Down .
+ex:Svc4 ex:status ex:Down .
+
+ex:Target a icm:Target ; rdfs:member ex:Svc1, ex:Svc2, ex:Svc3, ex:Svc4 .

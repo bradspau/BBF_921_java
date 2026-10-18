@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.UnaryOperator;
 
 /**
  * Rule-based engine (spec 5.5, staging decided in 5.5.1).
@@ -44,9 +45,10 @@ public class JenaEvaluationEngine implements EvaluationEngine {
     public static final boolean READY = false;
 
     /** Stage A rule files (positive facts), classpath resources under {@code rules/}, in load order. */
-    public static final List<String> STAGE_A = List.of("tio_a_quantity.rules");
+    public static final List<String> STAGE_A =
+            List.of("tio_a_core.rules", "tio_a_quantity.rules", "tio_a_logic.rules");
     /** Stage B rule files (defaults, combination, negation, choice), classpath resources under {@code rules/}. */
-    public static final List<String> STAGE_B = List.of();
+    public static final List<String> STAGE_B = List.of("tio_b_logic.rules");
 
     private static final Map<String, List<Rule>> RULES = new ConcurrentHashMap<>();
 
@@ -92,9 +94,7 @@ public class JenaEvaluationEngine implements EvaluationEngine {
         EvaluationInputs.addHeld(input, in.held());
 
         Model base = withOntology(input);
-        InfModel stageA = ModelFactory.createInfModel(reasoner(STAGE_A), base);
-        InfModel stageB = ModelFactory.createInfModel(reasoner(STAGE_B), stageA);
-        stageB.prepare();
+        InfModel stageB = infer(base, UnaryOperator.identity());
 
         Model contract = ContractExtractor.extract(stageB);
         return new EvaluationOutcome(contract, ResultAdapter.adapt(contract, base));
@@ -109,9 +109,25 @@ public class JenaEvaluationEngine implements EvaluationEngine {
         return m;
     }
 
-    private static GenericRuleReasoner reasoner(List<String> files) {
+    /**
+     * Runs stage A over {@code base} and stage B chained on it (design 5.5.1) and returns the prepared stage B model;
+     * {@code getRawModel()} of the result is stage A. {@code order} may reorder each stage's rules (tests shuffle
+     * them to prove the result does not depend on rule order); production passes the identity.
+     */
+    public static InfModel infer(Model base, UnaryOperator<List<Rule>> order) {
+        InfModel stageA = ModelFactory.createInfModel(reasoner(order.apply(rules(STAGE_A))), base);
+        InfModel stageB = ModelFactory.createInfModel(reasoner(order.apply(rules(STAGE_B))), stageA);
+        stageB.prepare();
+        return stageB;
+    }
+
+    private static List<Rule> rules(List<String> files) {
         List<Rule> rules = new ArrayList<>();
         for (String f : files) rules.addAll(RULES.computeIfAbsent(f, JenaEvaluationEngine::parseRules));
+        return rules;
+    }
+
+    private static GenericRuleReasoner reasoner(List<Rule> rules) {
         GenericRuleReasoner r = new GenericRuleReasoner(rules);
         r.setMode(GenericRuleReasoner.FORWARD_RETE);
         return r;

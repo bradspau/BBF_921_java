@@ -1,0 +1,115 @@
+# tio_a_logic.rules — stage A part of the logical operators and statement evaluation functions (TR292E §2, §3, §6).
+#
+# Each application `?s fn ( args )` gets a contribution node, as the quantity functions do (tio_a_quantity.rules):
+#
+#   ?s tmf:contribution ?k . ?k tmf:function log:allOf ; tmf:arguments ?list .
+#
+# Its value is written in stage B (tio_b_logic.rules): an operator's members can be elements whose own values are
+# only known in stage B. Here only positive facts that stage B negates or reads are derived:
+#
+#   ?k tmf:argsNotAList tmf:Yes        # the object of allOf/anyOf/noneOf/oneOf is a literal or a node that is not a
+#                                      # list (no rdf:first, not rdf:nil): the function has no argument list
+#   ?k tmf:matchMember ?m              # log:matchAll/Any/None/One: a member of the subject container (rdfs:member);
+#                                      # log:matchStatement: an argument (a statement node)
+#   ?k tmf:hit ?m / tmf:miss ?m        # the constituent statement for ?m is / is not in the knowledge base
+#   ?k tmf:twoHits tmf:Yes             # at least two constituent statements are true (matchOne)
+#
+# The knowledge base of the statement functions is the evaluation model: input (expression, observations, resources,
+# held facts) and the ontology. "Closed world assumption applies" (TR292E §6.4-6.9): a statement that is not there
+# is false. A miss uses noValue over that model, which is complete at this point for every triple a match can name
+# (stage A derives only tmf: helper facts and the legacy quantity rewrites). Statements derived in stage B (element
+# values, chosen members) are not part of it.
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix tmf:  <http://tmforum.org/api/v5/> .
+
+# ── 1. Applications ────────────────────────────────────────────────────────────────────────────────────────────
+
+[logApplyAllOf: (?s log:allOf ?l) makeSkolem(?k, ?s, log:allOf, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function log:allOf) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:BooleanListFunction)]
+[logApplyAnyOf: (?s log:anyOf ?l) makeSkolem(?k, ?s, log:anyOf, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function log:anyOf) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:BooleanListFunction)]
+[logApplyNoneOf: (?s log:noneOf ?l) makeSkolem(?k, ?s, log:noneOf, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function log:noneOf) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:BooleanListFunction)]
+[logApplyOneOf: (?s log:oneOf ?l) makeSkolem(?k, ?s, log:oneOf, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function log:oneOf) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:BooleanListFunction)]
+
+[logApplyMatch: (?s log:match ?l) makeSkolem(?k, ?s, log:match, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function log:match) (?k tmf:arguments ?l)]
+[logApplyMatchAll: (?s log:matchAll ?l) makeSkolem(?k, ?s, log:matchAll, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function log:matchAll) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:ContainerMatch)]
+[logApplyMatchAny: (?s log:matchAny ?l) makeSkolem(?k, ?s, log:matchAny, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function log:matchAny) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:ContainerMatch)]
+[logApplyMatchNone: (?s log:matchNone ?l) makeSkolem(?k, ?s, log:matchNone, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function log:matchNone) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:ContainerMatch)]
+[logApplyMatchOne: (?s log:matchOne ?l) makeSkolem(?k, ?s, log:matchOne, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function log:matchOne) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:ContainerMatch)]
+[logApplyMatchStatement: (?s log:matchStatement ?l) makeSkolem(?k, ?s, log:matchStatement, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function log:matchStatement) (?k tmf:arguments ?l)]
+
+# ── 2. allOf / anyOf / noneOf / oneOf: an argument object that is not a list ───────────────────────────────────
+
+[logArgsLiteral: (?k rdf:type tmf:BooleanListFunction) (?k tmf:arguments ?l) isLiteral(?l)
+    -> (?k tmf:argsNotAList tmf:Yes)]
+[logArgsNotList: (?k rdf:type tmf:BooleanListFunction) (?k tmf:arguments ?l) notLiteral(?l) notEqual(?l, rdf:nil)
+    noValue(?l rdf:first) -> (?k tmf:argsNotAList tmf:Yes)]
+
+# ── 3. log:match ( subject predicate object ) (TR292E §3, §6.4) ────────────────────────────────────────────────
+# Exactly three arguments; a literal subject or a predicate that is not an IRI is an incomplete statement (false).
+
+[matchArgs: (?k tmf:function log:match) (?k tmf:arguments ?l) listLength(?l, ?n) equal(?n, 3)
+    listEntry(?l, 0, ?s) listEntry(?l, 1, ?p) listEntry(?l, 2, ?o) notLiteral(?s) notLiteral(?p) notBNode(?p)
+    -> (?k tmf:matchSubject ?s) (?k tmf:matchPredicate ?p) (?k tmf:matchObject ?o)]
+[matchHit: (?k tmf:matchSubject ?s) (?k tmf:matchPredicate ?p) (?k tmf:matchObject ?o) (?s ?p ?o)
+    -> (?k tmf:hit ?s)]
+
+# ── 4. log:matchAll/Any/None/One ( container predicate object ) (TR292E §3, §6.5-6.8) ──────────────────────────
+# One constituent statement per rdfs:member of the container.
+
+[cmatchArgs: (?k rdf:type tmf:ContainerMatch) (?k tmf:arguments ?l) listLength(?l, ?n) equal(?n, 3)
+    listEntry(?l, 0, ?c) listEntry(?l, 1, ?p) listEntry(?l, 2, ?o) notLiteral(?c) notLiteral(?p) notBNode(?p)
+    -> (?k tmf:matchContainer ?c) (?k tmf:matchPredicate ?p) (?k tmf:matchObject ?o)]
+[cmatchMember: (?k tmf:matchContainer ?c) (?c rdfs:member ?m) -> (?k tmf:matchMember ?m)]
+[cmatchHit: (?k tmf:matchContainer ?c) (?k tmf:matchMember ?m) (?k tmf:matchPredicate ?p) (?k tmf:matchObject ?o)
+    (?m ?p ?o) -> (?k tmf:hit ?m)]
+[cmatchMiss: (?k tmf:matchContainer ?c) (?k tmf:matchMember ?m) (?k tmf:matchPredicate ?p) (?k tmf:matchObject ?o)
+    noValue(?m ?p ?o) -> (?k tmf:miss ?m)]
+[cmatchTwoHits: (?k tmf:matchContainer ?c) (?k tmf:hit ?a) (?k tmf:hit ?b) notEqual(?a, ?b)
+    -> (?k tmf:twoHits tmf:Yes)]
+
+# ── 5. log:matchStatement ( statement ... ) (TR292E §3, §6.9) ──────────────────────────────────────────────────
+# Each argument is an rdf:Statement node (rdf:subject, rdf:predicate, rdf:object). A literal argument, or a statement
+# missing one of the three or with a predicate that is not an IRI, is not a true statement.
+
+[stmtCellHead: (?k tmf:function log:matchStatement) (?k tmf:arguments ?l) (?l rdf:first ?x)
+    -> (?l tmf:stmtCellOf ?k)]
+[stmtCellNext: (?c tmf:stmtCellOf ?k) (?c rdf:rest ?r) (?r rdf:first ?x) -> (?r tmf:stmtCellOf ?k)]
+[stmtMember: (?c tmf:stmtCellOf ?k) (?c rdf:first ?st) -> (?k tmf:matchMember ?st)]
+
+[stmtHit: (?c tmf:stmtCellOf ?k) (?c rdf:first ?st)
+    (?st rdf:subject ?s) (?st rdf:predicate ?p) (?st rdf:object ?o) notLiteral(?p) notBNode(?p) (?s ?p ?o)
+    -> (?k tmf:hit ?st)]
+[stmtMiss: (?c tmf:stmtCellOf ?k) (?c rdf:first ?st)
+    (?st rdf:subject ?s) (?st rdf:predicate ?p) (?st rdf:object ?o) notLiteral(?p) notBNode(?p) noValue(?s ?p ?o)
+    -> (?k tmf:miss ?st)]
+[stmtMissLiteral: (?c tmf:stmtCellOf ?k) (?c rdf:first ?st) isLiteral(?st) -> (?k tmf:miss ?st)]
+[stmtMissSubject: (?c tmf:stmtCellOf ?k) (?c rdf:first ?st) notLiteral(?st) noValue(?st rdf:subject)
+    -> (?k tmf:miss ?st)]
+[stmtMissPredicate: (?c tmf:stmtCellOf ?k) (?c rdf:first ?st) notLiteral(?st) noValue(?st rdf:predicate)
+    -> (?k tmf:miss ?st)]
+[stmtMissObject: (?c tmf:stmtCellOf ?k) (?c rdf:first ?st) notLiteral(?st) noValue(?st rdf:object)
+    -> (?k tmf:miss ?st)]
+[stmtMissLiteralPredicate: (?c tmf:stmtCellOf ?k) (?c rdf:first ?st) (?st rdf:predicate ?p) isLiteral(?p)
+    -> (?k tmf:miss ?st)]
+[stmtMissBlankPredicate: (?c tmf:stmtCellOf ?k) (?c rdf:first ?st) (?st rdf:predicate ?p) isBNode(?p)
+    -> (?k tmf:miss ?st)]

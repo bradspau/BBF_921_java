@@ -32,10 +32,15 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * <p>Record mode, {@code -Dconformance.record=true}: writes each case's {@code expected.ttl} from the Java engine
  * into {@code src/test/resources/conformance/<case>/} instead of asserting. Recorded files must be reviewed by
  * hand against the specification before they are committed.
+ *
+ * <p>Development mode, {@code -Dconformance.forceJena=true}: runs the Jena engine's rules against every case even
+ * while the engine is not ready ({@link JenaEvaluationEngine#READY}), as long as the ontology is present. It is for
+ * seeing which cases the rules written so far already pass; it does not change the engine's declared status.
  */
 class ConformanceTest {
 
     static final boolean RECORD = Boolean.getBoolean("conformance.record");
+    static final boolean FORCE_JENA = Boolean.getBoolean("conformance.forceJena");
     static final Path SOURCE_ROOT = Path.of("src/test/resources", ConformanceLoader.ROOT);
     static final Path ONTOLOGY = Path.of("ontology/IntentCommonModel.ttl");
 
@@ -54,7 +59,8 @@ class ConformanceTest {
     void engineProducesTheExpectedResultGraph(String engineName, String caseName, EvaluationEngine engine,
                                               ConformanceCase c) throws IOException {
         EngineStatus status = engine.status();
-        assumeTrue(status.ready(), () -> engineName + " engine not ready: " + status.reason());
+        boolean forced = FORCE_JENA && "jena".equals(engineName) && Files.isRegularFile(ONTOLOGY);
+        assumeTrue(status.ready() || forced, () -> engineName + " engine not ready: " + status.reason());
         assumeFalse(c.needsOntology() && !Files.isRegularFile(ONTOLOGY),
                 () -> caseName + " needs the licensed ontology (" + ONTOLOGY + " is absent)");
         if (RECORD) assumeTrue("java".equals(engineName), "record mode records from the java engine only");

@@ -1,0 +1,31 @@
+# Recorded from the java engine with -Dconformance.record=true, then reviewed by hand.
+@prefix bbf: <http://broadband-forum.org/Intent#> .
+@prefix ex: <http://example.org/> .
+@prefix icm: <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix met: <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix pon: <http://broadband-forum.org/ont/pon-resource#> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ex:BothUp
+    rdf:value true .
+
+ex:Expectation
+    rdf:value false .
+
+ex:Intent
+    rdf:value false .
+
+ex:OneDown
+    rdf:value false .
+
+ex:Svc1Up
+    rdf:value true .
+
+ex:Svc2Up
+    rdf:value true .
+
+ex:Svc3Up
+    rdf:value false .

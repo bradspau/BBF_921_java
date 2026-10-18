@@ -1,0 +1,12 @@
+# Hand-derived from the PDF (rule engine expectation); differs from expected.ttl (Java). See DEVIATIONS.md entry 12.
+@prefix ex: <http://example.org/> .
+@prefix icm: <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ex:GoldUser rdf:value true .       # the statement ex:User1 ex:userClass ex:Gold is in the knowledge base (TR292E §3, §6.9)
+
+ex:Expectation rdf:value true .
+
+ex:Intent rdf:value true .

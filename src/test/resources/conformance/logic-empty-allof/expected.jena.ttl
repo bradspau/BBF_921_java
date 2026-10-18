@@ -1,0 +1,24 @@
+# Hand-derived from the PDF (rule engine expectation); differs from expected.ttl (Java). See DEVIATIONS.md entry 7.
+@prefix ex: <http://example.org/> .
+@prefix icm: <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ex:EmptyAll rdf:value false .     # TR292E §6.1: empty allOf is false (Java: true)
+
+ex:EmptyAny rdf:value false .
+
+ex:EmptyNone rdf:value true .
+
+ex:EmptyOne rdf:value false .
+
+ex:Expectation1 rdf:value false .  # allOf ( false true true )
+
+ex:Expectation2 rdf:value true .
+
+ex:Intent rdf:value false .
+
+ex:Svc1Up rdf:value true .
+
+ex:Svc3Up rdf:value false .

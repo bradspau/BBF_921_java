@@ -118,12 +118,17 @@ class JenaEngineSkeletonTest {
     // ── evaluate ─────────────────────────────────────────────────────────────
 
     @Test
-    void evaluateWithNoMatchingRulesGivesNoIcmResult(@TempDir Path empty) {
+    void evaluateWithoutOntologyGivesValuesButNoIcmResult(@TempDir Path empty) {
         EvaluationOutcome out = new JenaEvaluationEngine(empty).evaluate(
                 new EvaluationInput("x", INTENT + "ex:I icm:result true .", null, null, List.of("http://example.org/r1")));
-        assertFalse(out.resultGraph().contains(null, ICM_RESULT, (RDFNode) null));
-        assertTrue(out.resultGraph().isEmpty(), "no rules, no contract triples");
-        assertEquals("Degraded", out.result().intentHandlingState(), "no truth value is never Fulfilled");
+        Model c = out.resultGraph();
+        assertFalse(c.contains(null, ICM_RESULT, (RDFNode) null));
+        // ex:m has no observation, so ex:C is false and so is the intent; without the ontology ex:E (a
+        // DeliveryExpectation) is not known to be an expectation and is not reported
+        assertTrue(c.containsLiteral(c.createResource("http://example.org/I"), RDF.value, false));
+        assertTrue(c.containsLiteral(c.createResource("http://example.org/C"), RDF.value, false));
+        assertEquals(2, c.listStatements(null, RDF.value, (RDFNode) null).toList().size());
+        assertEquals("Degraded", out.result().intentHandlingState(), "a false intent is never Fulfilled");
         assertNotNull(out.result().reason());
     }
 
