@@ -214,15 +214,34 @@ curl -s -X PATCH "$BASE/intent/$INTENT_ID" \
 
 ## Step 3 — Check the initial intent report
 
-Before posting observations, read the intent's report to see its starting state:
+Before posting observations, read the intent's reports to see its starting state. A new report is created every
+time the intent is evaluated, and the list is newest first:
 
 ```bash
-# List all intent reports to see initial state
 sleep 1
-curl -s "$BASE/intent/$INTENT_ID/intentReport" | python3 -m json.tool
+curl -s "$BASE/intent/$INTENT_ID/intentReport" | python3 -c "
+import sys, json
+for r in json.load(sys.stdin):
+    print(r['creationDate'], r['intentHandlingState'])
+    print('   ', r['intentHandlingReason'])
+"
 ```
 
-The initial report shows **`Degraded`** because no metric observations exist yet.
+The initial report shows **`Degraded`** because no metric observations exist yet, and the reason lists the five
+metrics with no observation.
+
+Each report also carries its detail in `expression`. That is a `TurtleExpression` whose `expressionValue` is the
+TM Forum TR290 intent report: a report for the intent, for each expectation and for each condition, with the
+truth value of each (`icm:result`), what it was derived from (`icm:resultFrom`), why it is false
+(`icm:reason`) and the resources chosen (`icm:targetReport`). To read the newest one:
+
+```bash
+curl -s "$BASE/intent/$INTENT_ID/intentReport" \
+  | python3 -c "import sys, json; print(json.load(sys.stdin)[0]['expression']['expressionValue'])"
+```
+
+It is long (one entry per intent element), so the steps below query it in Fuseki instead (the `results` helper in
+Step 4), which shows one row per element.
 
 ---
 
@@ -288,6 +307,10 @@ SELECT ?kind ?element ?result ?target ?reason WHERE {
   | sed 's|http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/||; s|http://broadband-forum.org/Intent#||g; s|http://broadband-forum.org/ont/pon-resource#||g'
 }
 ```
+
+This block only defines the variables and the three helpers, so it prints nothing. It needs `BASE` and
+`INTENT_ID` from Step 1; if you are in a new shell, check with `echo "$BASE" "$INTENT_ID"` and set them again
+if they are empty.
 
 > **How the intent is reported on (TR290 §4).** Each evaluation creates a TR290 report with one report per intent
 > element: an `icm:IntentReport`, an expectation report per expectation (`icm:DeliveryExpectationReport`,
