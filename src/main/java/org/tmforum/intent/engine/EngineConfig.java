@@ -16,16 +16,9 @@ public class EngineConfig {
         return switch (mode == null ? "" : mode.trim().toLowerCase()) {
             case "java" -> java;
             case "jena" -> jena;
-            case "compare" -> new CompareStub(java);
+            case "compare" -> new ComparingEngine(java, jena);
             default -> throw new IllegalArgumentException(
                     "intent.evaluator must be java, jena or compare but was '" + mode + "'");
         };
-    }
-
-    /** Placeholder for the comparing engine: delegates to the Java engine under the name "compare". */
-    private record CompareStub(EvaluationEngine delegate) implements EvaluationEngine {
-        @Override public String name() { return "compare"; }
-        @Override public EngineStatus status() { return delegate.status(); }
-        @Override public EvaluationOutcome evaluate(EvaluationInput in) { return delegate.evaluate(in); }
     }
 }
