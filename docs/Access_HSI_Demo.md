@@ -35,46 +35,45 @@ this graph at evaluation time when resolving `set:resourcesOfType` and
 
 ## Prerequisites
 
-### Start the access-profile server
+### Start the access-profile server, with Fuseki
+
+Steps 1b, 4 and 5 query the graph store through Fuseki (SPARQL + web UI on port 3030), so start the server with
+both the `access` and `fuseki` profiles.
 
 **Docker (recommended):**
 
 ```bash
 docker compose --profile access down -v             # clear any previous state (--profile is required)
-docker compose --profile access up --build
+APP_PROFILES=access,fuseki docker compose --profile access up --build
 ```
 
 **Dev server:**
 
 ```bash
 make clean         # removes tdb2-data/, tdb2-access/, tdb2-aggregation/
-make run-access    # or: mvn spring-boot:run -Dspring-boot.run.profiles=access
+mvn spring-boot:run -Dspring-boot.run.profiles=access,fuseki
 ```
 
 Wait for:
 ```
-[SchemaInit] Loaded PON resource inventory: 42 triples
+Resource inventory loaded
+Start Fuseki (http=3030)
 Started Application in N.NNN seconds
 ```
+
+Fuseki is read-only; the dataset is `/intents`, the query endpoint is `http://localhost:3030/intents/sparql`, and
+the web UI is <http://localhost:3030>.
+
+> **A Fuseki `curl` prints nothing at all?** A working query always prints at least a header row (for example
+> `uni,ont`), even with no matches. No output means Fuseki is not running: the server was started without the
+> `fuseki` profile (plain `docker compose --profile access up` or `make run-access`). Port 3030 is still
+> published by Docker, so `curl -s` just returns silently. Check with
+> `docker inspect bbf_921_java-app-access-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep SPRING_PROFILES`
+> (it should list `fuseki`), and restart with the `APP_PROFILES=access,fuseki` command above.
 
 > **Restarts keep allocations.** The PON inventory is loaded only into an empty store, so allocations
 > written back by the handler survive an application restart. If you edit `BBF_access/pon_resource_data.ttl`
 > and want it re-read, start from a clean store (`docker compose --profile access down -v`, or `make clean`).
-
-### Optional: enable Fuseki (SPARQL + web UI on port 3030)
-
-Add the `fuseki` Spring profile to browse the live TDB2 graphs, including the PON resource graph, in a browser:
-
-```bash
-# Docker
-APP_PROFILES=access,fuseki docker compose --profile access up --build
-
-# Dev server
-mvn spring-boot:run -Dspring-boot.run.profiles=access,fuseki
-```
-
-Wait for `Start Fuseki (http=3030)`, then open <http://localhost:3030> (dataset `/intents`, read-only).
-Query endpoint: `http://localhost:3030/intents/sparql`.
 
 ### Verify (port 8001 for access profile)
 
