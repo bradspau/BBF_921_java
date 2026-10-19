@@ -1,0 +1,10 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+
+# NegotiationIT's Best/Propose expression, evaluated before any observation arrives (found live in compare mode,
+# Task 17): a blank-node condition in the legacy class-typed list form, no icm:Intent, no observation of the metric.
+_:cond a quan:quansmaller ;
+    rdf:first <http://example.org/metrics/latency> ;
+    rdf:rest [ rdf:first _:bound ] .
+_:bound rdf:value "10"^^xsd:decimal .

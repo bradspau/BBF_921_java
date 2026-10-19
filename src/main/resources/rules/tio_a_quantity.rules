@@ -189,10 +189,13 @@
 [binNoBound: (?k rdf:type tmf:BinaryComparison) (?k tmf:arity ?n) equal(?n, 1)
     -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing bound node")]
 
-[binFirstMissing: (?k rdf:type tmf:BinaryComparison) (?k tmf:arity ?n) ge(?n, 2)
+# "A bound cell exists" is tmf:arg2, not tmf:arity >= 2: the legacy class-typed form ends its list without rdf:nil
+# (`_:c a quan:quansmaller ; rdf:first ?m ; rdf:rest [ rdf:first ?b ]`, NegotiationIT, IntentLifecycleIT), so listLength
+# gives no arity there, while the Java engine reads rdf:first of rdf:rest (conformance case legacy-no-observation).
+[binFirstMissing: (?k rdf:type tmf:BinaryComparison) (?k tmf:arg2 ?b)
     (?k tmf:arg1 ?a) (?a tmf:argMissing ?name) strConcat('no observation: ', ?name, ?t)
     -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure ?t)]
-[binFirstNotNumber: (?k rdf:type tmf:BinaryComparison) (?k tmf:arity ?n) ge(?n, 2)
+[binFirstNotNumber: (?k rdf:type tmf:BinaryComparison) (?k tmf:arg2 ?b)
     (?k tmf:arg1 ?a) (?a tmf:argValue ?va) notNumber(?va) (?a tmf:argName ?name)
     strConcat('no observation: ', ?name, ?t)
     -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure ?t)]
