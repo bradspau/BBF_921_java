@@ -137,9 +137,14 @@ class JenaLogicRulesTest {
             ResourceFactory.createResource(TioNamespaces.ICM + "Condition"),
             ResourceFactory.createResource(TioNamespaces.LOG + "Condition"));
 
-    /** IRI instances of the element classes and their subclasses (as far as the model knows them). */
+    /**
+     * IRI instances of the element classes and their subclasses (as far as the model knows them), and the IRI subjects
+     * the rules type {@code tmf:Element} themselves (untyped subjects of a function, such as the demo shape
+     * {@code bbf:DL_Check quan:atLeast ( ... )}).
+     */
     static Set<Resource> iriElements(Model m) {
         Set<Resource> classes = new HashSet<>();
+        classes.add(ResourceFactory.createResource(TMF + "Element"));
         Deque<Resource> todo = new ArrayDeque<>(ELEMENT_CLASSES);
         while (!todo.isEmpty()) {
             Resource c = todo.pop();
@@ -405,6 +410,20 @@ class JenaLogicRulesTest {
                 """;
         InfModel m = assertAllRuns(t, Map.of("a", true, "b", false));
         assertTrue(m.getRawModel().contains(m.getResource(EX + "b"), HAS_CONTRIBUTOR));
+    }
+
+    /** The invariant covers untyped IRI subjects of a function too (the rules type them tmf:Element). */
+    @Test
+    void untypedIriSubjectsOfAFunctionHaveExactlyOneValue() {
+        String t = """
+                ex:u quan:atLeast ( 5 3 ) .
+                ex:v quan:atMost ( 5 3 ) .
+                ex:w quan:atLeast ( 5 3 ) ; quan:atMost ( 5 3 ) .
+                """;
+        InfModel m = assertAllRuns(t, Map.of("u", true, "v", false, "w", false));
+        for (String e : List.of("u", "v", "w")) {
+            assertTrue(iriElements(m).contains(m.getResource(EX + e)), e + " is covered by the invariant");
+        }
     }
 
     /** Runs with the ontology only (mf:logistic is a fun:Function only there), over every seed. */

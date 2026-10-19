@@ -17,6 +17,13 @@ PDF references: TR290 = Intent Common Model v3.8.0 (TR290A v3.6.0 has matching s
 - Decision: the rule engine implements the PDF (union) behaviour for this legacy form. Explicit
   `set:intersection` (used by the seed and by `pool-explicit-intersection`) works the same in both engines.
 - Files: `expected.ttl` (Java: member w2) and `expected.jena.ttl` (union: pool w1, w2, g0; member w1).
+- Seen live (Task 17, `intent.evaluator=compare` over the integration suites): `AccessDemoIT` writes its pools in this
+  legacy form (`set:resourcesOfType pon:UNIPort ; set:resourcesWithPropertyObject ( pon:inUse false ) ;
+  set:resourcesWithPropertyObject ( pon:operationalState pon:Up )`) and has no `icm:Intent`, so the contracts are empty
+  and compare mode logs nothing, but the handler results differ: Java selects a free UNI port, the rule engine the
+  lowest IRI of the union, a C-tag (`pon:CTAG-N-001`; the union of "UNI ports", "not in use" and "up" holds every
+  free resource of any type). The IT asserts only that some resource is allocated, so it passes on both engines.
+  Expressions that mean "free UNI ports" should use explicit `set:intersection`, as the seed and the demos do.
 
 ## 2. Container argument of `set:resourcesWithPropertyObject` (D1): project extension
 
@@ -370,9 +377,34 @@ PDF references: TR290 = Intent Common Model v3.8.0 (TR290A v3.6.0 has matching s
   IRI subject is typed `icm:Intent` exactly (`ResultAdapter.hasIriIntent`), so no TR290 report is built, as with the
   Java engine. Its handler result is built from the inferred model with the Java engine's rule (`ResultAdapter`): the
   same state, reason string, condition list and Flow 3 proposal as the Java engine in all seven cases
-  (`ResultAdapterTest`; `no-intent-metric-only/handler.txt`). With an IRI intent the state is the intent's value.
+  (`ResultAdapterTest`; `no-intent-metric-only/handler.txt`). With an IRI intent the state is the intent's value
+  (entry 29).
 - Reading an instance of a subclass of `icm:Intent` as no intent matches the Java engine and `ReportBuilder`; the PDFs'
   RDFS reading would make it an intent. Kept for parity (no `expected.jena.ttl`); revisit with the report builder.
+
+## 29. With an IRI intent the state is the intent's value; Java ANDs every evaluation root (Task 17)
+
+- case: intent-extra-root
+- Java: the handler state is the conjunction of every evaluation root (`log:allOf/anyOf/noneOf/oneOf` subjects that
+  are no operator's member, and `log:match*` subjects), whether or not the root belongs to the intent.
+- Rule engine: with an IRI subject typed `icm:Intent` (entry 28) the state is that intent's value
+  (`ResultAdapter`); roots outside the intent are still evaluated and listed, but do not decide the state.
+- PDF: TR290 §4.2 reports on the intent: its fulfilment is the value of the intent element and its expectations, not
+  of unrelated statements in the same graph.
+- The two differ only when an evaluation root lies outside the intent, which no seed, demo or integration-test
+  expression has. Case `intent-extra-root`: an intent that holds plus `ex:X log:allOf ( ex:D )` with `ex:D` false:
+  Java Degraded, rule engine Fulfilled. The contract graphs agree (no `expected.jena.ttl`); the handler results are in
+  `handler.txt`.
+
+## 30. Order of several evaluation roots in the condition list (Task 17)
+
+- case: intent-extra-root
+- Java: roots in model iteration order per property (`listSubjectsWithProperty`, hash order inside Jena's graph);
+  the rule engine (`ResultAdapter`): per property in IRI order, blank nodes last.
+- PDF: no order is specified; the condition list is the handler's own (it feeds the report reason text and Flow 3).
+- Only the order of the handler's condition list (and so of the parts of the reason text) differs, never a value.
+  With one root (every seed, demo and integration-test expression) the orders agree. The case's `handler.txt` pins the
+  Java order as Jena 4.10 gives it; a Jena upgrade may change that line without any behaviour change.
 
 ## Not deviations (documented, kept out of the corpus)
 
@@ -382,7 +414,7 @@ PDF references: TR290 = Intent Common Model v3.8.0 (TR290A v3.6.0 has matching s
 - The handler's condition list (ResultAdapter, Task 16 fix round) has one entry per function application, with its own
   value, anonymous and untyped conditions included, as the Java engine's. Where the Java engine evaluates only one of
   several functions on a node (entry 13), the rule engine lists each with its own value; the cases with a registered
-  deviation carry their hand-derived handler result in `handler.txt`.
+  deviation carry their reviewed handler result in `handler.txt`.
 
 - `quan:inRange ( value lower upper )`: both engines read the arguments in this order (TR292D §8.9) and compare
   lower <= value <= upper inclusively; only the reason differs from the two-argument functions (none for a plain

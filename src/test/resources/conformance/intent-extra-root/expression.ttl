@@ -1,0 +1,31 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+@prefix met:  <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix ex:   <http://example.org/> .
+
+# An IRI intent whose only expectation holds, and a second evaluation root outside the intent (ex:X) whose condition
+# fails. Java: the state is the conjunction of every evaluation root (Degraded); the rule engine: the intent's own
+# value (Fulfilled). DEVIATIONS.md entry 29.
+ex:Intent a icm:Intent ;
+    log:allOf ( ex:PerformanceExpectation ) .
+
+ex:PerformanceExpectation a icm:PropertyExpectation ;
+    icm:target ex:ServiceTarget ;
+    log:allOf ( ex:GoodCondition ) .
+
+ex:ServiceTarget a icm:Target ;
+    rdfs:member ex:Service .
+
+# 20 >= 10: true
+ex:GoodCondition a icm:Condition ;
+    quan:atLeast ( 20 10 ) .
+
+# Not part of the intent: 5 >= 10 is false
+ex:X log:allOf ( ex:D ) .
+ex:D a icm:Condition ;
+    quan:atLeast ( 5 10 ) .

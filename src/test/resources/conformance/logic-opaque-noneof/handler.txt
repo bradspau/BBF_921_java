@@ -1,5 +1,5 @@
-# Handler result (ResultAdapterTest), derived by hand from expression.ttl and checked against the
-# registered contract; java- lines: the Java engine, where it differs.
+# Handler result (ResultAdapterTest): engine output dumped from both engines, then reviewed by hand against
+# expression.ttl, the Java oracle (TurtleEvaluator) and the PDFs; java- lines: the Java engine, where it differs.
 # DEVIATIONS 11: no opaqueChildren failure; noneOf ( ) of the removed members is true.
 state: Fulfilled
 reason: 

@@ -7,6 +7,7 @@ import ch.qos.logback.core.read.ListAppender;
 import org.apache.jena.datatypes.xsd.XSDDatatype;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDF;
+import org.apache.jena.vocabulary.RDFS;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -59,10 +60,6 @@ class ComparingEngineTest {
         };
     }
 
-    private long warns() {
-        return appender.list.stream().filter(e -> e.getLevel() == Level.WARN).count();
-    }
-
     @Test
     void identicalGraphsLogNothing() {
         var p = outcome(graph(true), "Fulfilled");
@@ -72,28 +69,75 @@ class ComparingEngineTest {
         assertTrue(appender.list.isEmpty());
     }
 
+    private ILoggingEvent onlyEvent() {
+        assertEquals(1, appender.list.size(), () -> "log: " + appender.list);
+        return appender.list.get(0);
+    }
+
+    private static Model withReason(Model m, String element, String label) {
+        Resource r = m.createResource();
+        r.addProperty(RDF.type, m.createResource("http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/Reason"));
+        r.addProperty(RDFS.label, label);
+        m.add(m.createResource(element), m.createProperty("http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/reason"), r);
+        return m;
+    }
+
+    private static final String V = "<" + RDF.value.getURI() + ">";
+    private static final String TRUE = "\"true\"^^http://www.w3.org/2001/XMLSchema#boolean";
+    private static final String FALSE = "\"false\"^^http://www.w3.org/2001/XMLSchema#boolean";
+
     @Test
-    void differentGraphsLogWarningWithCounts() {
+    void differentGraphsLogOneWarningWithCountsAndTheDifferingTriples() {
         var p = outcome(graph(true, true), "Fulfilled");
         var e = new ComparingEngine(stub("java", EngineStatus.ok(), p),
                 stub("jena", EngineStatus.ok(), outcome(graph(true, false), "Degraded")));
         assertSame(p, e.evaluate(IN));
-        assertEquals(1, warns());
-        String msg = appender.list.get(0).getFormattedMessage();
-        assertTrue(msg.contains("2"), msg);
-        assertTrue(msg.contains("urn:e1"), msg);
+        ILoggingEvent ev = onlyEvent();
+        assertEquals(Level.WARN, ev.getLevel());
+        String msg = ev.getFormattedMessage();
+        assertTrue(msg.startsWith("compare: 'java' (2 triples) and 'jena' (2 triples) differ for intent i1; "
+                + "first differences: "), msg);
+        assertTrue(msg.contains("< <urn:e1> " + V + " " + TRUE), msg);
+        assertTrue(msg.contains("> <urn:e1> " + V + " " + FALSE), msg);
+        assertFalse(msg.contains("urn:e0"), "a triple on both sides is not a difference: " + msg);
     }
 
     @Test
-    void logsAtMostFiveDifferingTriples() {
-        boolean[] many = new boolean[10];
-        var e = new ComparingEngine(stub("java", EngineStatus.ok(), outcome(graph(many), "x")),
-                stub("jena", EngineStatus.ok(), outcome(graph(), "x")));
+    void blankNodesWithTheSameContentAreNotReportedAsDifferences() {
+        Model a = withReason(graph(true, false), "urn:e1", "5 >= 10 is false");
+        Model b = withReason(graph(true, true), "urn:e1", "5 >= 10 is false");
+        var e = new ComparingEngine(stub("java", EngineStatus.ok(), outcome(a, "x")),
+                stub("jena", EngineStatus.ok(), outcome(b, "x")));
         e.evaluate(IN);
-        String msg = appender.list.get(0).getFormattedMessage();
-        assertTrue(msg.contains("urn:e"), msg);
-        int shown = msg.split("urn:e", -1).length - 1;
-        assertTrue(shown <= 5, msg);
+        String msg = onlyEvent().getFormattedMessage();
+        assertTrue(msg.endsWith("first differences: [< <urn:e1> " + V + " " + FALSE + ", > <urn:e1> " + V + " " + TRUE
+                + "]"), msg);
+    }
+
+    @Test
+    void differingBlankNodesAreShownByTheirLabel() {
+        Model a = withReason(graph(false), "urn:e0", "first reason");
+        Model b = withReason(graph(false), "urn:e0", "second reason");
+        var e = new ComparingEngine(stub("java", EngineStatus.ok(), outcome(a, "x")),
+                stub("jena", EngineStatus.ok(), outcome(b, "x")));
+        e.evaluate(IN);
+        String msg = onlyEvent().getFormattedMessage();
+        assertTrue(msg.contains("[\"first reason\"]"), msg);
+        assertTrue(msg.contains("[\"second reason\"]"), msg);
+    }
+
+    @Test
+    void atMostFiveDifferencesAreShownAcrossBothDirections() {
+        Model a = graph(true, true, true);                    // urn:e0..e2 true
+        Model b = graph(false, false, false);                 // urn:e0..e2 false
+        var e = new ComparingEngine(stub("java", EngineStatus.ok(), outcome(a, "x")),
+                stub("jena", EngineStatus.ok(), outcome(b, "x")));
+        e.evaluate(IN);
+        String msg = onlyEvent().getFormattedMessage();
+        long primaryOnly = msg.split("< <urn:e", -1).length - 1;
+        long secondaryOnly = msg.split("> <urn:e", -1).length - 1;
+        assertEquals(3, primaryOnly, msg);
+        assertEquals(2, secondaryOnly, "the cap of five is shared by both directions: " + msg);
     }
 
     @Test
@@ -111,11 +155,42 @@ class ComparingEngineTest {
     }
 
     @Test
-    void throwingSecondaryIsTolerated() {
+    void throwingSecondaryIsToleratedWithOneWarning() {
         var p = outcome(graph(true), "Fulfilled");
         var e = new ComparingEngine(stub("java", EngineStatus.ok(), p), stub("jena", EngineStatus.ok(), null));
         assertSame(p, e.evaluate(IN));
-        assertEquals(1, appender.list.size());
+        ILoggingEvent ev = onlyEvent();
+        assertEquals(Level.WARN, ev.getLevel());
+        assertEquals("compare: secondary engine 'jena' failed for intent i1: java.lang.IllegalStateException: boom",
+                ev.getFormattedMessage());
+    }
+
+    @Test
+    void throwingSecondaryStatusIsToleratedWithOneWarning() {
+        var p = outcome(graph(true), "Fulfilled");
+        var sec = new EvaluationEngine() {
+            public String name() { return "jena"; }
+            public EngineStatus status() { throw new IllegalStateException("status boom"); }
+            public EvaluationOutcome evaluate(EvaluationInput in) { fail("must not run"); return null; }
+        };
+        var e = new ComparingEngine(stub("java", EngineStatus.ok(), p), sec);
+        assertSame(p, e.evaluate(IN));
+        ILoggingEvent ev = onlyEvent();
+        assertEquals(Level.WARN, ev.getLevel());
+        assertTrue(ev.getFormattedMessage().contains("status boom"), ev.getFormattedMessage());
+    }
+
+    @Test
+    void primaryExceptionPropagatesAndTheSecondaryIsNotRun() {
+        var sec = new EvaluationEngine() {
+            public String name() { return "jena"; }
+            public EngineStatus status() { fail("must not be asked"); return null; }
+            public EvaluationOutcome evaluate(EvaluationInput in) { fail("must not run"); return null; }
+        };
+        var e = new ComparingEngine(stub("java", EngineStatus.ok(), null), sec);
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> e.evaluate(IN));
+        assertEquals("boom", ex.getMessage());
+        assertTrue(appender.list.isEmpty());
     }
 
     @Test

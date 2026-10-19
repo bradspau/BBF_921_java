@@ -1,5 +1,5 @@
-# Handler result (ResultAdapterTest), derived by hand from expression.ttl and checked against the
-# registered contract; java- lines: the Java engine, where it differs.
+# Handler result (ResultAdapterTest): engine output dumped from both engines, then reviewed by hand against
+# expression.ttl, the Java oracle (TurtleEvaluator) and the PDFs; java- lines: the Java engine, where it differs.
 # DEVIATIONS 14: the function-form set predicates are evaluated, one entry each.
 state: Degraded
 reason: Conditions not met: isMember: FAIL; empty: FAIL; empty: FAIL

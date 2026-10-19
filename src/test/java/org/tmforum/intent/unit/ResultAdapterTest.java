@@ -32,7 +32,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *       in order, every key a consumer in {@code src/main} reads ({@link #KEYS}); {@link BestEffortLimits} (Flow 3)
  *       proposes the same expression from both.</li>
  *   <li>A case with {@code handler.txt} (every case with a registered deviation, and the no-intent case): the Jena
- *       result must equal that hand-derived expectation; the Java result must equal it too, or the {@code java-}
+ *       result must equal that expectation (engine output dumped from both engines, then reviewed by hand against the
+ *       Java oracle and the PDFs); the Java result must equal it too, or the {@code java-}
  *       lines recorded next to it where the Java engine differs, so the deviation stays visible.</li>
  * </ul>
  *
@@ -126,7 +127,7 @@ class ResultAdapterTest {
         EvaluationResult jena = JENA.evaluate(input(c)).result();
         Handler[] expected = expectations(c);
         if (expected == null) {
-            assertNull(c.expectedJena(), c.name() + ": a registered deviation needs a hand-derived handler.txt");
+            assertNull(c.expectedJena(), c.name() + ": a registered deviation needs a reviewed handler.txt");
             assertEquals(of(java), of(jena), c.name());
             assertSameProposal(c.expression(), java, jena, c.name());
             return;
