@@ -67,6 +67,10 @@ import java.time.format.DateTimeParseException;
  *       group of the choice strata (tio_c_choose.rules). Reads the previous stage only.</li>
  *   <li>{@code prevNone(?s, ?p, ?o)}: the previous stage (the raw graph) has no {@code (?s ?p ?o)}. A
  *       {@code noValue} that cannot see facts derived in the current stage.</li>
+ *   <li>{@code quantityText(?v, ?u, ?text)}: binds {@code ?text} to a quantity as the Java engine writes it in a reason
+ *       ({@code Reasons.of}): the value's decimal in plain notation ({@link BigDecimal#toPlainString}), then a space
+ *       and the unit trimmed, when the unit is not blank ({@code "80 Mbps"}, {@code "5"}). Fails for a value that is
+ *       not a number or a unit that is not a literal.</li>
  * </ul>
  *
  * <p>Every builtin fails (never throws) on unbound or unexpected input. Values whose decimal exponent exceeds
@@ -98,6 +102,7 @@ public final class JenaBuiltins {
         BuiltinRegistry.theRegistry.register(new PrevLowest());
         BuiltinRegistry.theRegistry.register(new PrevNone());
         BuiltinRegistry.theRegistry.register(new PrevLowestInPools());
+        BuiltinRegistry.theRegistry.register(new QuantityText());
     }
 
     private static final Node RDF_TYPE = RDF.type.asNode();
@@ -397,6 +402,26 @@ public final class JenaBuiltins {
     private static final Node TMF_PROXY_OF = NodeFactory.createURI(Namespaces.TMF + "proxyOf");
     private static final Node TMF_COPY_OF = NodeFactory.createURI(Namespaces.TMF + "copyOf");
     private static final Node TMF_COPY_MEMBER = NodeFactory.createURI(Namespaces.TMF + "copyMember");
+
+    /** {@code quantityText(?v, ?u, ?text)}: see the class comment. */
+    static final class QuantityText extends BaseBuiltin {
+        @Override
+        public String getName() { return "quantityText"; }
+
+        @Override
+        public int getArgLength() { return 3; }
+
+        @Override
+        public boolean bodyCall(Node[] args, int length, RuleContext context) {
+            if (length != 3) return false;
+            BigDecimal v = number(getArg(0, args, context));
+            Node u = getArg(1, args, context);
+            if (v == null || u == null || !u.isLiteral()) return false;
+            String unit = unit(u);
+            String text = v.toPlainString() + (unit == null ? "" : " " + unit.trim());
+            return context.getEnv().bind(args[2], NodeFactory.createLiteral(text));
+        }
+    }
 
     /** {@code forAllCopy(?k, ?q, ?x, ?m)} in a rule head: see the class comment. */
     static final class ForAllCopy extends BaseBuiltin {

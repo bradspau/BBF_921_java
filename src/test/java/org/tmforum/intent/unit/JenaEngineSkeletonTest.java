@@ -237,15 +237,19 @@ class JenaEngineSkeletonTest {
         assertNull(ok.reason());
 
         g.removeAll(i, RDF.value, null).addLiteral(i, RDF.value, false);
+        g.removeAll(g.createResource("http://example.org/C"), RDF.value, null)
+                .addLiteral(g.createResource("http://example.org/C"), RDF.value, false);
         g.addLiteral(g.createResource("http://example.org/C2"), RDF.value, false);
         EvaluationResult bad = ResultAdapter.adapt(g, expression);
         assertEquals("Degraded", bad.intentHandlingState());
-        assertEquals("Conditions not met: Condition: FAIL", bad.reason());
+        // one entry per function application reached from the intent (ex:C2 is not reached); no observation linked
+        assertEquals("Conditions not met: atLeast: FAIL", bad.reason());
         List<Map<String, Object>> conds = bad.conditions();
-        assertEquals(2, conds.size());
-        assertEquals(Boolean.TRUE, conds.get(0).get("passed"));
-        assertEquals(Boolean.FALSE, conds.get(1).get("passed"));
-        assertNull(conds.get(1).get("observed"), "stubbed: not invented");
+        assertEquals(1, conds.size());
+        assertEquals("atLeast", conds.get(0).get("type"));
+        assertNull(conds.get(0).get("operator"), "no values: labelled by type, not \"null >= null\"");
+        assertEquals(Boolean.FALSE, conds.get(0).get("passed"));
+        assertNull(conds.get(0).get("observed"), "no met:observed in the graph: nothing invented");
     }
 
     @Test

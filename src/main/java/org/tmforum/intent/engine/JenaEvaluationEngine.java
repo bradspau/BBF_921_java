@@ -50,7 +50,7 @@ public class JenaEvaluationEngine implements EvaluationEngine {
 
     /** Stage A rule files (positive facts), classpath resources under {@code rules/}, in load order. */
     public static final List<String> STAGE_A = List.of("tio_a_core.rules", "tio_a_quantity.rules",
-            "tio_a_logic.rules", "tio_a_sets.rules", "tio_a_delivery.rules");
+            "tio_a_logic.rules", "tio_a_sets.rules", "tio_a_delivery.rules", "tio_a_reasons.rules");
     /**
      * Rule files of one choice stratum (design 5.5 "Sets and pools"): loaded once per level n = 1 ..
      * {@link #MAX_CHOICE_DEPTH}, with {@code tmf:PrevLevel}/{@code tmf:ThisLevel} replaced by {@code tmf:L(n-1)} /
@@ -63,9 +63,9 @@ public class JenaEvaluationEngine implements EvaluationEngine {
      * choice). The level facts of tio_a_delivery.rules go up to {@code tmf:L3} = MAX_CHOICE_DEPTH + 1.
      */
     public static final int MAX_CHOICE_DEPTH = 2;
-    /** Stage B (value stage) rule files: defaults, combination, negation, delivery values. */
-    public static final List<String> STAGE_B =
-            List.of("tio_b_pools.rules", "tio_b_logic.rules", "tio_b_sets.rules", "tio_b_delivery.rules");
+    /** Stage B (value stage) rule files: defaults, combination, negation, delivery values, reasons. */
+    public static final List<String> STAGE_B = List.of("tio_b_pools.rules", "tio_b_logic.rules", "tio_b_sets.rules",
+            "tio_b_delivery.rules", "tio_b_reasons.rules");
 
     private static final Map<String, List<Rule>> RULES = new ConcurrentHashMap<>();
 
@@ -112,6 +112,12 @@ public class JenaEvaluationEngine implements EvaluationEngine {
         EvaluationInputs.addHeld(input, in.held());
 
         Model base = withOntology(input);
+        if (ContractExtractor.elements(base, List.of(ResultAdapter.ICM_INTENT)).isEmpty()) {
+            // No IRI-identified icm:Intent: nothing to report on (TR290 §4.2), the same empty contract as the Java
+            // engine's (ResultGraphWriter); the rules are not run (task 16 report, no-intent policy).
+            Model empty = ModelFactory.createDefaultModel();
+            return new EvaluationOutcome(empty, ResultAdapter.adapt(empty, base));
+        }
         InfModel stageB = infer(base, UnaryOperator.identity());
 
         Model contract = ContractExtractor.extract(stageB);

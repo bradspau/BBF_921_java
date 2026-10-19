@@ -1,0 +1,98 @@
+# tio_a_reasons.rules — stage A: what the value stage needs to explain a false element (design §5.2, icm:reason and
+# met:observed; tio_b_reasons.rules turns these facts into the contract triples). Loaded last in STAGE_A.
+#
+# Positive facts only, over stage A facts of tio_a_quantity / tio_a_logic and the input:
+#
+#   ?k tmf:violation "80 Mbps >= 100 Mbps is false"   # a quantity comparison that is false without an error: the
+#                                                     # Java engine's text (Reasons.of: <observed> <unit> <op> <bound>
+#                                                     # <unit> is false; DEVIATIONS.md entry 4, D3). Numbers in plain
+#                                                     # notation, units trimmed (builtin quantityText). atLeast, atMost,
+#                                                     # greater, smaller, and each unequal neighbouring pair of exactly
+#                                                     # ("4 == 5 is false"). inRange has none, as in the Java engine
+#                                                     # (its detail has no single bound).
+#   ?k tmf:failureAfter "text"                        # ?k has another tmf:failure that sorts before "text" (lexLess);
+#   ?k tmf:violationAfter "text"                      # likewise for violations. The value stage reports the first one
+#                                                     # only: one reason per contribution, whatever order the rules
+#                                                     # fire in. The lexical order agrees with the Java engine's order of
+#                                                     # checks wherever two failures can coexist ("missing bound value" <
+#                                                     # "no observation: ..." < "unit mismatch: ..."; "missing operand
+#                                                     # nodes" < "missing rdf:value").
+#   ?k tmf:observedVia ?o                             # the comparison ?k used observation ?o (an IRI) for its first
+#                                                     # argument and both operands had values, as the Java engine records
+#                                                     # it (TurtleEvaluator.evalTwoArg "observation": two-argument
+#                                                     # functions and exactly, not inRange).
+#   ?k tmf:failure "expected 3 args, got 2"           # the statement functions' argument errors, the Java engine's texts
+#                                                     # (evalMatch, evalMatchContainer): log:match without exactly three
+#                                                     # arguments or with a literal subject or predicate;
+#                                                     # log:matchAll/Any/None/One without exactly three arguments or with
+#                                                     # a literal container or predicate. The value stays false
+#                                                     # (tio_b_logic); this only names the error.
+#
+# The ordering facts are complete at the end of this stage, so the value stage may negate them. Every tmf:failure of a
+# contribution decided in stage A (tmf:valuedInA) is derived in stage A; contributions valued in the value stage
+# (delivery, set:forAll, the statement functions) carry at most one failure.
+#
+# Needs the builtins of JenaBuiltins.register(): unitCompare, quantityText, isNumber, lexLess.
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix tmf:  <http://tmforum.org/api/v5/> .
+
+# ── 1. Plain violations ───────────────────────────────────────────────────────────────────────────────────────────
+
+[violationAtLeast: (?k tmf:function quan:atLeast) (?k tmf:arg1 ?a) (?a tmf:argValue ?va) (?a tmf:argUnit ?ua)
+    (?k tmf:arg2 ?b) (?b tmf:argValue ?vb) (?b tmf:argUnit ?ub) unitCompare(?va, ?ua, ?vb, ?ub, ?c) lessThan(?c, 0)
+    quantityText(?va, ?ua, ?ta) quantityText(?vb, ?ub, ?tb) strConcat(?ta, ' >= ', ?tb, ' is false', ?t)
+    -> (?k tmf:violation ?t)]
+[violationAtMost: (?k tmf:function quan:atMost) (?k tmf:arg1 ?a) (?a tmf:argValue ?va) (?a tmf:argUnit ?ua)
+    (?k tmf:arg2 ?b) (?b tmf:argValue ?vb) (?b tmf:argUnit ?ub) unitCompare(?va, ?ua, ?vb, ?ub, ?c) greaterThan(?c, 0)
+    quantityText(?va, ?ua, ?ta) quantityText(?vb, ?ub, ?tb) strConcat(?ta, ' <= ', ?tb, ' is false', ?t)
+    -> (?k tmf:violation ?t)]
+[violationGreater: (?k tmf:function quan:greater) (?k tmf:arg1 ?a) (?a tmf:argValue ?va) (?a tmf:argUnit ?ua)
+    (?k tmf:arg2 ?b) (?b tmf:argValue ?vb) (?b tmf:argUnit ?ub) unitCompare(?va, ?ua, ?vb, ?ub, ?c) le(?c, 0)
+    quantityText(?va, ?ua, ?ta) quantityText(?vb, ?ub, ?tb) strConcat(?ta, ' > ', ?tb, ' is false', ?t)
+    -> (?k tmf:violation ?t)]
+[violationSmaller: (?k tmf:function quan:smaller) (?k tmf:arg1 ?a) (?a tmf:argValue ?va) (?a tmf:argUnit ?ua)
+    (?k tmf:arg2 ?b) (?b tmf:argValue ?vb) (?b tmf:argUnit ?ub) unitCompare(?va, ?ua, ?vb, ?ub, ?c) ge(?c, 0)
+    quantityText(?va, ?ua, ?ta) quantityText(?vb, ?ub, ?tb) strConcat(?ta, ' < ', ?tb, ' is false', ?t)
+    -> (?k tmf:violation ?t)]
+[violationExactly: (?x tmf:exactlyCellOf ?k) (?x rdf:rest ?r) (?r rdf:type tmf:QuanCell)
+    (?x tmf:argValue ?v1) (?x tmf:argUnit ?u1) (?r tmf:argValue ?v2) (?r tmf:argUnit ?u2)
+    unitCompare(?v1, ?u1, ?v2, ?u2, ?c) notEqual(?c, 0)
+    quantityText(?v1, ?u1, ?t1) quantityText(?v2, ?u2, ?t2) strConcat(?t1, ' == ', ?t2, ' is false', ?t)
+    -> (?k tmf:violation ?t)]
+
+# ── 2. One text per contribution: an order over its failures and its violations ──────────────────────────────────
+
+[failureOrder: (?k tmf:failure ?a) (?k tmf:failure ?b) lexLess(?a, ?b) -> (?k tmf:failureAfter ?b)]
+[violationOrder: (?k tmf:violation ?a) (?k tmf:violation ?b) lexLess(?a, ?b) -> (?k tmf:violationAfter ?b)]
+
+# ── 3. The observation a comparison used ─────────────────────────────────────────────────────────────────────────
+
+[observedBinary: (?k rdf:type tmf:BinaryComparison) (?k tmf:arg1 ?a) (?a tmf:argObservation ?o) notBNode(?o)
+    (?a tmf:argValue ?va) isNumber(?va) (?k tmf:arg2 ?b) (?b tmf:argValue ?vb) isNumber(?vb)
+    -> (?k tmf:observedVia ?o)]
+[observedExactly: (?k rdf:type tmf:ExactlyComparison) (?k tmf:arg1 ?a) (?a tmf:argObservation ?o) notBNode(?o)
+    (?a tmf:argValue ?va) isNumber(?va) (?k tmf:arg2 ?b) (?b tmf:argValue ?vb) isNumber(?vb)
+    -> (?k tmf:observedVia ?o)]
+
+# ── 4. Argument errors of the statement functions (TR292E §6.4-6.8), the Java engine's texts ─────────────────────
+
+[matchArity: (?k tmf:function log:match) (?k tmf:arguments ?l) listLength(?l, ?n) notEqual(?n, 3)
+    strConcat('expected 3 args, got ', ?n, ?t) -> (?k tmf:failure ?t)]
+[matchNotAList: (?k tmf:function log:match) (?k tmf:arguments ?l) notLiteral(?l) notEqual(?l, rdf:nil)
+    noValue(?l rdf:first) -> (?k tmf:failure 'expected 3 args, got 0')]
+[matchLiteralSubject: (?k tmf:function log:match) (?k tmf:arguments ?l) listLength(?l, ?n) equal(?n, 3)
+    listEntry(?l, 0, ?s) isLiteral(?s) -> (?k tmf:failure 'subject/predicate must be URIs')]
+[matchLiteralPredicate: (?k tmf:function log:match) (?k tmf:arguments ?l) listLength(?l, ?n) equal(?n, 3)
+    listEntry(?l, 1, ?p) isLiteral(?p) -> (?k tmf:failure 'subject/predicate must be URIs')]
+
+[cmatchArity: (?k rdf:type tmf:ContainerMatch) (?k tmf:arguments ?l) listLength(?l, ?n) notEqual(?n, 3)
+    strConcat('expected (container, predicate, object), got ', ?n, ?t) -> (?k tmf:failure ?t)]
+[cmatchNotAList: (?k rdf:type tmf:ContainerMatch) (?k tmf:arguments ?l) notLiteral(?l) notEqual(?l, rdf:nil)
+    noValue(?l rdf:first) -> (?k tmf:failure 'expected (container, predicate, object), got 0')]
+[cmatchLiteralContainer: (?k rdf:type tmf:ContainerMatch) (?k tmf:arguments ?l) listLength(?l, ?n) equal(?n, 3)
+    listEntry(?l, 0, ?c) isLiteral(?c) -> (?k tmf:failure 'invalid args')]
+[cmatchLiteralPredicate: (?k rdf:type tmf:ContainerMatch) (?k tmf:arguments ?l) listLength(?l, ?n) equal(?n, 3)
+    listEntry(?l, 1, ?p) isLiteral(?p) -> (?k tmf:failure 'invalid args')]
