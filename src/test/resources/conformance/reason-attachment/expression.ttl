@@ -1,0 +1,28 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix met:  <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix ex:   <http://example.org/> .
+ex:Intent a icm:Intent ;
+    log:allOf ( ex:Expectation ) .
+
+ex:Expectation a icm:PropertyExpectation ;
+    icm:target ex:ServiceTarget ;
+    log:allOf ( ex:Mixed ex:TrueWithFailingMember ) .
+
+ex:ServiceTarget a icm:Target ;
+    rdfs:member ex:Service .
+
+# A named member and an anonymous one that fails: the failure is reported on ex:Mixed (Java: nowhere, because
+# ex:Mixed has a named child).
+ex:Mixed a icm:Condition ;
+    log:allOf ( ex:Named [ quan:atLeast ( ex:BandwidthMetric [ rdf:value "100"^^xsd:decimal ; quan:unit "Mbps" ] ) ] ) .
+ex:Named a icm:Condition ;
+    quan:atLeast ( 5 4 ) .
+
+# anyOf ( failing , true ) is true: no reason (Java attaches the failing member's reason to the true condition).
+ex:TrueWithFailingMember a icm:Condition ;
+    log:anyOf ( [ quan:atLeast ( ex:LatencyMetric 5 ) ] [ quan:atLeast ( 6 5 ) ] ) .

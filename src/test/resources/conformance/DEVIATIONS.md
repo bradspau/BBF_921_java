@@ -214,18 +214,24 @@ PDF references: TR290 = Intent Common Model v3.8.0 (TR290A v3.6.0 has matching s
   order. `expected.jena.ttl`: S-VLAN `ex:svA`, C-tag `ex:b1`; `ex:CTagE`, `ex:STagE`, `ex:Intent` `true`.
 - See entry 18 for expectations that share a target: the same order-independence, one choice from their pools' union.
 
-## 18. Expectations sharing a target: one choice from the union of their pools (Task 15 fix round)
+## 18. Expectations sharing a target: one choice per group and stratum (Task 15 fix round; wording Task 16)
 
 - case: delivery-shared-target
 - Java: expectations are evaluated in list order (entry 17); the first one that needs the type chooses the lowest
   candidate of its own pool (`ex:w2` from `ex:P1`) and the second finds the target satisfied.
-- PDF: TR290 §2.5.3 leaves the choice to the handler ("Any subset can be chosen"); the order of a `log:allOf` list has
-  no evaluation meaning (entry 17).
-- Decision (owner ruling, Task 15 review): the rule engine chooses once per (target, delivery type) and choice stratum,
-  the lowest candidate of the union of the pools of every expectation that needs that type on that target. One resource
-  satisfies all of them (so allocation write-back claims one), whatever their order: the order-independence of
-  entry 17 applied to a shared target. `expected.jena.ttl`: `ex:T rdfs:member ex:w1`; `ex:E1`, `ex:E2`, `ex:Intent`
-  `true`.
+- PDF: TR290 §2.5.3 leaves the choice to the handler ("Any subset can be chosen") and says it is made "according to
+  the type and number of resources suitable for meeting the requirements associated with the target through
+  expectations the target is assigned to": the choice belongs to the target and its type, not to one expectation. The
+  order of a `log:allOf` list has no evaluation meaning (entry 17).
+- Decision (owner ruling, Task 15 review): the rule engine chooses once per (target, delivery type), whatever the order
+  of the expectations. As built (tio_c_choose.rules `poolChoice`, builtin `prevLowestInPools`): choice stratum n reads
+  only the pools of the group whose level is n-1, so the choice is the lowest candidate of the group's pools of the
+  **earliest stratum that has a candidate**, not the lowest candidate of the union of all the group's pools: once the
+  target has a member of the type, later strata choose nothing for it. Within one stratum it is the lowest candidate
+  of the union of that stratum's pools. One resource satisfies every expectation of the group (so allocation
+  write-back claims one), and an expectation whose own pool is empty is `true` when a sibling's pool supplied the
+  resource (its value is "the target has a member of the type", tio_b_delivery.rules). `expected.jena.ttl`:
+  `ex:T rdfs:member ex:w1`; `ex:E1`, `ex:E2`, `ex:Intent` `true`.
 
 ## 19. Several targets or delivery types on one expectation (Task 15 fix round)
 
@@ -248,3 +254,117 @@ PDF references: TR290 = Intent Common Model v3.8.0 (TR290A v3.6.0 has matching s
 - Decision (owner ruling, Task 15 review): the rule engine keeps its behaviour: only `rdfs:member` of the target (input,
   held or chosen) counts for a delivery expectation. `expected.jena.ttl`: `ex:E`, `ex:Intent` `false` ("no target member
   of type Widget").
+
+## 21. The specification form `[ met:lastValue ( metric ) ]` (Task 16)
+
+- case: quantity-lastvalue-spec-form
+- Java: does not read `met:lastValue` in the function form (it knows only the legacy `a met:metlastValue ; rdfs:member`
+  form). The first argument is an anonymous node without value, so the condition is `false` with
+  "no observation: null" even when an observation exists (`ex:BandwidthCondition`, observed 150 Mbps), and without
+  one the reason does not name the metric.
+- PDF: TR292G §6.1.2 / §8.1.2 "The function met:lastValue refers to the newest observed value for a metric and provides
+  the value as result", with the example `quan:smaller ( [ met:lastValue ( ex:sliceLatency ) ] [ rdf:value "10" ;
+  quan:unit "ms" ] )`; TR292C §4: the subject of `met:lastValue` is a quantity with the result's value and unit.
+- Decision: the rule engine implements the PDF (tio_a_quantity.rules `quanArgLastValue`), links the observation it used
+  (`met:observed`) and names the metric when there is none. `expected.jena.ttl`: `ex:BandwidthCondition` `true` with
+  `met:observed ex:obs-bw`; `ex:LatencyCondition` `false`, "no observation: LatencyMetric".
+
+## 22. Reason text for an anonymous first argument: "no observation: ?" (Task 16)
+
+- case: quantity-anonymous-argument
+- Java: the reason is `"no observation: " + localName(uri)`; for a blank node the URI is null, so the text is
+  "no observation: null" (`TurtleEvaluator.evalTwoArg`), a defect, not a wording choice.
+- PDF: defines no text (design §7 leaves wording to the builder, the same text in both engines being the contract).
+- Decision: not reproduced. The rule engine writes "no observation: ?" for an argument that has no name (a blank node,
+  or a literal where a metric is expected), as its rules always have (tio_a_quantity.rules `quanArgNameOther`).
+  `expected.jena.ttl`: the same graph with "no observation: ?". Applies equally to the spec form of entry 21 when its
+  metric is itself anonymous.
+
+## 23. A bare metric as the bound (Task 16)
+
+- case: quantity-metric-bound
+- Java: resolves a bare metric through its newest observation only in the first argument (`resolveMetricRefs`
+  pattern A); a metric as the second argument has no value, so `quan:atLeast ( ex:BandwidthMetric
+  ex:MinimumBandwidthMetric )` is `false` with "missing bound value" (and, returning early, links no observation).
+- PDF: every argument of the quantity comparisons is a `quan:Quantity` (TR292D §5.2 "All arguments are quantities";
+  §8.1, §8.2, §8.5, §8.6, §8.9, §8.19 "Argument types"); a bare
+  metric standing for its last value is the accepted extension of entry 5 (TR290 §2.2.2 uses one). The PDFs give
+  argument positions no different meaning.
+- Decision: the rule engine applies entry 5's reading to every argument (tio_a_quantity.rules `quanArgMetric`, per
+  argument cell). It links only the first argument's observation (`met:observed`, design §5.2). `expected.jena.ttl`:
+  150 Mbps >= 100 Mbps, so `ex:BandwidthCondition`, `ex:Expectation`, `ex:Intent` `true`, with `met:observed ex:obs-bw`.
+
+## 24. `quan:exactly` with more than two arguments (Task 16)
+
+- case: quantity-exactly-nary
+- Java: evaluates `quan:exactly` like the two-argument comparisons and compares only the first two arguments, so
+  `quan:exactly ( 5 5 6 )` is `true`.
+- PDF: TR292D §8.5 "evaluated as "true" if the quantity of all arguments are the same", "Arity: at least two
+  arguments" (also §5.2 "if the values of all arguments are exactly the same").
+- Decision: the rule engine requires all arguments to be equal (tio_a_quantity.rules section 4). With several
+  failures or unequal pairs it reports one reason, the lexically first text (tio_a_reasons.rules; an error before a
+  violation), which is Java's wherever Java and the PDF agree (`ex:FirstTwoDiffer`: "5 == 6 is false" in both).
+  `expected.jena.ttl`: `ex:FirstTwoEqual` `false` with "5 == 6 is false".
+
+## 25. Nested quantity with a unit on both levels: the inner unit counts (Task 16)
+
+- case: quantity-nested-unit
+- Java: reads the unit of an argument node outer level first (`TurtleEvaluator.unitOf`), so the bound
+  `[ rdf:value [ rdf:value 100 ; quan:unit "Mbps" ] ; quan:unit "Gbps" ]` is 100 Gbps and 150 Mbps >= it is false
+  ("150 Mbps >= 100 Gbps is false"). For an observation Java reads the inner unit first (`observedOf`), as the contract
+  copy does (`ResultContract.copyObservation`).
+- PDF: TR292C §4: a node whose `rdf:value` is a quantity "inherits the properties of the function result ... the
+  rdf:value and potentially the quan:unit"; the value and its unit are the inner node's. The PDFs do not discuss a
+  conflicting outer unit.
+- Decision: the rule engine reads a nested quantity's own unit first and the outer one only when the inner has none, for
+  arguments and observations alike (tio_a_quantity.rules `quanNestedUnit`, `quanNestedOuterUnit`). `expected.jena.ttl`:
+  150 Mbps >= 100 Mbps, so the condition, `ex:Expectation` and `ex:Intent` are `true`, no reason.
+- Not a deviation: surrounding spaces in a unit. Both engines trim units for comparison and in the reason text
+  ("80 Mbps >= 100 Mbps is false" for `" Mbps "`) and copy the observation's unit literal unchanged
+  (`quantity-unit-whitespace`, no `expected.jena.ttl`).
+
+## 26. Where a reason goes: the nearest named element, only when it is false (Task 16)
+
+- case: reason-attachment
+- Java: an element's reasons are the failed details of its own subtree, collected only when it has no named (IRI) child
+  element (`TurtleEvaluator.evalNode`: `children.isEmpty() ? r.conditions() : List.of()`), and written whenever a
+  detail failed, whatever the element's own value (`ResultGraphWriter`). So the failing anonymous member of
+  `ex:Mixed` (which also has the named child `ex:Named`) is reported nowhere, and `ex:TrueWithFailingMember`
+  (`anyOf ( failing , true )`, `true`) carries "no observation: LatencyMetric".
+- PDF: TR290 §4.2 reports only on IRI-identified elements; TR290 §4.5.2 `icm:reason` explains a result. Design §5.2
+  puts reasons on elements that are `false`.
+- Decision: the rule engine reports a failure of an anonymous condition on the nearest named element above it, through
+  any number of anonymous operators, whether or not that element also has named children, and only when that element
+  is `false`; observation links follow the same path, whatever the truth value (tio_b_reasons.rules). Where every
+  child is anonymous (the common Java case, e.g. a condition `log:allOf ( [ quan:... ] )`) both engines agree.
+  `expected.jena.ttl`: `ex:Mixed` gets "80 Mbps >= 100 Mbps is false" and `met:observed ex:obs-bw`;
+  `ex:TrueWithFailingMember` has no reason.
+
+## 27. Observation links: two-argument comparisons and `quan:exactly` only (Task 16; design §5.2 narrowed)
+
+- Design §5.2 says `met:observed` is written for "a condition whose first argument is a metric". The Java engine links
+  the observation for `quan:atLeast/atMost/greater/smaller/exactly` once both operands have values (also for a unit
+  mismatch), not for `quan:inRange` and not when the comparison stopped at a missing value.
+- Decision: both engines do the same (tio_a_reasons.rules `observedBinary`, `observedExactly`); the corpus and
+  `JenaReasonsRulesTest` cover it. Design §5.2 is read with this narrowing. No case of its own.
+
+## 28. Expression without an intent: empty contract (Task 16, Review Focus 1)
+
+- case: no-intent-metric-only
+- Java: evaluates the conditions it finds with a flat scan and returns Degraded with their reasons
+  ("Conditions not met: quanatMost: unit mismatch: ..."), but writes an empty contract (there is no element to report
+  on, TR290 §4.2).
+- Decision (policy): the rule engine does not evaluate an expression with no IRI-identified `icm:Intent`
+  (subclasses included): empty contract, no exception, no report, and the adapter's result is Degraded
+  "No icm:Intent in expression" with no conditions. Both engines produce the same graph (`expected.ttl`, no
+  `expected.jena.ttl`) and the same state; only the handler's reason string differs (`ResultAdapterTest`).
+
+## Not deviations (documented, kept out of the corpus)
+
+- `quan:inRange ( value lower upper )`: both engines read the arguments in this order (TR292D §8.9) and compare
+  lower <= value <= upper inclusively; only the reason differs from the two-argument functions (none for a plain
+  violation, entry 27).
+- Observations with the same `met:obtainedAt`: the Java engine keeps whichever it met first (model order), the rule
+  engine the lexically lowest observation IRI (JenaBuiltins `newest`). Neither is specified (TR292G §6.1.2 "newest");
+  the corpus avoids equal times.
+
