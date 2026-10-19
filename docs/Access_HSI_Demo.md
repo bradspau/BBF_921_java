@@ -12,6 +12,54 @@ TMF921 API under the `access` Spring profile. It verifies that:
 
 ---
 
+## The graphs this solution uses, and why
+
+Everything is stored as RDF in one TDB2 dataset, split into **named graphs**. Most graphs are **per intent**: each
+intent has its own set, identified by the intent's id, so one intent's observations, state and results never mix
+with another's. A few graphs are shared. Knowing which graph holds what tells you where to look at each step of
+this demo (the steps query them through Fuseki).
+
+| Graph (`http://tmforum.org/api/v5/…`) | One per | What it holds | Written by | Why it exists |
+|---|---|---|---|---|
+| `intents/{id}` | intent | The TMF921 `Intent` resource, including its expression (the Turtle, kept as an opaque string) and its lifecycle status. | `POST` / `PATCH /intent` | The source of truth for what the intent *asks for*. The evaluator reads the expression from here. |
+| `intents/{id}/observations` | intent | The metric observations posted for that intent (metric, value, unit, time). | `POST /intent/{id}/observation` | Observations are the live measurements the conditions are checked against. They are kept apart from the expression and merged with it at evaluation time. |
+| `intents/{id}/inferred` | intent | **The evaluation engine's answer**: an explicit `rdf:value true`/`false` on the intent, each expectation and each condition, the resources chosen for each delivery expectation (as `rdfs:member` of the target), an `icm:reason` on anything false because of an error or a missing observation, and a `met:observed` link to the observation each metric condition used. | The evaluation engine (java, jena or compare), after every evaluation | Both engines write **the same graph in the same vocabulary**, so everything downstream does not care which engine ran, and the two can be compared triple for triple (that is what `compare` mode does). It is replaced on every evaluation, so it always shows the latest answer. It does **not** contain `icm:result`: that belongs in the report (below). Browse it in Fuseki to see exactly what the engine decided. |
+| `intents/{id}/handlerState` | intent | The handler's working memory: the intent's handling state (`Fulfilled`/`Degraded`), when it was last evaluated, and one entry per condition (passed or not, observed value, bound, or the resource selected). | The handler, after every evaluation | The handler's record of the latest evaluation, one graph per intent, replaced on every evaluation. It is what the handler (and the notifications built on it) work from; it is not what keeps a choice stable. A resource chosen earlier is *held* because Flow 4 marked it in the `resources` graph (`pon:assignedToService`), and it is kept on re-evaluation instead of being chosen again (Step 6). |
+| `reports/{id}` | intent report | One `IntentReport` and, for an intent with an `icm:Intent`, the TR290 report beneath it: an `icm:result` for the intent, every expectation and every condition, what each was derived from (`icm:resultFrom`), why it is false (`icm:reason`), and the resources chosen (`icm:targetReport`). It points back to its intent with `tmf:parentIntent`. | The handler, after every evaluation | The report is what the API returns (`GET …/intentReport`) and what `icm:result` is queried from. A **new** report graph is created on every evaluation, so reports accumulate (newest first) and you can see the intent change over time. The handler builds it from the expression plus the `inferred` result, copying each `icm:result` from the matching `rdf:value`; it never decides truth itself. |
+| `resources` | shared | The PON resource inventory: ONTs, UNI ports, S-VLAN and C-tag allocations and their state (`pon:inUse`, `pon:operationalState`, …). | Loaded at startup from `BBF_access/`; updated by Flow 4 | The access domain's real-world state. The set constructors in the intent (`set:resourcesOfType`, `set:resourcesWithPropertyObject`, …) are resolved against it, and a Fulfilled evaluation writes `pon:inUse true` and `pon:assignedToService` back to it (Flow 4, Step 5). |
+
+Other shared graphs exist but are not used in this demo: `hubs` (notification subscriptions), `audit/{id}`
+(immutable state-change records) and `ontology`.
+
+How they fit together on one evaluation:
+
+```
+intents/{id} (expression) ┐
+intents/{id}/observations ├─ merged ─►  evaluation engine  ─►  intents/{id}/inferred   (the answer)
+resources (inventory)     ┘                                          │
+                                                                     ├─►  reports/{new id}        (TR290 report, icm:result)
+                                                                     ├─►  intents/{id}/handlerState (state + per-condition results)
+                                                                     └─►  resources               (Flow 4: pon:inUse, only when Fulfilled;
+                                                                                                    read back next time as the held choice)
+```
+
+Which graph to look at:
+
+| To see… | Look in |
+|---|---|
+| Whether each condition is met (`icm:result`), and why not | `reports/{id}`, via the `results` helper in Step 4 |
+| What the engine itself decided, in raw form (and to check java, jena and compare agree) | `intents/{id}/inferred` |
+| The handler's record of the latest state and per-condition results | `intents/{id}/handlerState` |
+| Which ports and tags are in use, and which intent holds them (`pon:assignedToService`) | `resources` |
+
+To list every graph and its size in Fuseki:
+
+```sparql
+SELECT ?g (COUNT(*) AS ?triples) WHERE { GRAPH ?g { ?s ?p ?o } } GROUP BY ?g ORDER BY ?g
+```
+
+---
+
 ## Architecture
 
 ```
