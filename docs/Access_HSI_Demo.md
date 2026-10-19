@@ -337,6 +337,83 @@ curl -s "$BASE/intent/$INTENT_ID/intentReport" \
 It is long (one entry per intent element), so the steps below query it in Fuseki instead (the `results` helper in
 Step 4), which shows one row per element.
 
+**Pretty-print the full report.** The raw Turtle above is hard to read: long URIs and no obvious order. This
+prints the whole newest report as a tree, from the report's own fields down to the intent, its expectations and
+their conditions, with the `icm:result` of every element, the reason for each false one and the resources chosen:
+
+```bash
+pip install rdflib    # once; only this snippet needs it
+
+curl -s "$BASE/intent/$INTENT_ID/intentReport" | python3 -c '
+import sys, json
+from rdflib import Graph, Namespace, RDF, RDFS
+
+ICM = Namespace("http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/")
+short = lambda u: str(u).rsplit("#", 1)[-1].rsplit("/", 1)[-1]
+
+report = json.load(sys.stdin)[0]            # newest report
+print("IntentReport", report["id"])
+for k in ("creationDate", "intentId", "intentHandlingState", "intentHandlingReason"):
+    print(f"  {k + chr(58):22}{report.get(k)}")
+
+g = Graph().parse(data=report["expression"]["expressionValue"], format="turtle")
+
+def show(node, depth):
+    pad = "    " * depth
+    kind = short(next(g.objects(node, RDF.type), "?"))
+    about = short(next(g.objects(node, ICM.about), "?"))
+    result = next(g.objects(node, ICM.result), "?")
+    print(f"{pad}{kind:28} {about:38} result={str(result).lower()}")
+    for reason in g.objects(node, ICM.reason):
+        print(f"{pad}  · reason: {g.value(reason, RDFS.label)}")
+    for tr in g.objects(node, ICM.targetReport):
+        members = ", ".join(sorted(short(m) for m in g.objects(tr, RDFS.member))) or "(none)"
+        print(f"{pad}  · target {short(next(g.objects(tr, ICM.about), chr(63)))}: {members}")
+    for child in sorted(g.objects(node, ICM.resultFrom), key=short):
+        show(child, depth + 1)
+
+print()
+for root in g.subjects(RDF.type, ICM.IntentReport):
+    show(root, 0)
+'
+```
+
+Expected for the initial report: the intent is `false`, the three delivery expectations are `true` with the
+resources chosen, the monitoring expectation is `true`, and the performance expectation is `false` because all
+five of its conditions are `false` with a `no observation` reason:
+
+```
+IntentReport 0b1c…
+  creationDate:         2026-10-19T08:19:04.177794517Z
+  intentId:             8c39…
+  intentHandlingState:  Degraded
+  intentHandlingReason: Conditions not met: atLeast: no observation: DownstreamBandwidthMetric; … PacketLossMetric
+
+IntentReport                 HSIIntent                              result=false
+    DeliveryExpectationReport    HSICTAGProvisioningExpectation         result=true
+      · target SelectedCTAGAllocation: CTAG-N-001
+    ReportingExpectationReport   HSIMonitoringExpectation               result=true
+    PropertyExpectationReport    HSIPerformanceExpectation              result=false
+      · target HSIServiceTarget: HSIServiceInstance
+        ConditionReport              HSI_DownstreamBandwidthCondition       result=false
+          · reason: no observation: DownstreamBandwidthMetric
+        ConditionReport              HSI_JitterCondition                    result=false
+          · reason: no observation: JitterMetric
+        ConditionReport              HSI_LatencyCondition                   result=false
+          · reason: no observation: LatencyMetric
+        ConditionReport              HSI_PacketLossCondition                result=false
+          · reason: no observation: PacketLossMetric
+        ConditionReport              HSI_UpstreamBandwidthCondition         result=false
+          · reason: no observation: UpstreamBandwidthMetric
+    DeliveryExpectationReport    HSISTagProvisioningExpectation         result=true
+      · target SelectedSVLANAllocation: SVLAN-N-HSI
+    DeliveryExpectationReport    HSIServiceProvisioningExpectation      result=true
+      · target SelectedUNIInterface: UNI-001-1
+```
+
+Run the same snippet after any later step to see the report change; it always shows the newest one. (To see an
+older report, change `[0]` to a later index: the list is newest first.)
+
 ---
 
 ## Step 4 — Show the intent is not Fulfilled until every condition is met
