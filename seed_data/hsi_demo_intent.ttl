@@ -1,0 +1,124 @@
+@prefix bbf:  <http://broadband-forum.org/Intent#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix imo:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentManagementOntology/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+############################################################
+# HSI demo intent (standalone profile, no resource inventory)
+#
+# Used by docs/HSI_DEMO.md. The structural checks (delivery, UNI state) are
+# satisfied by facts asserted in this file; the five performance conditions
+# need metric observations posted through the API.
+############################################################
+
+############################################################
+# Main intent
+############################################################
+# The intent is compliant when all of its expectations are (TR290 §2.2.1).
+bbf:HSIIntent  a icm:Intent ;
+    rdfs:comment "HSI service: structural checks asserted inline, performance checked against observations" ;
+    log:allOf ( bbf:DeliveryCheck
+                bbf:UNICheck
+                bbf:PerformanceCheck
+                bbf:HSIMonitoringExpectation ) .
+
+############################################################
+# Delivery: the target already has a member of the delivery type
+############################################################
+bbf:DeliveryCheck  a icm:DeliveryExpectation ;
+    icm:target       bbf:SelectedUNIInterface ;
+    icm:deliveryType bbf:HSIService .
+
+bbf:SelectedUNIInterface  a icm:Target ;
+    rdfs:member bbf:HSIServiceInstance .
+
+bbf:HSIServiceInstance  a bbf:HSIService .
+
+############################################################
+# UNI state: log:match checks a triple exists in the knowledge base
+############################################################
+bbf:UNICheck  a icm:PropertyExpectation ;
+    icm:target bbf:SelectedUNIInterface ;
+    log:allOf ( bbf:UNIUpCondition
+                bbf:UNIReadyCondition ) .
+
+bbf:UNIUpCondition  a icm:Condition ;
+    log:match ( bbf:SelectedUNIInterface
+                bbf:operationalState
+                bbf:OperationalUp ) .
+
+bbf:UNIReadyCondition  a icm:Condition ;
+    log:match ( bbf:SelectedUNIInterface
+                bbf:provisioningState
+                bbf:Ready ) .
+
+bbf:SelectedUNIInterface
+    bbf:operationalState  bbf:OperationalUp ;
+    bbf:provisioningState bbf:Ready .
+
+############################################################
+# Performance: five quantity conditions on metric observations
+############################################################
+bbf:PerformanceCheck  a icm:PropertyExpectation ;
+    icm:target bbf:HSIServiceTarget ;
+    log:allOf ( bbf:DL_Check
+                bbf:UL_Check
+                bbf:Lat_Check
+                bbf:Jit_Check
+                bbf:PL_Check ) .
+
+bbf:HSIServiceTarget  a icm:Target ;
+    rdfs:member bbf:HSIServiceInstance .
+
+# Downstream bandwidth >= 100 Mbps
+bbf:DL_Check  a icm:Condition ;
+    quan:atLeast ( bbf:DownstreamBandwidthMetric
+                   [ rdf:value "100"^^xsd:decimal ; quan:unit "Mbps"^^xsd:string ] ) .
+
+# Upstream bandwidth >= 20 Mbps
+bbf:UL_Check  a icm:Condition ;
+    quan:atLeast ( bbf:UpstreamBandwidthMetric
+                   [ rdf:value "20"^^xsd:decimal ; quan:unit "Mbps"^^xsd:string ] ) .
+
+# Latency < 25 ms
+bbf:Lat_Check  a icm:Condition ;
+    quan:smaller ( bbf:LatencyMetric
+                   [ rdf:value "25"^^xsd:decimal ; quan:unit "ms"^^xsd:string ] ) .
+
+# Jitter < 3 ms
+bbf:Jit_Check  a icm:Condition ;
+    quan:smaller ( bbf:JitterMetric
+                   [ rdf:value "3"^^xsd:decimal ; quan:unit "ms"^^xsd:string ] ) .
+
+# Packet loss < 0.1 %
+bbf:PL_Check  a icm:Condition ;
+    quan:smaller ( bbf:PacketLossMetric
+                   [ rdf:value "0.1"^^xsd:decimal ; quan:unit "percent"^^xsd:string ] ) .
+
+############################################################
+# Reporting expectation
+############################################################
+# Reporting scope (TR290 §4.2): the intent report contains a report for each intent element that is a
+# member of this target, so every element we want an icm:result for is listed here.
+bbf:HSIMonitoringTarget  a icm:Target ;
+    rdfs:member bbf:HSIIntent ,
+                bbf:DeliveryCheck ,
+                bbf:UNICheck ,
+                bbf:PerformanceCheck ,
+                bbf:HSIMonitoringExpectation ,
+                bbf:UNIUpCondition ,
+                bbf:UNIReadyCondition ,
+                bbf:DL_Check ,
+                bbf:UL_Check ,
+                bbf:Lat_Check ,
+                bbf:Jit_Check ,
+                bbf:PL_Check ,
+                bbf:SelectedUNIInterface ,
+                bbf:HSIServiceTarget .
+
+bbf:HSIMonitoringExpectation  a icm:ReportingExpectation ;
+    icm:target bbf:HSIMonitoringTarget .
