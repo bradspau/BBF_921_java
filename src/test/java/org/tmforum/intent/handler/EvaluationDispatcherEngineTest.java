@@ -65,6 +65,11 @@ class EvaluationDispatcherEngineTest {
                            org.tmforum.intent.engine.InferredGraphStore store) {}
 
     private Fixture fixture(org.apache.jena.rdf.model.Model graph) {
+        return fixture(graph, "@prefix : <x#> .", mock(ReportBuilder.class), mock(NotificationService.class));
+    }
+
+    private Fixture fixture(org.apache.jena.rdf.model.Model graph, String expression, ReportBuilder builder,
+                            NotificationService notifications) {
         IntentRepository intents = mock(IntentRepository.class);
         IntentReportRepository reports = mock(IntentReportRepository.class);
         ObservationStore obs = mock(ObservationStore.class);
@@ -72,11 +77,11 @@ class EvaluationDispatcherEngineTest {
         org.tmforum.intent.engine.InferredGraphStore store = mock(org.tmforum.intent.engine.InferredGraphStore.class);
         when(intents.findById("i1")).thenReturn(Map.of(
                 "@type", "Intent", "lifecycleStatus", "ACTIVE",
-                "expression", Map.of("@type", "TurtleExpression", "expressionValue", "@prefix : <x#> .")));
+                "expression", Map.of("@type", "TurtleExpression", "expressionValue", expression)));
         when(obs.getObservationsTurtle(anyString())).thenReturn("");
         when(writer.heldResources(anyString())).thenReturn(List.of());
         EvaluationDispatcher d = new EvaluationDispatcher(readyEngine(graph), obs, writer, mock(BestEffortLimits.class),
-                intents, reports, mock(NotificationService.class), mock(ReportBuilder.class), mock(Dataset.class), store);
+                intents, reports, notifications, builder, mock(Dataset.class), store);
         return new Fixture(d, reports, writer, store);
     }
 
@@ -106,6 +111,41 @@ class EvaluationDispatcherEngineTest {
         Fixture f = fixture(null);
         f.dispatcher().scheduleEvaluation("i1");
         verify(f.store(), never()).replace(anyString(), any());
+        verify(f.reports()).create(eq("i1"), any());
+    }
+
+    private static org.apache.jena.rdf.model.Model nonEmptyGraph() {
+        org.apache.jena.rdf.model.Model m = org.apache.jena.rdf.model.ModelFactory.createDefaultModel();
+        m.add(m.createResource("http://x/a"), org.apache.jena.vocabulary.RDF.value, m.createTypedLiteral(true));
+        return m;
+    }
+
+    @Test
+    void malformedExpressionTurtleStillCreatesTheReportAndFiresTheEvent() {
+        ReportBuilder builder = mock(ReportBuilder.class);
+        NotificationService notifications = mock(NotificationService.class);
+        Fixture f = fixture(nonEmptyGraph(), "this is { not turtle .", builder, notifications);
+        f.dispatcher().scheduleEvaluation("i1");
+        verify(f.reports()).create(eq("i1"), any());
+        verify(notifications).fire(eq(NotificationService.INTENT_REPORT_CREATE), any());
+        verify(builder, never()).build(any(), any(), any());
+    }
+
+    @Test
+    void anEmptyResultGraphBuildsNoTr290ReportButTheNormalReportIsCreated() {
+        ReportBuilder builder = mock(ReportBuilder.class);
+        Fixture f = fixture(GRAPH, "@prefix : <x#> .", builder, mock(NotificationService.class));
+        f.dispatcher().scheduleEvaluation("i1");
+        verify(builder, never()).build(any(), any(), any());
+        verify(f.reports()).create(eq("i1"), any());
+    }
+
+    @Test
+    void aNormalIntentStillBuildsTheTr290Report() {
+        ReportBuilder builder = mock(ReportBuilder.class);
+        Fixture f = fixture(nonEmptyGraph(), "@prefix : <x#> .", builder, mock(NotificationService.class));
+        f.dispatcher().scheduleEvaluation("i1");
+        verify(builder).build(any(), any(), any());
         verify(f.reports()).create(eq("i1"), any());
     }
 }

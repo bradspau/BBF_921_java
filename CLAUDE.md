@@ -13,7 +13,7 @@ There is no `./mvnw`; use `mvn`.
 - Coverage report: `mvn test jacoco:report` (must stay ≥80%)
 - Run dev server (standalone): `mvn spring-boot:run`
 - Run dev server (access profile): `mvn spring-boot:run -Dspring-boot.run.profiles=access`
-- Pick the engine: `-Dintent.evaluator=java|jena|compare` (env `INTENT_EVALUATOR`; default `java`)
+- Pick the engine: `mvn spring-boot:run -Dspring-boot.run.arguments=--intent.evaluator=jena` (`java|jena|compare`) or env `INTENT_EVALUATOR`; default `java`
 - Seed data: `bash seed_data/seed.sh`
 
 ## Architecture
@@ -31,9 +31,14 @@ used by a metric condition. No `icm:result` here: that lives only in TR290 repor
 `/inferred` named graph (`InferredGraphStore`), replaced on each evaluation.
 
 **Handler side**: `handler/ReportBuilder` turns the result graph plus the expression into the TR290 report
-(`icm:IntentReport`/`ExpectationReport`/`ConditionReport`); `engine/ResultAdapter` builds the handler
-`EvaluationResult` (state, reason, flat condition list) that Flows 1-4 and `BestEffortLimits` consume.
+(`icm:IntentReport`/`ExpectationReport`/`ConditionReport`); the handler `EvaluationResult` (state, reason, flat
+condition list) that Flows 1-4 and `BestEffortLimits` consume comes from the Java evaluator itself, and for the Jena
+engine from `engine/ResultAdapter`, which builds it from the rules' facts.
 `HandlerStateWriter` still writes the `handlerState` graph (`imo:conditionPassed`); Flow 4 and notifications depend on it.
+
+**Note on `expressionValue` readers**: besides `TurtleEvaluator`, the Jena engine parses it (`EvaluationInputs.parse`), the
+dispatcher re-parses it for `ReportBuilder` (TR290 report structure), `ResultAdapter` reads it for entry order and
+`HandlerProjection` (compare mode) reads it too; none of them evaluates anything from it other than the engines.
 
 **Java engine**: `TurtleEvaluator` is a hand-written tree walk (normalise predicates, resolve metrics to the newest
 observation, set constructors, delivery choice with held resources, `Quantities` for unit-aware comparison); it is also
@@ -80,7 +85,7 @@ Same 4 post-evaluation flows as BBF_921 Python:
 ## Rules
 - Read the listed docs/ file before writing code for each phase
 - TDB2 Dataset access MUST be wrapped in transactions: `dataset.begin(ReadWrite.READ/WRITE)` … `dataset.end()`
-- `expressionValue` stored as opaque String — only the engines (`EvaluationInputs`, `TurtleEvaluator`, `JenaEvaluationEngine`) and `ReportBuilder` read it
+- `expressionValue` stored as opaque String — only `TurtleEvaluator` materialises triples from it
 - `id`, `href`, `creationDate`, `lastUpdate` set server-side — strip from POST, reject on PATCH
 - `lifecycleStatus` FSM uses ALL-CAPS: `ACKNOWLEDGED`, `ACTIVE`, `FULFILLED`, `DEGRADED`, `SUSPENDED`, `TERMINATED`
 - All resource ID path params validated as UUID pattern

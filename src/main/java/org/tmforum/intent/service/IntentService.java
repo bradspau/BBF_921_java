@@ -1,5 +1,7 @@
 package org.tmforum.intent.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.tmforum.intent.engine.InferredGraphStore;
@@ -22,6 +24,8 @@ import java.util.*;
  */
 @Service
 public class IntentService {
+
+    private static final Logger log = LoggerFactory.getLogger(IntentService.class);
 
     private static final Set<String> SERVER_FIELDS =
             Set.of("id", "href", "creationDate", "lastUpdate");
@@ -145,7 +149,11 @@ public class IntentService {
         if (existing == null) return false;
         boolean deleted = intentRepository.delete(id);
         if (deleted) {
-            inferredGraphStore.drop(id);
+            try {
+                inferredGraphStore.drop(id);
+            } catch (Exception e) {
+                log.warn("delete: could not drop the inferred graph of intent {}: {}", id, e.getMessage());
+            }
             notificationService.fire(NotificationService.INTENT_DELETE,
                     Map.of("id", id, "@type", existing.getOrDefault("@type", "Intent")));
         }

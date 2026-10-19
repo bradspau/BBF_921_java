@@ -126,7 +126,7 @@ rule (Container membership propagation) is retained; the rest are dropped.
 | `tmf_insp_eval.rules` | `tmf_insp_eval.dlog` | Intent specification template hierarchy |
 | `tmf_metrics_eval.rules` | `tmf_metrics_eval.dlog` + `tmf_metrics_rules.dlog` | Observation propagation, metric links |
 | `tmf_mathfn_eval.rules` | `tmf_mathfn_eval.dlog` | Math function type propagation |
-| `tio_all.rules` | All of the above | Master flat file — all prefixes + all rules |
+| `tio_all.rules` | All of the above | Master flat file — all prefixes + all rules. **Removed from this repository** in the evaluation-engines work; the application now loads its own staged rule files from `src/main/resources/rules/` |
 
 ---
 
@@ -156,7 +156,7 @@ Create `config/fuseki-reasoner.ttl`:
 <#inferredGraph> rdf:type ja:InfModel ;
     ja:reasoner [
         ja:reasonerURL <http://jena.hpl.hp.com/2003/GenericRuleReasoner> ;
-        ja:rulesFrom   <file:ontology/jena-rules/tio_all.rules>
+        ja:rulesFrom   <file:ontology/jena-rules/tio_all.rules>   # file no longer exists in this repo
     ] ;
     ja:baseModel <#baseGraph> .
 

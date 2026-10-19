@@ -7,7 +7,8 @@ import java.util.Set;
  * Private trace of the Java engine: read only by {@code ResultGraphWriter}, which turns it into the shared
  * result graph. Reports are built from that graph, not from this type.
  *
- * Everything needed to build a TR290 intent report from one evaluation.
+ * The tree of element results from one evaluation, with the reporting scope, from which the Java engine writes the
+ * result graph.
  *
  * @param elements            top-level element results (the intent, when the expression has one)
  * @param scope               IRIs of the intent elements the reporting expectation(s) ask for (TR290 §4.2);

@@ -24,6 +24,7 @@ import java.io.StringWriter;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.tmforum.intent.graph.GraphNodes;
+import java.io.StringReader;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -137,8 +138,9 @@ public class EvaluationDispatcher {
             return;
         }
 
-        if (!engine.status().ready()) {
-            log.error("evaluator '{}' is not ready: {}", engine.name(), engine.status().reason());
+        org.tmforum.intent.engine.EngineStatus engineStatus = engine.status();
+        if (!engineStatus.ready()) {
+            log.error("evaluator '{}' is not ready: {}", engine.name(), engineStatus.reason());
             return;
         }
 
@@ -147,7 +149,7 @@ public class EvaluationDispatcher {
         String resTurtle = getResourcesTurtle();
         List<String> heldResources = handlerStateWriter.heldResources(intentId);
 
-        // Evaluate (with timeout guard via interruption)
+        // Evaluate (there is no timeout; the call runs to completion on the evaluation executor)
         EvaluationResult result;
         EvaluationOutcome outcome = null;
         try {
@@ -178,13 +180,20 @@ public class EvaluationDispatcher {
 
         // TR290 intent report (icm:result per intent element), carried as the report's Turtle expression
         // Built from the expression and the engine's result graph; none if the evaluation produced no graph
+        // A malformed expression, or an evaluation that produced no graph, gives no TR290 report; the normal
+        // IntentReport and the flows below proceed as they would without one.
         Model tioReport = null;
-        if (outcome != null && outcome.resultGraph() != null) {
-            Model expressionModel = ModelFactory.createDefaultModel();
-            expressionModel.read(new java.io.StringReader(expressionTurtle), "http://tmforum.org/", "TURTLE");
-            tioReport = reportBuilder.build(expressionModel, outcome.resultGraph(), new ReportBuilder.ReportContext(
-                    GraphNodes.reportNode(reportId), result.intentHandlingState(),
-                    reportRepository.count(intentId) + 1, Instant.parse(now)));
+        if (outcome != null && outcome.resultGraph() != null && !outcome.resultGraph().isEmpty()) {
+            try {
+                Model expressionModel = ModelFactory.createDefaultModel();
+                expressionModel.read(new StringReader(expressionTurtle), "http://tmforum.org/", "TURTLE");
+                tioReport = reportBuilder.build(expressionModel, outcome.resultGraph(), new ReportBuilder.ReportContext(
+                        GraphNodes.reportNode(reportId), result.intentHandlingState(),
+                        reportRepository.count(intentId) + 1, Instant.parse(now)));
+            } catch (Exception e) {
+                log.warn("runEvaluation: no TR290 report for intent {}: {}", intentId, e.getMessage());
+                tioReport = null;
+            }
         }
         if (tioReport != null) {
             Map<String, Object> expression = new LinkedHashMap<>();

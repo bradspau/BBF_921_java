@@ -28,7 +28,7 @@ public class JavaEvaluationEngine implements EvaluationEngine {
         Model observations = ModelFactory.createDefaultModel();
         if (in.observations() != null && !in.observations().isBlank()) {
             try {
-                observations.read(new StringReader(in.observations()), "http://tmforum.org/", "TURTLE");
+                observations.read(new StringReader(in.observations()), EvaluationInputs.BASE, "TURTLE");
             } catch (Exception ignored) {
                 // the evaluator has already reported the parse error; there is nothing to copy
             }

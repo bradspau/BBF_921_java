@@ -22,6 +22,7 @@ public final class EvaluationInputs {
 
     /** Evaluation context carried in the model: the resources the intent being evaluated already holds. */
     public static final Resource EVAL_CONTEXT = ResourceFactory.createResource("urn:tmf921:evaluation");
+    public static final String PRIVATE_NS = "urn:tmf921:evaluation#";
     public static final Property EVAL_HOLDS = ResourceFactory.createProperty("urn:tmf921:evaluation#holds");
 
     /** Joins the non-blank parts with newlines, so prefixes declared by the expression apply to what follows. */
@@ -52,6 +53,15 @@ public final class EvaluationInputs {
      */
     public static void addHeld(Model g, Collection<String> held) {
         g.removeAll(EVAL_CONTEXT, null, null);
+        // Likewise any triple using a predicate of the engines' private namespace (for example an asserted
+        // urn:tmf921:evaluation#observation): helper vocabulary is added by the engines, never taken from input.
+        java.util.List<Statement> own = new java.util.ArrayList<>();
+        StmtIterator it = g.listStatements();
+        while (it.hasNext()) {
+            Statement st = it.next();
+            if (st.getPredicate().getURI().startsWith(PRIVATE_NS)) own.add(st);
+        }
+        g.remove(own);
         if (held == null) return;
         for (String uri : held) g.add(EVAL_CONTEXT, EVAL_HOLDS, g.createResource(uri));
     }
