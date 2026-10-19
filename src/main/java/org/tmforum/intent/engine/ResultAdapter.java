@@ -287,6 +287,9 @@ public final class ResultAdapter {
             return local;
         }
 
+        /** Failures about the argument list itself, before any value is read (TurtleEvaluator.evalTwoArg). */
+        private static final Set<String> STRUCTURAL = Set.of("missing operand nodes", "missing bound node");
+
         private Map<String, Object> quantity(Resource node, Resource k, String name) {
             boolean range = name.endsWith("inRange");
             Map<String, Object> c = new LinkedHashMap<>();
@@ -311,7 +314,8 @@ public final class ResultAdapter {
                     putUnit(c, "observedUnit", a1);
                     putUnit(c, "boundUnit", a2);
                 }
-            } else {
+            } else if (!STRUCTURAL.contains(String.valueOf(error(k)))) {
+                // The Java engine reads no value when the operand cells themselves are missing (evalTwoArg).
                 Resource b = object(m, k, ARG2);
                 Resource pair = violationPair(k);
                 if (pair != null) {

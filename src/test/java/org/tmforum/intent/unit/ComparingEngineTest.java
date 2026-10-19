@@ -15,7 +15,9 @@ import org.slf4j.LoggerFactory;
 import org.tmforum.intent.engine.*;
 import org.tmforum.intent.model.EvaluationResult;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -90,7 +92,7 @@ class ComparingEngineTest {
     void differentGraphsLogOneWarningWithCountsAndTheDifferingTriples() {
         var p = outcome(graph(true, true), "Fulfilled");
         var e = new ComparingEngine(stub("java", EngineStatus.ok(), p),
-                stub("jena", EngineStatus.ok(), outcome(graph(true, false), "Degraded")));
+                stub("jena", EngineStatus.ok(), outcome(graph(true, false), "Fulfilled")));
         assertSame(p, e.evaluate(IN));
         ILoggingEvent ev = onlyEvent();
         assertEquals(Level.WARN, ev.getLevel());
@@ -138,6 +140,87 @@ class ComparingEngineTest {
         long secondaryOnly = msg.split("> <urn:e", -1).length - 1;
         assertEquals(3, primaryOnly, msg);
         assertEquals(2, secondaryOnly, "the cap of five is shared by both directions: " + msg);
+    }
+
+    // ── handler result projection ────────────────────────────────────────────
+
+    private static Map<String, Object> cond(Object... kv) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        for (int i = 0; i < kv.length; i += 2) m.put((String) kv[i], kv[i + 1]);
+        return m;
+    }
+
+    private static EvaluationOutcome handler(String state, String reason, Map<String, Object>... conditions) {
+        return new EvaluationOutcome(graph(true), new EvaluationResult(state, reason, List.of(conditions)));
+    }
+
+    private String compareHandlers(EvaluationOutcome java, EvaluationOutcome jena) {
+        var e = new ComparingEngine(stub("java", EngineStatus.ok(), java), stub("jena", EngineStatus.ok(), jena));
+        assertSame(java, e.evaluate(IN));
+        if (appender.list.isEmpty()) return null;
+        ILoggingEvent ev = onlyEvent();
+        assertEquals(Level.WARN, ev.getLevel());
+        return ev.getFormattedMessage();
+    }
+
+    @Test
+    void identicalHandlerResultsLogNothing() {
+        var c = cond("type", "atLeast", "operator", ">=", "observed", 5, "bound", 10, "passed", false);
+        assertNull(compareHandlers(handler("Degraded", "r", c), handler("Degraded", "r", new LinkedHashMap<>(c))));
+    }
+
+    @Test
+    void keysNoConsumerReadsAreNotCompared() {
+        assertNull(compareHandlers(
+                handler("Fulfilled", null, cond("type", "atLeast", "passed", true, "metric", "urn:m1")),
+                handler("Fulfilled", null, cond("type", "atLeast", "passed", true, "metric", "urn:m2",
+                        "element", "urn:x"))));
+    }
+
+    @Test
+    void differentStateLogsOneWarningWithTheFirstDifference() {
+        assertEquals("compare: 'java' and 'jena' handler results differ for intent i1; first difference: "
+                        + "state: java=Fulfilled, jena=Degraded",
+                compareHandlers(handler("Fulfilled", null), handler("Degraded", null)));
+    }
+
+    @Test
+    void differentReasonLogsOneWarningWithTheFirstDifference() {
+        assertEquals("compare: 'java' and 'jena' handler results differ for intent i1; first difference: "
+                        + "reason: java='Conditions not met: a', jena='Conditions not met: b'",
+                compareHandlers(handler("Degraded", "Conditions not met: a"), handler("Degraded", "Conditions not met: b")));
+    }
+
+    @Test
+    void differentConditionEntryLogsTheFirstDifferingEntryWithoutBlankNodes() {
+        var same = cond("type", "atLeast", "passed", true);
+        String msg = compareHandlers(
+                handler("Fulfilled", null, same, cond("type", "DeliveryExpectation", "passed", true,
+                        "selected", "http://example.org/UNI-1")),
+                handler("Fulfilled", null, same, cond("type", "DeliveryExpectation", "passed", true,
+                        "selected", "http://example.org/CTAG-1")));
+        assertEquals("compare: 'java' and 'jena' handler results differ for intent i1; first difference: "
+                + "condition 2: java={passed=true | selected=http://example.org/UNI-1 | type=DeliveryExpectation}, "
+                + "jena={passed=true | selected=http://example.org/CTAG-1 | type=DeliveryExpectation}", msg);
+        assertFalse(msg.contains("_:"), msg);
+    }
+
+    @Test
+    void differentConditionCountIsADifference() {
+        String msg = compareHandlers(handler("Fulfilled", null, cond("type", "atLeast", "passed", true)),
+                handler("Fulfilled", null));
+        assertTrue(msg.endsWith("first difference: condition count: java=1, jena=0"), msg);
+    }
+
+    @Test
+    void graphAndHandlerDifferencesLogOneWarningEach() {
+        var e = new ComparingEngine(stub("java", EngineStatus.ok(), outcome(graph(true), "Fulfilled")),
+                stub("jena", EngineStatus.ok(), outcome(graph(false), "Degraded")));
+        e.evaluate(IN);
+        assertEquals(2, appender.list.size(), () -> "log: " + appender.list);
+        assertTrue(appender.list.stream().allMatch(ev -> ev.getLevel() == Level.WARN));
+        assertTrue(appender.list.get(0).getFormattedMessage().contains("triples) differ"));
+        assertTrue(appender.list.get(1).getFormattedMessage().contains("handler results differ"));
     }
 
     @Test

@@ -407,8 +407,12 @@ class JenaLogicRulesTest {
         String t = """
                 ex:a a icm:Condition ; quan:quanatLeast ( 5 3 ) .
                 ex:b a icm:Condition , quan:quanatMost ; rdf:first 5 ; rdf:rest ( 3 ) .
+                ex:c a icm:Condition , quan:quanatLeast ; rdf:first ex:gone ; rdf:rest [ rdf:first 3 ] .
+                ex:d a icm:Condition , quan:quanatMost ; rdf:first 5 .
+                ex:e a icm:Condition , quan:quanexactly ; rdf:first 5 ; rdf:rest [ rdf:first 5 ] .
                 """;
-        InfModel m = assertAllRuns(t, Map.of("a", true, "b", false));
+        // c, d, e: open lists (no rdf:nil), as the integration tests write them; c's metric has no observation.
+        InfModel m = assertAllRuns(t, Map.of("a", true, "b", false, "c", false, "d", false, "e", true));
         assertTrue(m.getRawModel().contains(m.getResource(EX + "b"), HAS_CONTRIBUTOR));
     }
 

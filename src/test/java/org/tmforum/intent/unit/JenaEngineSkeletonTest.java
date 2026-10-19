@@ -67,7 +67,7 @@ class JenaEngineSkeletonTest {
     void statusNotReadyWhenOntologyAbsent(@TempDir Path empty) {
         EngineStatus s = new JenaEvaluationEngine(empty).status();
         assertFalse(s.ready());
-        assertEquals("ontology files not found in ontology/", s.reason());
+        assertEquals("ontology files not found in " + empty + "/", s.reason());
     }
 
     @Test
@@ -85,7 +85,7 @@ class JenaEngineSkeletonTest {
         Files.writeString(tmp.resolve("broken.ttl"), "<http://example.org/b> <http://example.org/p> \"unterminated .");
         EngineStatus s = assertDoesNotThrow(() -> new JenaEvaluationEngine(tmp).status());
         assertFalse(s.ready());
-        assertTrue(s.reason().startsWith("ontology files do not load: "), s.reason());
+        assertTrue(s.reason().startsWith("ontology files in " + tmp + "/ do not load: "), s.reason());
         assertTrue(s.reason().contains("line: 1"), () -> "the parse error text is included: " + s.reason());
     }
 

@@ -15,8 +15,9 @@ import java.util.TreeSet;
 
 /**
  * Runs a primary and a secondary engine, logs a warning when their result graphs differ on the contract
- * triples, and always returns the primary's outcome. A not-ready or failing secondary never affects the result; a
- * failing primary does (its exception propagates).
+ * triples and another when their handler results differ ({@link HandlerProjection}: state, reason, the consumed keys
+ * of each condition in order, the Flow 3 proposal), and always returns the primary's outcome. A not-ready or failing
+ * secondary never affects the result; a failing primary does (its exception propagates).
  */
 public class ComparingEngine implements EvaluationEngine {
 
@@ -55,6 +56,12 @@ public class ComparingEngine implements EvaluationEngine {
                 log.warn("compare: '{}' ({} triples) and '{}' ({} triples) differ for intent {}; "
                                 + "first differences: {}",
                         primary.name(), a.size(), secondary.name(), b.size(), in.intentId(), differences(a, b));
+            }
+            String handler = HandlerProjection.firstDifference(in.expression(), main.result(), primary.name(),
+                    other.result(), secondary.name());
+            if (handler != null) {
+                log.warn("compare: '{}' and '{}' handler results differ for intent {}; first difference: {}",
+                        primary.name(), secondary.name(), in.intentId(), handler);
             }
         } catch (RuntimeException e) {
             log.warn("compare: secondary engine '{}' failed for intent {}: {}", secondary.name(), in.intentId(), e.toString());

@@ -63,16 +63,21 @@ class AccessDemoIT {
             @prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
             @prefix pon:  <http://broadband-forum.org/ont/pon-resource#> .
 
+            # icm:deliveryType: the type of resource delivered; a resource of that type the intent already holds is
+            # kept on re-evaluation instead of choosing another (both engines; as the seed intent does).
             <ex:delivery> a icm:DeliveryExpectation ;
                 icm:target    <ex:selected> ;
+                icm:deliveryType pon:UNIPort ;
                 icm:chooseFrom <ex:available> .
 
             <ex:selected>  a icm:Target .
 
+            # Free, operational UNI ports: the set functions combined with an explicit set:intersection, as in the
+            # seed (several set functions on one node would combine as a union, TR292A; DEVIATIONS.md entry 1).
             <ex:available> a icm:Target ;
-                set:resourcesOfType pon:UNIPort ;
-                set:resourcesWithPropertyObject ( pon:inUse false ) ;
-                set:resourcesWithPropertyObject ( pon:operationalState pon:Up ) .
+                set:intersection ( [ set:resourcesOfType ( pon:UNIPort ) ]
+                                   [ set:resourcesWithPropertyObject ( pon:inUse false ) ]
+                                   [ set:resourcesWithPropertyObject ( pon:operationalState pon:Up ) ] ) .
             """;
 
     @BeforeEach
@@ -138,19 +143,13 @@ class AccessDemoIT {
         // 4. Allow time for Flow 4 write-back to complete
         try { Thread.sleep(500); } catch (InterruptedException ignored) {}
 
-        // 5. Verify resource allocation via SPARQL on the embedded dataset
-        String resourcesGraph = "http://tmforum.org/api/v5/resources";
-        String ask = "ASK { GRAPH <" + resourcesGraph + "> { " +
-                "?r <http://broadband-forum.org/ont/pon-resource#inUse> true ; " +
-                "   <http://broadband-forum.org/ont/pon-resource#assignedToService> \"" + intentId + "\" } }";
-
-        dataset.begin(ReadWrite.READ);
-        try {
-            boolean allocated = QueryExecutionFactory.create(ask, dataset).execAsk();
-            assertTrue(allocated, "Expected resource to be marked inUse=true and assignedToService=" + intentId);
-        } finally {
-            dataset.end();
-        }
+        // 5. Verify resource allocation via SPARQL on the embedded dataset: exactly one resource, a UNI port,
+        //    marked in use and assigned to this intent.
+        List<Allocation> allocated = allocations(intentId);
+        assertEquals(1, allocated.size(), "Expected exactly one resource assigned to " + intentId + ": " + allocated);
+        Allocation a = allocated.get(0);
+        assertTrue(a.uniPort(), "Expected the allocated resource to be a pon:UNIPort: " + a);
+        assertTrue(a.inUse(), "Expected the allocated resource to be marked inUse=true: " + a);
     }
 
     @Test
@@ -168,23 +167,19 @@ class AccessDemoIT {
         pollForReport(intentId, "Fulfilled", 12);
         try { Thread.sleep(500); } catch (InterruptedException ignored) {}
 
-        // Count allocated resources for this intent
-        String resourcesGraph = "http://tmforum.org/api/v5/resources";
-        String countSparql = "SELECT (COUNT(?r) AS ?cnt) WHERE { GRAPH <" + resourcesGraph + "> { " +
-                "?r <http://broadband-forum.org/ont/pon-resource#assignedToService> \"" + intentId + "\" } }";
+        List<Allocation> first = allocations(intentId);
+        assertEquals(1, first.size(), "Expected one resource after the first evaluation: " + first);
 
-        dataset.begin(ReadWrite.READ);
-        int firstCount;
-        try (var qe = QueryExecutionFactory.create(countSparql, dataset)) {
-            var rs = qe.execSelect();
-            firstCount = rs.hasNext() ? rs.next().getLiteral("cnt").getInt() : 0;
-        } finally {
-            dataset.end();
-        }
+        // Trigger a second evaluation (an observation for this intent) and wait for its report.
+        int reportsBefore = reportCount(intentId);
+        rest.postForEntity(base + "/intent/" + intentId + "/observation",
+                Map.of("metricUri", "http://example.org/metrics/unused", "value", 1.0), Map.class);
+        Awaitility.await().atMost(10, TimeUnit.SECONDS).pollInterval(300, TimeUnit.MILLISECONDS)
+                .until(() -> reportCount(intentId) > reportsBefore);
+        try { Thread.sleep(500); } catch (InterruptedException ignored) {}
 
-        // Trigger a second evaluation by posting the intent expression PATCH
-        // (or just wait — the test verifies allocations don't double up)
-        assertTrue(firstCount >= 0, "Allocation count should be non-negative");
+        // The intent keeps the resource it holds: no second allocation.
+        assertEquals(first, allocations(intentId), "Re-evaluation must not allocate another resource");
     }
 
     @Test
@@ -241,12 +236,13 @@ class AccessDemoIT {
 
                 _:delivery a icm:DeliveryExpectation ;
                     icm:target    <ex:sel> ;
+                    icm:deliveryType pon:UNIPort ;
                     icm:chooseFrom <ex:avail> .
                 <ex:sel>   a icm:Target .
                 <ex:avail> a icm:Target ;
-                    set:resourcesOfType pon:UNIPort ;
-                    set:resourcesWithPropertyObject ( pon:inUse false ) ;
-                    set:resourcesWithPropertyObject ( pon:operationalState pon:Up ) .
+                    set:intersection ( [ set:resourcesOfType ( pon:UNIPort ) ]
+                                       [ set:resourcesWithPropertyObject ( pon:inUse false ) ]
+                                       [ set:resourcesWithPropertyObject ( pon:operationalState pon:Up ) ] ) .
                 """;
 
         Map<String, Object> body = Map.of(
@@ -269,9 +265,39 @@ class AccessDemoIT {
         // Both conditions now pass → Fulfilled
         Map<?, ?> fulfilled = pollForReport(intentId, "Fulfilled", 10);
         assertNotNull(fulfilled, "Expected Fulfilled when throughput OK and UNI port available");
+        try { Thread.sleep(500); } catch (InterruptedException ignored) {}
+        List<Allocation> allocated = allocations(intentId);
+        assertFalse(allocated.isEmpty(), "Expected a UNI port allocated to " + intentId);
+        assertTrue(allocated.stream().allMatch(Allocation::uniPort), "Only UNI ports are allocated: " + allocated);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /** A resource assigned to an intent (pon:assignedToService), whether it is a UNI port and marked in use. */
+    record Allocation(String resource, boolean uniPort, boolean inUse) {}
+
+    private List<Allocation> allocations(String intentId) {
+        String pon = "http://broadband-forum.org/ont/pon-resource#";
+        String select = "SELECT ?r ?uni ?inUse WHERE { GRAPH <http://tmforum.org/api/v5/resources> { "
+                + "?r <" + pon + "assignedToService> \"" + intentId + "\" . "
+                + "BIND(EXISTS { ?r a <" + pon + "UNIPort> } AS ?uni) "
+                + "BIND(EXISTS { ?r <" + pon + "inUse> true } AS ?inUse) } } ORDER BY ?r";
+        List<Allocation> out = new ArrayList<>();
+        dataset.begin(ReadWrite.READ);
+        try (var qe = QueryExecutionFactory.create(select, dataset)) {
+            qe.execSelect().forEachRemaining(row -> out.add(new Allocation(row.getResource("r").getURI(),
+                    row.getLiteral("uni").getBoolean(), row.getLiteral("inUse").getBoolean())));
+        } finally {
+            dataset.end();
+        }
+        return out;
+    }
+
+    private int reportCount(String intentId) {
+        ResponseEntity<List> r = rest.exchange(base + "/intent/" + intentId + "/intentReport", HttpMethod.GET,
+                null, List.class);
+        return r.getBody() == null ? 0 : r.getBody().size();
+    }
 
     private ResponseEntity<Map> patchIntent(String id, Map<String, Object> patch) {
         HttpHeaders h = new HttpHeaders();

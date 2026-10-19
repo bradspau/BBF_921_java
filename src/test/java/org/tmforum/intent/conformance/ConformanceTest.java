@@ -33,7 +33,6 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * <p>Record mode, {@code -Dconformance.record=true}: writes each case's {@code expected.ttl} from the Java engine
  * into {@code src/test/resources/conformance/<case>/} instead of asserting. Recorded files must be reviewed by
  * hand against the specification before they are committed.
-
  */
 class ConformanceTest {
 

@@ -94,7 +94,10 @@ EvaluationOutcome: the result graph (a Jena Model in the vocabulary of 5.2)
 
 - Two implementations: `JavaEvaluationEngine` (wraps `TurtleEvaluator`) and `JenaEvaluationEngine`.
 - Selection by property at startup (`@ConditionalOnProperty` or a small factory). Mode `compare` (a third value)
-  runs both, logs any difference in the result graphs, and returns the Java outcome. It is for development and CI.
+  runs both, logs any difference in the result graphs and, separately, any difference in the handler result
+  projection (state, reason string, the ordered condition entries restricted to the keys `src/main` consumes, and the
+  Flow 3 proposal; `HandlerProjection`), and returns the Java outcome. The handler comparison matters for expressions
+  without an IRI `icm:Intent`, whose result graph is empty (Task 17). It is for development and CI.
 - Readiness: `JenaEvaluationEngine.status()` reports not ready until the conformance suite is green (5.6).
   If `jena` is selected while not ready, the application starts, `/health` reports the evaluator as not ready
   with the reason (builder's call whether this is HTTP 503), and evaluations are skipped with an error log rather

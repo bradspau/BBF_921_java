@@ -95,10 +95,10 @@ public class JenaEvaluationEngine implements EvaluationEngine {
     public EngineStatus status() {
         try {
             if (OntologyModels.load(ontologyDir).isEmpty()) {
-                return EngineStatus.notReady("ontology files not found in ontology/");
+                return EngineStatus.notReady("ontology files not found in " + ontologyDir + "/");
             }
         } catch (RuntimeException e) {         // a malformed TTL file: report it, never throw from status()
-            return EngineStatus.notReady("ontology files do not load: " + e.getMessage());
+            return EngineStatus.notReady("ontology files in " + ontologyDir + "/ do not load: " + e.getMessage());
         }
         return READY ? EngineStatus.ok() : EngineStatus.notReady("conformance suite not passing");
     }

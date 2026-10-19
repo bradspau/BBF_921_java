@@ -189,6 +189,16 @@
 [binNoBound: (?k rdf:type tmf:BinaryComparison) (?k tmf:arity ?n) equal(?n, 1)
     -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing bound node")]
 
+# Lists the legacy class-typed form leaves open (no rdf:nil at the end; the Java engine reads rdf:first / rdf:rest
+# directly, TurtleEvaluator.evalTwoArg and evalRange). Negation over input triples only (rdf:rest, rdf:first).
+# The first cell has no rdf:rest: "missing operand nodes"; its rdf:rest is a node without rdf:first: "missing bound
+# node" (conformance case legacy-open-lists).
+[binOpenFirst: (?k rdf:type tmf:BinaryComparison) (?k tmf:arg1 ?a) noValue(?a rdf:rest)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes")]
+[binRestNoFirst: (?k rdf:type tmf:BinaryComparison) (?k tmf:arg1 ?a) (?a rdf:rest ?r) notLiteral(?r)
+    notEqual(?r, rdf:nil) noValue(?r rdf:first)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing bound node")]
+
 # "A bound cell exists" is tmf:arg2, not tmf:arity >= 2: the legacy class-typed form ends its list without rdf:nil
 # (`_:c a quan:quansmaller ; rdf:first ?m ; rdf:rest [ rdf:first ?b ]`, NegotiationIT, IntentLifecycleIT), so listLength
 # gives no arity there, while the Java engine reads rdf:first of rdf:rest (conformance case legacy-no-observation).
@@ -236,10 +246,18 @@
 [exCellHead: (?k rdf:type tmf:ExactlyComparison) (?k tmf:arg1 ?a) -> (?a tmf:exactlyCellOf ?k)]
 [exCellNext: (?c tmf:exactlyCellOf ?k) (?c rdf:rest ?r) (?r rdf:type tmf:QuanCell) -> (?r tmf:exactlyCellOf ?k)]
 
-[exFirstMissing: (?k rdf:type tmf:ExactlyComparison) (?k tmf:arity ?n) ge(?n, 2)
+# Open legacy lists as for the two-argument functions (the Java engine evaluates quanexactly as one of them).
+[exOpenFirst: (?k rdf:type tmf:ExactlyComparison) (?k tmf:arg1 ?a) noValue(?a rdf:rest)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes")]
+[exRestNoFirst: (?k rdf:type tmf:ExactlyComparison) (?k tmf:arg1 ?a) (?a rdf:rest ?r) notLiteral(?r)
+    notEqual(?r, rdf:nil) noValue(?r rdf:first)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing bound node")]
+
+# A second argument exists: tmf:arg2 (not tmf:arity >= 2, which an open list does not get; see binFirstMissing).
+[exFirstMissing: (?k rdf:type tmf:ExactlyComparison) (?k tmf:arg2 ?b)
     (?k tmf:arg1 ?a) (?a tmf:argMissing ?name) strConcat('no observation: ', ?name, ?t)
     -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure ?t)]
-[exFirstNotNumber: (?k rdf:type tmf:ExactlyComparison) (?k tmf:arity ?n) ge(?n, 2)
+[exFirstNotNumber: (?k rdf:type tmf:ExactlyComparison) (?k tmf:arg2 ?b)
     (?k tmf:arg1 ?a) (?a tmf:argValue ?va) notNumber(?va) (?a tmf:argName ?name)
     strConcat('no observation: ', ?name, ?t)
     -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure ?t)]
@@ -265,17 +283,32 @@
 # every remaining argument resolved and is equal to its neighbour).
 [exTailLast: (?c tmf:exactlyCellOf ?k) (?c rdf:rest rdf:nil) (?c tmf:argValue ?v) isNumber(?v)
     -> (?c tmf:allEqualFrom tmf:Yes)]
+# The last cell of an open legacy list (no rdf:rest at all).
+[exTailLastOpen: (?c tmf:exactlyCellOf ?k) noValue(?c rdf:rest) (?c tmf:argValue ?v) isNumber(?v)
+    -> (?c tmf:allEqualFrom tmf:Yes)]
 [exTailNext: (?c tmf:exactlyCellOf ?k) (?c rdf:rest ?r) (?r tmf:allEqualFrom tmf:Yes)
     (?c tmf:argValue ?v1) (?c tmf:argUnit ?u1) (?r tmf:argValue ?v2) (?r tmf:argUnit ?u2)
     unitCompare(?v1, ?u1, ?v2, ?u2, ?cmp) equal(?cmp, 0)
     -> (?c tmf:allEqualFrom tmf:Yes)]
-[exTrue: (?k rdf:type tmf:ExactlyComparison) (?k tmf:arity ?n) ge(?n, 2)
+[exTrue: (?k rdf:type tmf:ExactlyComparison) (?k tmf:arg2 ?b)
     (?k tmf:arg1 ?a) (?a tmf:allEqualFrom tmf:Yes)
     -> (?k rdf:value "true"^^xsd:boolean)]
 
 # ── 5. inRange ( value lower upper ): lower <= value <= upper, inclusive (TR292D §8.9) ─────────────────────
 
 [rangeNoOperands: (?k rdf:type tmf:RangeComparison) (?k tmf:arity ?n) lessThan(?n, 3)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes")]
+# Open legacy lists (TurtleEvaluator.evalRange): a cell before the third without rdf:rest, or whose rdf:rest is a node
+# without rdf:first, means missing operands.
+[rangeOpen1: (?k rdf:type tmf:RangeComparison) (?k tmf:arg1 ?a) noValue(?a rdf:rest)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes")]
+[rangeOpen2: (?k rdf:type tmf:RangeComparison) (?k tmf:arg2 ?b) noValue(?b rdf:rest)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes")]
+[rangeRestNoFirst1: (?k rdf:type tmf:RangeComparison) (?k tmf:arg1 ?a) (?a rdf:rest ?r) notLiteral(?r)
+    notEqual(?r, rdf:nil) noValue(?r rdf:first)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes")]
+[rangeRestNoFirst2: (?k rdf:type tmf:RangeComparison) (?k tmf:arg2 ?b) (?b rdf:rest ?r) notLiteral(?r)
+    notEqual(?r, rdf:nil) noValue(?r rdf:first)
     -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes")]
 
 [rangeArg1: (?k rdf:type tmf:RangeComparison) (?k tmf:arg1 ?c) -> (?k tmf:rangeArg ?c)]

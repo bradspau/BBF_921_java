@@ -17,13 +17,12 @@ PDF references: TR290 = Intent Common Model v3.8.0 (TR290A v3.6.0 has matching s
 - Decision: the rule engine implements the PDF (union) behaviour for this legacy form. Explicit
   `set:intersection` (used by the seed and by `pool-explicit-intersection`) works the same in both engines.
 - Files: `expected.ttl` (Java: member w2) and `expected.jena.ttl` (union: pool w1, w2, g0; member w1).
-- Seen live (Task 17, `intent.evaluator=compare` over the integration suites): `AccessDemoIT` writes its pools in this
-  legacy form (`set:resourcesOfType pon:UNIPort ; set:resourcesWithPropertyObject ( pon:inUse false ) ;
-  set:resourcesWithPropertyObject ( pon:operationalState pon:Up )`) and has no `icm:Intent`, so the contracts are empty
-  and compare mode logs nothing, but the handler results differ: Java selects a free UNI port, the rule engine the
-  lowest IRI of the union, a C-tag (`pon:CTAG-N-001`; the union of "UNI ports", "not in use" and "up" holds every
-  free resource of any type). The IT asserts only that some resource is allocated, so it passes on both engines.
-  Expressions that mean "free UNI ports" should use explicit `set:intersection`, as the seed and the demos do.
+- Seen live (Task 17): `AccessDemoIT` wrote its pools in this legacy form (`set:resourcesOfType pon:UNIPort ;
+  set:resourcesWithPropertyObject ( pon:inUse false ) ; set:resourcesWithPropertyObject ( pon:operationalState pon:Up )`)
+  with no `icm:Intent`: Java selected a free UNI port, the rule engine the lowest IRI of the union, a C-tag
+  (`pon:CTAG-N-001`). Compare mode now logs such handler-result differences too. The IT was rewritten (Task 17 fix
+  round) with explicit `set:intersection` and `icm:deliveryType pon:UNIPort`, as the seed and the demos write it, and
+  asserts that exactly one UNI port is allocated; both engines then agree. The legacy form stays as registered here.
 
 ## 2. Container argument of `set:resourcesWithPropertyObject` (D1): project extension
 
