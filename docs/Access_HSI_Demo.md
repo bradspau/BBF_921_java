@@ -414,6 +414,73 @@ IntentReport                 HSIIntent                              result=false
 Run the same snippet after any later step to see the report change; it always shows the newest one. (To see an
 older report, change `[0]` to a later index: the list is newest first.)
 
+### See the intent and its reports in Fuseki
+
+The intent and every report are also stored as RDF, and with the `fuseki` profile you can look at them directly
+(see "The graphs this solution uses" above for what each graph is). Either open the Fuseki UI at
+<http://localhost:3030>, choose the dataset `/intents`, and paste a query below into the **query** tab (replace
+`$INTENT_ID` with your intent's id, `echo "$INTENT_ID"`), or run it from the shell with this helper:
+
+```bash
+sparql() { curl -s -G http://localhost:3030/intents/sparql -H 'Accept: text/csv' --data-urlencode "query=$1"; }
+```
+
+**Which graphs does this intent have?** The intent itself, the handler's state and the engine's inferred result.
+(A fourth, `…/observations`, appears in Step 4 when the first observation is posted.)
+
+```bash
+sparql "SELECT ?g (COUNT(*) AS ?triples) WHERE { GRAPH ?g { ?s ?p ?o }
+        FILTER (CONTAINS(STR(?g), \"$INTENT_ID\")) } GROUP BY ?g ORDER BY ?g"
+```
+
+**The intent resource** (id, name, lifecycle status, the IRI of its expression; the expression text itself is a
+long string, so it is left out here):
+
+```bash
+sparql "SELECT ?p ?o WHERE { GRAPH <http://tmforum.org/api/v5/intents/$INTENT_ID> { ?s ?p ?o }
+        FILTER (STRLEN(STR(?o)) < 200) } ORDER BY ?p"
+```
+
+**Its reports, newest first.** Each report is its own named graph, linked to the intent by `tmf:parentIntent`. Right
+after Steps 1 and 2 there are two (one when the intent was created, one when it was activated), both `Degraded`:
+
+```bash
+sparql "PREFIX tmf: <http://tmforum.org/api/v5/>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+SELECT ?report ?created ?state WHERE {
+  GRAPH ?report { ?report tmf:parentIntent <http://tmforum.org/api/v5/intents/$INTENT_ID> ;
+                          dcterms:created ?created .
+                  OPTIONAL { ?report tmf:intentHandlingState ?state } }
+} ORDER BY DESC(?created)"
+```
+
+**Everything in the newest report graph.** The first part is the `IntentReport` resource (state, reason, link
+to its intent). The rest is the TR290 report itself, one node per intent element with `icm:result`, `icm:about`,
+`icm:resultFrom` and `icm:reason`; it is also kept whole, as text, in `expressionValue`:
+
+```bash
+REPORT=$(sparql "PREFIX tmf: <http://tmforum.org/api/v5/>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+SELECT ?report WHERE { GRAPH ?report { ?report tmf:parentIntent <http://tmforum.org/api/v5/intents/$INTENT_ID> ;
+                                               dcterms:created ?created } } ORDER BY DESC(?created) LIMIT 1" \
+  | tail -1 | tr -d '\r')
+
+sparql "SELECT ?s ?p ?o WHERE { GRAPH <$REPORT> { ?s ?p ?o } } ORDER BY ?s ?p ?o"
+```
+
+One row per element, with its result and reason, is easier to read: that is the `results` helper in Step 4.
+The engine's own answer, before it was turned into a report, is in the `…/inferred` graph:
+
+```bash
+sparql "SELECT ?s ?p ?o WHERE { GRAPH <http://tmforum.org/api/v5/intents/$INTENT_ID/inferred> { ?s ?p ?o } }
+        ORDER BY ?s ?p"
+```
+
+Expected on the initial state: `rdf:value false` for `HSIIntent`, `HSIPerformanceExpectation` and the five
+conditions, `rdf:value true` for the three delivery expectations and the monitoring expectation, the chosen
+resources as `rdfs:member` of the selected targets, and an `icm:reason` ("no observation: …") on each condition.
+There is no `icm:result` here: that is in the report graph.
+
 ---
 
 ## Step 4 — Show the intent is not Fulfilled until every condition is met
