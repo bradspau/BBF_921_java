@@ -17,15 +17,16 @@ POST /observation  →  TDB2 observations graph (in-process)
                            ↓ merged at evaluation time
 POST /intent       →  TDB2 intent named graph
                            ↓
-               TurtleEvaluator.evaluate()   ← Java, embedded Jena
+               EvaluationEngine   ← java (default) | jena | compare, embedded Jena
                            ↓
-               IntentReport  +  handlerState graph  (TDB2)
+               result graph  →  IntentReport  +  handlerState graph  (TDB2)
 ```
 
 The evaluator runs as a Spring `@Async` background task every time an intent is
 created, patched, or receives a new observation. It merges the expression Turtle with
-the observation graph, then walks the TIO expression tree to produce `Fulfilled` or
-`Degraded`.
+the observation graph, then evaluates the TIO expression to produce `Fulfilled` or
+`Degraded`. By default the Java evaluator (`TurtleEvaluator`) does this; see
+[Choosing the evaluation engine](#choosing-the-evaluation-engine) to run the Jena rule engine instead.
 
 ---
 
@@ -96,8 +97,40 @@ curl http://localhost:8000/health
 
 Expected:
 ```json
-{"status": "UP", "graph": "UP"}
+{"status": "UP", "graph": "UP", "evaluator": {"engine": "java", "ready": true}}
 ```
+
+---
+
+## Choosing the evaluation engine
+
+The evaluation engine is selected by `intent.evaluator`: `java` (default), `jena` (the Jena rule engine) or
+`compare` (runs both, returns Java's answer, logs differences). The walkthrough below behaves the same on all
+three, including the `Fulfilled`/`Degraded` cycling, the ProbeIntent (Step 9) and Best/Propose (Step 10); the
+choice only changes who computes the result. Spring maps the property to the environment variable
+`INTENT_EVALUATOR`.
+
+**Docker** (`docker-compose.yml` passes `INTENT_EVALUATOR` through, default `java`):
+
+```bash
+INTENT_EVALUATOR=jena    docker compose --profile standalone up --build
+INTENT_EVALUATOR=compare docker compose --profile standalone up --build
+```
+
+**Dev server:**
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.profiles=standalone -Dspring-boot.run.arguments=--intent.evaluator=jena
+# or: INTENT_EVALUATOR=compare mvn spring-boot:run -Dspring-boot.run.profiles=standalone
+```
+
+The Jena engine needs the licensed ontology files in `ontology/` (without them it reports not ready and
+`/health` returns 503; check the `evaluator` field of `curl http://localhost:8000/health`, which should show
+`{"engine": "jena", "ready": true}`). In `compare` mode, look for `compare:` warnings in the log; none means the
+two engines agree on this demo. After an evaluation, the engine's result graph is in the named graph
+`http://tmforum.org/api/v5/intents/{id}/inferred`, which you can browse in Fuseki when the `fuseki` profile is on.
+Note that the HSI expression in Step 1 has no `icm:Intent` element, so that named graph stays empty for it; the
+`Fulfilled`/`Degraded` result is still produced and the same under every engine.
 
 ---
 
