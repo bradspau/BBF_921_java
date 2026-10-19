@@ -1,0 +1,43 @@
+# tio_b_delivery.rules — value stage: the value of each delivery contribution (tio_a_delivery.rules), after every
+# choice stratum (tio_c_choose.rules). The expectation's own value is the conjunction of its contributions
+# (tio_b_logic.rules section 2), and rolls up through log:allOf like any other element.
+#
+#   ?k rdf:value true    iff the target has a member of the delivery class (TR290 §2.5.1; any member without a class)
+#   ?k rdf:value false   otherwise, with ?k tmf:failure "<text>" (Task 16 turns it into icm:reason), the Java engine's
+#                        text: "no candidate of type <Class> in chooseFrom pool" / "no target member of type <Class>"
+#                        (without a class: "no candidate in chooseFrom pool" / "no target member"); a pool that could
+#                        not be chosen from (level >= MAX_CHOICE_DEPTH, or unknown membership) gives
+#                        "chooseFrom pool membership is not final: ..." instead.
+#
+# Negation: noValue(?t tmf:hasMemberOfType ?c) and noValue(?p tmf:levelAtLeast ...) / noValue(?k tmf:deliveryPool):
+# tmf:hasMemberOfType is derived only in stage A and in the choice strata, never in this stage (no rule of this stage
+# adds an rdfs:member), so it is complete here; the others are stage A facts. Exactly one rule below fires per
+# contribution with a target (true, or one of the complementary false rules), and none for a contribution decided in
+# stage A (no target: no tmf:deliveryTarget).
+#
+# tmf:MaxLevel is replaced by tmf:L<MAX_CHOICE_DEPTH> when the file is loaded (JenaEvaluationEngine).
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix tmf:  <http://tmforum.org/api/v5/> .
+
+[deliveryT: (?k tmf:function tmf:Delivery) (?k tmf:deliveryTarget ?t) (?k tmf:needsClass ?c)
+    (?t tmf:hasMemberOfType ?c) -> (?k rdf:value "true"^^xsd:boolean)]
+
+# The local name of the class, as the Java engine's localName (after the last '#' or '/').
+[deliveryClassName: (?k tmf:needsClass ?c) notEqual(?c, tmf:Any) strConcat(?c, ?iri)
+    regex(?iri, '(?:.*[/#])?([^/#]*)', ?n) strConcat(' of type ', ?n, ?of) -> (?k tmf:classText ?of)]
+[deliveryClassNameAny: (?k tmf:needsClass tmf:Any) -> (?k tmf:classText '')]
+
+[deliveryNoCandidate: (?k tmf:function tmf:Delivery) (?k tmf:deliveryTarget ?t) (?k tmf:needsClass ?c)
+    noValue(?t tmf:hasMemberOfType ?c) (?k tmf:deliveryPool ?p) noValue(?p tmf:levelAtLeast tmf:MaxLevel)
+    (?k tmf:classText ?of) strConcat('no candidate', ?of, ' in chooseFrom pool', ?text)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure ?text)]
+[deliveryNotFinal: (?k tmf:function tmf:Delivery) (?k tmf:deliveryTarget ?t) (?k tmf:needsClass ?c)
+    noValue(?t tmf:hasMemberOfType ?c) (?k tmf:deliveryPool ?p) (?p tmf:levelAtLeast tmf:MaxLevel)
+    -> (?k rdf:value "false"^^xsd:boolean)
+       (?k tmf:failure "chooseFrom pool membership is not final: it depends on a function that is not implemented or on choices nested too deeply")]
+[deliveryNoMember: (?k tmf:function tmf:Delivery) (?k tmf:deliveryTarget ?t) (?k tmf:needsClass ?c)
+    noValue(?t tmf:hasMemberOfType ?c) noValue(?k tmf:deliveryPool) (?k tmf:classText ?of)
+    strConcat('no target member', ?of, ?text)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure ?text)]

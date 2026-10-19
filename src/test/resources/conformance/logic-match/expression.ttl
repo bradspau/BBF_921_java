@@ -1,0 +1,43 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix ex:   <http://example.org/> .
+
+# Statement evaluation functions against the knowledge base (TR292E §3, §6.4-6.8).
+ex:Intent a icm:Intent ;
+    log:allOf ( ex:Expectation1 ex:Expectation2 ) .
+
+# Every condition here is true.
+ex:Expectation1 a icm:PropertyExpectation ;
+    icm:target ex:Target ;
+    log:allOf ( ex:MatchUp ex:AllGold ex:AnyGold ex:OneGold ) .
+
+# Every condition here is false.
+ex:Expectation2 a icm:PropertyExpectation ;
+    icm:target ex:Target ;
+    log:noneOf ( ex:MatchDown ex:AllGoldMixed ex:NoneGold ex:OneGoldTwo ) .
+
+ex:MatchUp      a log:Condition ; log:match ( ex:Svc1 ex:status ex:Up ) .
+ex:MatchDown    a log:Condition ; log:match ( ex:Svc3 ex:status ex:Up ) .
+ex:AllGold      a log:Condition ; log:matchAll ( ex:Team13 ex:userClass ex:Gold ) .
+ex:AllGoldMixed a log:Condition ; log:matchAll ( ex:Team12 ex:userClass ex:Gold ) .
+ex:AnyGold      a log:Condition ; log:matchAny ( ex:Team12 ex:userClass ex:Gold ) .
+ex:NoneGold     a log:Condition ; log:matchNone ( ex:Team12 ex:userClass ex:Gold ) .
+ex:OneGold      a log:Condition ; log:matchOne ( ex:Team12 ex:userClass ex:Gold ) .
+ex:OneGoldTwo   a log:Condition ; log:matchOne ( ex:Team13 ex:userClass ex:Gold ) .
+
+ex:User1 ex:userClass ex:Gold .
+ex:User2 ex:userClass ex:Silver .
+ex:User3 ex:userClass ex:Gold .
+ex:Team12 a rdfs:Container ; rdfs:member ex:User1, ex:User2 .
+ex:Team13 a rdfs:Container ; rdfs:member ex:User1, ex:User3 .
+
+
+ex:Svc1 ex:status ex:Up .
+ex:Svc2 ex:status ex:Up .
+ex:Svc3 ex:status ex:Down .
+ex:Svc4 ex:status ex:Down .
+
+ex:Target a icm:Target ; rdfs:member ex:Svc1, ex:Svc2, ex:Svc3, ex:Svc4 .

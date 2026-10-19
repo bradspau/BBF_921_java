@@ -19,7 +19,7 @@ via SPARQL against the `tmf921-eval` inference dataset and via the TMF921 API.
 
 ## How the TIO Rules Fire
 
-The `tmf921-eval` dataset runs a Jena `GenericRuleReasoner` over `tio_all.rules`.
+The `tmf921-eval` dataset runs a Jena `GenericRuleReasoner` over `tio_all.rules` (historical: that file was removed in the evaluation-engines work; the application now uses the staged rules in `src/main/resources/rules/`).
 The quantity comparison rules require a **typed blank node** pattern:
 
 ```
@@ -196,7 +196,7 @@ with the TIO rules (see namespace mismatch note above).
 
 **Expected result after fixing the expression format**: `Complies` when all observed metric
 values satisfy the thresholds, `Degraded` otherwise (the `tioComplianceNegative` rule
-is not yet present in `tio_all.rules` — absence of `imo:Complies` maps to `Degraded`
+was not present in the (since removed) `tio_all.rules` — absence of `imo:Complies` maps to `Degraded`
 in `evaluator.py`).
 
 ### 4. Fetch a specific report by ID

@@ -1,0 +1,132 @@
+# tio_a_core.rules — stage A: structural facts that stage B negates (design §5.5.1). Loaded first in STAGE_A.
+#
+# Stage B may use noValue only over facts that are complete when it starts. Everything it needs to negate about the
+# shape of the intent is therefore derived here, positively:
+#
+#   ?e rdf:type tmf:Element            # an intent element that must end with a boolean value (also an untyped IRI
+#                                      # subject of a quantity function, tio_a_quantity.rules): an instance of
+#                                      # icm:Intent, icm:Expectation, icm:Condition, log:Condition or of any of their
+#                                      # subclasses known to the model (the ontology). Type inference belongs here,
+#                                      # never in stage B (precondition (c)).
+#   ?c tmf:hasContributor ?f           # ?c has a function determining its value (precondition (a)): any property
+#                                      # declared `a fun:Function` (the ontology), or any function application a
+#                                      # stage A rule recognised (`?c tmf:contribution ?k`), which also covers the
+#                                      # legacy quantity forms tio_a_quantity rewrites (aliases and the type form)
+#                                      # and works without the ontology. A contribution node itself also gets one
+#                                      # (its value is written by a function rule, never by the default).
+#   ?a tmf:contribBefore ?b            # two contributions of the same element, in a fixed order (lexLess on the
+#   ?a tmf:contribGap ?b               # node labels); a third one lies between them;
+#   ?k tmf:contribHasEarlier/Later     # ?k is not the first / not the last. Stage B walks this order to combine
+#                                      # the contributions by conjunction (TR292A §4, TR292E §4) monotonically.
+#
+#   ?f tmf:implemented tmf:Yes        # axioms: the functions some stage A/B rule evaluates, and the handler's own
+#                                      # contributions tmf:Delivery (tio_a_delivery.rules) and tmf:Reporting (below)
+#   ?k tmf:valuedInA tmf:Yes           # contribution node whose rdf:value is decided in stage A (quantity functions,
+#                                      # unimplemented functions); stage B may negate its rdf:value (any false wins).
+#                                      # Every other contribution is valued in stage B, single-valued by construction.
+#
+# Fail closed (TR292E §4: true iff ALL contributing properties are true). Every application `?c ?f ?args` of a
+# declared fun:Function gets a contribution node (the same skolem the implementing rules use, so the two coincide).
+# When no rule implements ?f, that node is decided here: rdf:value false plus
+# `tmf:failure "function not implemented: <local name>"`. An unimplemented conjunct therefore makes its element
+# false, never silently true and never valueless.
+#
+# THE IMPLEMENTED LIST MUST GROW WITH THE RULES. Tasks 14-16 MUST add an axiom below for every function they
+# implement (set:*, mf:*, quan:sum and the other quantity functions, ...), in the same change, or the function stays
+# "not implemented" and its contribution false.
+#
+# Functions that produce a container (the implemented set constructors: tmf:producesSet axioms, last section) are not
+# contributors: they determine the members of their subject (tio_a_sets.rules, `?r tmf:memberOf ?s`), not a boolean.
+# `contributorDeclared`/`contributionDeclared` skip them, so a pool node gets no contribution and no value, and an
+# element whose only function is a set constructor has no contributor and gets the default false (TR292E §4).
+# Other non-boolean functions (quan:sum, ...) still get a contribution node: unimplemented, it is false (fail
+# closed); once implemented, the implementing task adds a tmf:producesSet-like exclusion or values the node.
+#
+# Negation in stage A: `notImplemented`, `contributorDeclared` and `contributionDeclared` use noValue over the
+# implemented / producesSet axioms only. Jena's RETE engine adds every
+# axiom to the deductions graph before it processes any data triple (RETEEngine.init: findAndProcessAxioms, then
+# fastInit; addTriple(t, true) writes the deduction at once), so this reads a complete fact.
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix fun:  <http://tio.models.tmforum.org/tio/v3.6.0/FunctionOntology/> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix tmf:  <http://tmforum.org/api/v5/> .
+
+# ── Intent elements (TR292A §4, design §5.2) ───────────────────────────────────────────────────────────────────
+
+[elementClasses: -> (icm:Intent rdf:type tmf:ElementClass) (icm:Expectation rdf:type tmf:ElementClass)
+                    (icm:Condition rdf:type tmf:ElementClass) (log:Condition rdf:type tmf:ElementClass)]
+[elementSubclass: (?d rdf:type tmf:ElementClass) (?c rdfs:subClassOf ?d) -> (?c rdf:type tmf:ElementClass)]
+[elementInstance: (?c rdf:type tmf:ElementClass) (?e rdf:type ?c) -> (?e rdf:type tmf:Element)]
+
+# ── Contributors ───────────────────────────────────────────────────────────────────────────────────────────────
+
+[contributorDeclared: (?f rdf:type fun:Function) noValue(?f tmf:producesSet tmf:Yes) (?c ?f ?args)
+    -> (?c tmf:hasContributor ?f)]
+[contributorApplied: (?c tmf:contribution ?k) (?k tmf:function ?f) -> (?c tmf:hasContributor ?f)]
+[contributorOfResult: (?k tmf:function ?f) -> (?k tmf:hasContributor ?f)]
+
+# ── Order of the contributions of one element ──────────────────────────────────────────────────────────────────
+
+[contribOrder: (?e tmf:contribution ?a) (?e tmf:contribution ?b) lexLess(?a, ?b) -> (?a tmf:contribBefore ?b)]
+[contribGap: (?a tmf:contribBefore ?c) (?c tmf:contribBefore ?b) -> (?a tmf:contribGap ?b)]
+[contribEarlier: (?a tmf:contribBefore ?b) -> (?b tmf:contribHasEarlier tmf:Yes)]
+[contribLater: (?a tmf:contribBefore ?b) -> (?a tmf:contribHasLater tmf:Yes)]
+
+# ── Implemented functions (axioms; see the header: Tasks 14-16 extend this list) ───────────────────────────────
+
+[implementedQuantity: -> (quan:atLeast tmf:implemented tmf:Yes) (quan:atMost tmf:implemented tmf:Yes)
+                         (quan:greater tmf:implemented tmf:Yes) (quan:smaller tmf:implemented tmf:Yes)
+                         (quan:exactly tmf:implemented tmf:Yes) (quan:inRange tmf:implemented tmf:Yes)]
+[implementedLogic: -> (log:allOf tmf:implemented tmf:Yes) (log:anyOf tmf:implemented tmf:Yes)
+                      (log:noneOf tmf:implemented tmf:Yes) (log:oneOf tmf:implemented tmf:Yes)
+                      (log:match tmf:implemented tmf:Yes) (log:matchAll tmf:implemented tmf:Yes)
+                      (log:matchAny tmf:implemented tmf:Yes) (log:matchNone tmf:implemented tmf:Yes)
+                      (log:matchOne tmf:implemented tmf:Yes) (log:matchStatement tmf:implemented tmf:Yes)]
+[implementedSets: -> (set:resourcesOfType tmf:implemented tmf:Yes) (set:resourcesWithProperty tmf:implemented tmf:Yes)
+                     (set:resourcesWithPropertyObject tmf:implemented tmf:Yes)
+                     (set:valuesOfObjectProperty tmf:implemented tmf:Yes)
+                     (set:union tmf:implemented tmf:Yes) (set:intersection tmf:implemented tmf:Yes)
+                     (set:difference tmf:implemented tmf:Yes)
+                     (set:isMember tmf:implemented tmf:Yes) (set:elementOf tmf:implemented tmf:Yes)
+                     (set:empty tmf:implemented tmf:Yes) (set:includedIn tmf:implemented tmf:Yes)
+                     (set:intersectsWith tmf:implemented tmf:Yes) (set:identical tmf:implemented tmf:Yes)
+                     (set:forAll tmf:implemented tmf:Yes)]
+
+# The handler's own contributions (not fun:Functions): the delivery check (tio_a_delivery.rules, valued in the value
+# stage by tio_b_delivery.rules) and the reporting assumption below.
+[implementedHandler: -> (tmf:Delivery tmf:implemented tmf:Yes) (tmf:Reporting tmf:implemented tmf:Yes)]
+
+# Implemented functions whose result is a container, not a boolean (TR292F §3, §4; fun:resultType rdfs:Container).
+# They are not contributors: no tmf:hasContributor, no contribution node (see the header).
+[producesSet: -> (set:resourcesOfType tmf:producesSet tmf:Yes) (set:resourcesWithProperty tmf:producesSet tmf:Yes)
+                 (set:resourcesWithPropertyObject tmf:producesSet tmf:Yes)
+                 (set:valuesOfObjectProperty tmf:producesSet tmf:Yes)
+                 (set:union tmf:producesSet tmf:Yes) (set:intersection tmf:producesSet tmf:Yes)
+                 (set:difference tmf:producesSet tmf:Yes)]
+
+# ── Every declared function application contributes; unimplemented ones are false (fail closed) ────────────────
+
+[contributionDeclared: (?f rdf:type fun:Function) noValue(?f tmf:producesSet tmf:Yes) (?c ?f ?args)
+    makeSkolem(?k, ?c, ?f, ?args)
+    -> (?c tmf:contribution ?k) (?k tmf:function ?f) (?k tmf:arguments ?args)]
+[notImplemented: (?k tmf:function ?f) noValue(?f tmf:implemented tmf:Yes)
+    strConcat(?f, ?iri) regex(?iri, '(?:.*[/#])?([^/#]*)', ?n) strConcat('function not implemented: ', ?n, ?t)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure ?t) (?k tmf:valuedInA tmf:Yes)]
+
+# ── Reporting expectations are assumed compliant (DEVIATIONS.md entry 3, D2) ───────────────────────────────────
+# The handler cannot see whether its reports were delivered (TR290 §3) and assumes they were, as the Java engine does:
+# a reporting expectation gets a true contribution, so it is true unless another conjunct on it is false.
+
+[reportingClasses: -> (icm:ReportingExpectation rdf:type tmf:ReportingElementClass)
+                      (icm:ObservationReportingExpectation rdf:type tmf:ReportingElementClass)]
+[reportingSubclass: (?d rdf:type tmf:ReportingElementClass) (?c rdfs:subClassOf ?d)
+    -> (?c rdf:type tmf:ReportingElementClass)]
+[reportingAssumed: (?c rdf:type tmf:ReportingElementClass) (?e rdf:type ?c) makeSkolem(?k, ?e, tmf:Reporting)
+    -> (?e tmf:contribution ?k) (?k tmf:function tmf:Reporting) (?k rdf:value "true"^^xsd:boolean)
+       (?k tmf:valuedInA tmf:Yes)]

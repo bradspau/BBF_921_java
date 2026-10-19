@@ -1,0 +1,81 @@
+# tio_b_reasons.rules — value stage: the contract's reasons and observation links (design §5.2):
+#
+#   ?e icm:reason ?r . ?r a icm:Reason ; rdfs:label "text"     # IRI element ?e that is false (tmf:result tmf:F)
+#   ?e met:observed ?o                                         # IRI element whose comparison used observation ?o
+#
+# ContractExtractor copies both for IRI elements, with the observation's own triples flattened as
+# ResultContract.copyObservation does (a met:Observation, met:observedMetric, rdf:value <number>, quan:unit "<unit>").
+#
+# ── Which text (one per false contribution) ────────────────────────────────────────────────────────────────────────
+#   * a contribution decided in stage A (tmf:valuedInA: quantity functions, unimplemented functions, set functions'
+#     argument errors, containers that are not final): its first tmf:failure (tio_a_reasons: lexical order), else, when
+#     it has no failure at all, its first tmf:violation (a plain comparison result, DEVIATIONS.md entry 4). An error
+#     always wins over a violation of the same function;
+#   * a contribution valued in this stage (delivery, set:forAll, statement functions): its tmf:failure (at most one:
+#     tio_b_delivery and tio_b_sets fire exactly one false rule per contribution; tio_a_reasons gives the statement
+#     functions one argument error);
+#   * a logical operator (allOf/anyOf/noneOf/oneOf): the texts of its members that are not reported themselves (a blank
+#     node, or an IRI that is neither an intent element nor a delivery expectation), when such a member is false; a set:forAll: the texts of its false
+#     copies. So a failure inside an anonymous condition is reported on the nearest named element, as the Java engine
+#     does (its element tree collects the details of anonymous conditions into the enclosing named element).
+# An element gets one reason per text of a false contribution (tmf:cls tmf:F), and only when it is false itself
+# (design §5.2: reasons are for false elements; DEVIATIONS.md entry 26). A false element without an error or a
+# comparison (a false log:match, an empty target, the default) has no reason.
+#
+# ── Which observation ──────────────────────────────────────────────────────────────────────────────────────────────
+# Every tmf:observedVia of the element's contributions (tio_a_reasons), and through operators and set:forAll copies
+# those of members that are not reported themselves, whatever their truth value (the Java engine links the
+# observation of every comparison it ran, passed or not).
+#
+# Negation: noValue only over stage A facts (tmf:valuedInA, tmf:failure / tmf:failureAfter / tmf:violationAfter of
+# stage-A-valued contributions, rdf:type tmf:Element / tmf:Delivery), complete when this stage starts (design §5.5.1). Everything
+# else is positive. No rule here writes rdf:value.
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix met:  <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix tmf:  <http://tmforum.org/api/v5/> .
+
+# ── 1. The text of each contribution ────────────────────────────────────────────────────────────────────────────
+
+[textFailureA: (?k tmf:valuedInA tmf:Yes) (?k tmf:failure ?t) noValue(?k tmf:failureAfter ?t)
+    -> (?k tmf:reasonText ?t)]
+[textViolation: (?k tmf:valuedInA tmf:Yes) (?k tmf:violation ?t) noValue(?k tmf:failure)
+    noValue(?k tmf:violationAfter ?t) -> (?k tmf:reasonText ?t)]
+[textFailureB: (?k tmf:function ?f) noValue(?k tmf:valuedInA tmf:Yes) (?k tmf:failure ?t)
+    -> (?k tmf:reasonText ?t)]
+
+# ── 2. Members of operators that are not reported themselves pass their texts and observations up ───────────────
+
+[opCellHead: (?k rdf:type tmf:BooleanListFunction) (?k tmf:arguments ?l) (?l rdf:first ?x) -> (?l tmf:opCellOf ?k)]
+[opCellNext: (?c tmf:opCellOf ?k) (?c rdf:rest ?r) (?r rdf:first ?x) -> (?r tmf:opCellOf ?k)]
+
+[textFromBlankMember: (?c tmf:opCellOf ?k) (?c rdf:first ?m) isBNode(?m) (?m tmf:result tmf:F) (?m tmf:why ?t)
+    -> (?k tmf:reasonText ?t)]
+[textFromUnnamedMember: (?c tmf:opCellOf ?k) (?c rdf:first ?m) notLiteral(?m) notBNode(?m)
+    noValue(?m rdf:type tmf:Element) noValue(?m rdf:type tmf:Delivery) (?m tmf:result tmf:F) (?m tmf:why ?t)
+    -> (?k tmf:reasonText ?t)]
+[textFromCopy: (?q tmf:copyFor ?k) (?q tmf:result tmf:F) (?q tmf:why ?t) -> (?k tmf:reasonText ?t)]
+
+[observedFromBlankMember: (?c tmf:opCellOf ?k) (?c rdf:first ?m) isBNode(?m) (?m tmf:observedVia ?o)
+    -> (?k tmf:observedVia ?o)]
+[observedFromUnnamedMember: (?c tmf:opCellOf ?k) (?c rdf:first ?m) notLiteral(?m) notBNode(?m)
+    noValue(?m rdf:type tmf:Element) noValue(?m rdf:type tmf:Delivery) (?m tmf:observedVia ?o)
+    -> (?k tmf:observedVia ?o)]
+[observedFromCopy: (?q tmf:copyFor ?k) (?q tmf:observedVia ?o) -> (?k tmf:observedVia ?o)]
+
+# ── 3. Node level: the texts of its false contributions, the observations of all of them ─────────────────────────
+
+[whyNode: (?n tmf:contribution ?k) (?k tmf:cls tmf:F) (?k tmf:reasonText ?t) -> (?n tmf:why ?t)]
+[observedNode: (?n tmf:contribution ?k) (?k tmf:observedVia ?o) -> (?n tmf:observedVia ?o)]
+
+# ── 4. The contract triples on IRI elements ─────────────────────────────────────────────────────────────────────
+
+# Reported: an IRI intent element (tmf:Element) or delivery expectation (tmf:Delivery, which is an element through the
+# ontology's subclass statements; named here too so a delivery's reason never moves to its parent without them).
+[reportedElement: (?e rdf:type tmf:Element) notBNode(?e) -> (?e tmf:reported tmf:Yes)]
+[reportedDelivery: (?e rdf:type tmf:Delivery) notBNode(?e) -> (?e tmf:reported tmf:Yes)]
+[reason: (?e tmf:reported tmf:Yes) (?e tmf:result tmf:F) (?e tmf:why ?t) makeSkolem(?r, ?e, ?t)
+    -> (?e icm:reason ?r) (?r rdf:type icm:Reason) (?r rdfs:label ?t)]
+[observed: (?e tmf:reported tmf:Yes) (?e tmf:observedVia ?o) -> (?e met:observed ?o)]

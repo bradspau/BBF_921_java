@@ -1,33 +1,61 @@
 # TMF921 Intent Management API v5.0.0 — Java/Jena Edition
 
 **Stack:** Java 21 + Spring Boot 3.3 + Apache Jena 4.10 (TDB2 embedded store, GenericRuleReasoner, ARQ SPARQL).
-TIO quantity reasoning runs **in-process** via Jena's `GenericRuleReasoner` + `tio_all.rules` — no Fuseki HTTP required.
+Evaluation runs **in-process** in one of two selectable engines (Java `TurtleEvaluator`, or Jena rules) — no Fuseki HTTP required.
 **Models:** Hand-written Jackson POJOs in `src/main/java/org/tmforum/intent/model/`
 **OAS:** `docs/spec/TMF921_Intent_Management_v5.0.0_oas.yaml`
 **Repo:** BBF_921_java (separate from BBF_921 Python project)
 
 ## Commands
-- Build: `./mvnw package -DskipTests`
-- Run tests: `./mvnw test`
-- Coverage report: `./mvnw test jacoco:report` (must stay ≥80%)
-- Run dev server (standalone): `./mvnw spring-boot:run`
-- Run dev server (access profile): `./mvnw spring-boot:run -Dspring-boot.run.profiles=access`
+There is no `./mvnw`; use `mvn`.
+- Build: `mvn package -DskipTests`
+- Run tests: `mvn test` (integration: `mvn test -Dtest='*IT' -DfailIfNoTests=false`)
+- Coverage report: `mvn test jacoco:report` (must stay ≥80%)
+- Run dev server (standalone): `mvn spring-boot:run`
+- Run dev server (access profile): `mvn spring-boot:run -Dspring-boot.run.profiles=access`
+- Pick the engine: `mvn spring-boot:run -Dspring-boot.run.arguments=--intent.evaluator=jena` (`java|jena|compare`) or env `INTENT_EVALUATOR`; default `java`
 - Seed data: `bash seed_data/seed.sh`
 
 ## Architecture
 
-### Evaluation (replaces Python evaluator.py)
-For each evaluation cycle, `TurtleEvaluator` creates an ephemeral `InfModel`:
-1. Load expression Turtle + observations + optional resource data into a base `Model`
-2. Wrap with `GenericRuleReasoner` loaded from `src/main/resources/rules/tio_all.rules`
-3. Call `infModel.prepare()` — fires all TIO rules, materialises inferred triples
-4. Run SPARQL via ARQ on the inferred model to read `imo:intentHandlingState` + per-condition results
-5. Map to `EvaluationResult{intentHandlingState, reason, conditions[]}`
+### Evaluation: engine seam (`engine` package)
+`intent.evaluator` (`engine/EngineConfig`) selects the active `EvaluationEngine`: `java` (default,
+`JavaEvaluationEngine` wrapping `TurtleEvaluator`), `jena` (`JenaEvaluationEngine`), or `compare` (`ComparingEngine`:
+runs both, returns Java's outcome, logs `compare:` warnings when the result graphs or the handler projection differ).
+`evaluate(EvaluationInput)` returns `EvaluationOutcome(Model resultGraph, EvaluationResult result)`. `/health` reports
+`evaluator.engine` and `evaluator.ready`; evaluations are skipped (error log) if the selected engine is not ready.
 
-Custom Jena `Builtin` implementations (in `JenaBuiltins.java`) handle:
-- `set:setforAll` — dynamic variable substitution (no Jena rule equivalent)
-- `mf:mflogistic`, `mf:mfpoly`, `mf:mfmapping` — floating-point math
-- `quan:mean`, `quan:median`, `quan:sumOfSet` — list aggregates
+**Result graph** (the shared contract, `engine/ResultContract`): explicit `rdf:value true|false` on every
+IRI-identified intent, expectation and condition; chosen target members (`rdfs:member`); `icm:reason`; the observation
+used by a metric condition. No `icm:result` here: that lives only in TR290 reports. It is stored per intent in the
+`/inferred` named graph (`InferredGraphStore`), replaced on each evaluation.
+
+**Handler side**: `handler/ReportBuilder` turns the result graph plus the expression into the TR290 report
+(`icm:IntentReport`/`ExpectationReport`/`ConditionReport`); the handler `EvaluationResult` (state, reason, flat
+condition list) that Flows 1-4 and `BestEffortLimits` consume comes from the Java evaluator itself, and for the Jena
+engine from `engine/ResultAdapter`, which builds it from the rules' facts.
+`HandlerStateWriter` still writes the `handlerState` graph (`imo:conditionPassed`); Flow 4 and notifications depend on it.
+
+**Note on `expressionValue` readers**: besides `TurtleEvaluator`, the Jena engine parses it (`EvaluationInputs.parse`), the
+dispatcher re-parses it for `ReportBuilder` (TR290 report structure), `ResultAdapter` reads it for entry order and
+`HandlerProjection` (compare mode) reads it too; none of them evaluates anything from it other than the engines.
+
+**Java engine**: `TurtleEvaluator` is a hand-written tree walk (normalise predicates, resolve metrics to the newest
+observation, set constructors, delivery choice with held resources, `Quantities` for unit-aware comparison); it is also
+the conformance oracle and writes the result graph through `ResultGraphWriter`.
+
+**Jena engine**: per evaluation, chained `GenericRuleReasoner` stages over the ontology + expression + observations +
+resources (rule files in `src/main/resources/rules/`): stage A positive facts (`tio_a_*.rules`: core, quantity, sets,
+logic, delivery, reasons), choice strata (`tio_c_choose.rules`, one per level up to `MAX_CHOICE_DEPTH`), stage B
+defaults, negation and roll-up (`tio_b_*.rules`: pools, logic, sets, delivery, reasons). Rule invariant: `noValue` only
+over facts complete when the stage starts. Custom Jena `Builtin`s in `handler/JenaBuiltins` (`lexLess`, `unitCompare`,
+`quantityText`, `allSubjectsIn`, `prevLowest`, ...) only where rules cannot express it. Needs the licensed
+`ontology/*.ttl` (untracked, never `git add`); without them the engine is not ready and ontology-dependent tests skip.
+
+**Conformance and parity**: `src/test/resources/conformance/` is the corpus (case dirs with `expected.ttl`, optional
+`expected.jena.ttl`); `DEVIATIONS.md` registers every difference between the engines with the PDF reference
+(`DeviationRegisterTest`/`ConformanceLoader` enforce it). `ReadinessGuardTest` guards `JenaEvaluationEngine.READY`.
+Rules for a new function: add a corpus case, run both engines, register any deviation.
 
 ### Persistent store
 TDB2 `Dataset` bean (from `JenaConfig`) — direct in-process access, no HTTP to Fuseki.
@@ -48,7 +76,8 @@ Same 4 post-evaluation flows as BBF_921 Python:
 | Config | `config` | `JenaConfig`, `AsyncConfig`, `WebConfig` |
 | Graph | `graph` | `Namespaces`, `GraphNodes`, `SchemaInit` |
 | Repositories | `graph.repositories` | `IntentRepository`, `IntentReportRepository`, etc. |
-| Handler | `handler` | `TurtleEvaluator`, `JenaBuiltins`, `EvaluationDispatcher`, `HandlerStateWriter` |
+| Engine | `engine` | `EvaluationEngine`, `EngineConfig`, `JavaEvaluationEngine`, `JenaEvaluationEngine`, `ComparingEngine`, `ResultContract`, `ResultGraphWriter`, `InferredGraphStore`, `ResultAdapter` |
+| Handler | `handler` | `TurtleEvaluator` (Java engine core), `JenaBuiltins`, `Quantities`, `ReportBuilder`, `EvaluationDispatcher`, `HandlerStateWriter`, `ObservationStore`, `BestEffortLimits` |
 | Models | `model` | `Intent`, `IntentReport`, `EvaluationResult`, etc. |
 | Services | `service` | `IntentService`, `StateMachine`, `NotificationService` |
 | API | `api` | `IntentController`, `HubController`, etc. |
@@ -91,6 +120,7 @@ Intent:        http://tmforum.org/api/v5/intents/{uuid}
 HandlerState:  http://tmforum.org/api/v5/intents/{uuid}/handlerState
 Observations:  http://tmforum.org/api/v5/intents/{uuid}/observations
 Report:        http://tmforum.org/api/v5/reports/{uuid}
+Inferred:      http://tmforum.org/api/v5/intents/{uuid}/inferred
 Hubs:          http://tmforum.org/api/v5/hubs
 Resources:     http://tmforum.org/api/v5/resources
 ```

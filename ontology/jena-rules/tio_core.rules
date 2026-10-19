@@ -2,7 +2,7 @@
 # TIO v3.6.0 core inference rules for Apache Jena GenericRuleReasoner.
 # Translated from: ontology/tio-rules.dlog + ontology/rules/tmf_core_rules.dlog.txt
 #
-# Load order: this file should be loaded first (or included in tio_all.rules).
+# Load order: this file should be loaded first (the master tio_all.rules was removed in the engine work).
 
 @prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .

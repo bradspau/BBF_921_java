@@ -1,5 +1,8 @@
 package org.tmforum.intent.handler;
 
+import org.tmforum.intent.engine.EvaluationInputs;
+import org.tmforum.intent.engine.Reasons;
+
 import org.apache.jena.datatypes.xsd.XSDDatatype;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDF;
@@ -32,7 +35,6 @@ import static org.tmforum.intent.graph.TioNamespaces.*;
 @Service
 public class TurtleEvaluator {
 
-    private static final int MAX_TURTLE_BYTES = 512 * 1024;
     private static final Resource ICM_TARGET_CLASS = ResourceFactory.createResource(ICM + "Target");
     private static final Property QUAN_unit = ResourceFactory.createProperty(QUAN + "unit");
     private static final Property SET_P_intersection = ResourceFactory.createProperty(SET + "intersection");
@@ -40,7 +42,7 @@ public class TurtleEvaluator {
     private static final Property SET_P_difference = ResourceFactory.createProperty(SET + "difference");
 
     /** An observed value together with its unit (null = dimensionless). */
-    private record Observed(Literal value, String unit) {}
+    private record Observed(Literal value, String unit, Resource source) {}
 
     // ── Combinator descriptors ───────────────────────────────────────────────
     private enum Combinator { ALL, ANY, NONE, ONE }
@@ -89,8 +91,10 @@ public class TurtleEvaluator {
     }
 
     /** Evaluation context carried in the model: the resources the intent being evaluated already holds. */
-    private static final Resource EVAL_CONTEXT = ResourceFactory.createResource("urn:tmf921:evaluation");
-    private static final Property EVAL_HOLDS = ResourceFactory.createProperty("urn:tmf921:evaluation#holds");
+    private static final Resource EVAL_CONTEXT = EvaluationInputs.EVAL_CONTEXT;
+    /** Helper triple: the observation individual that supplied a metric node's value (reported as met:observed). */
+    private static final Property OBSERVATION_USED = ResourceFactory.createProperty("urn:tmf921:evaluation#observation");
+    private static final Property EVAL_HOLDS = EvaluationInputs.EVAL_HOLDS;
 
     private EvaluationResult doEvaluate(String expressionTurtle,
                                          String observationsTurtle,
@@ -99,20 +103,19 @@ public class TurtleEvaluator {
         if (expressionTurtle == null || expressionTurtle.isBlank()) {
             return EvaluationResult.degraded("Empty expression", List.of());
         }
-        String combined = joinTurtle(expressionTurtle, observationsTurtle, resourcesTurtle);
-        if (combined.getBytes().length > MAX_TURTLE_BYTES) {
-            return EvaluationResult.degraded(
-                    "Expression exceeds size limit (" + MAX_TURTLE_BYTES + " bytes)", List.of());
+        String combined = EvaluationInputs.join(expressionTurtle, observationsTurtle, resourcesTurtle);
+        if (EvaluationInputs.tooLarge(combined)) {
+            return EvaluationResult.degraded(EvaluationInputs.tooLargeReason(), List.of());
         }
 
-        Model g = ModelFactory.createDefaultModel();
+        Model g;
         try {
-            g.read(new StringReader(combined), "http://tmforum.org/", "TURTLE");
+            g = EvaluationInputs.parse(combined);
         } catch (Exception e) {
             return EvaluationResult.degraded("Turtle parse error: " + e.getMessage(), List.of());
         }
 
-        for (String uri : heldResources) g.add(EVAL_CONTEXT, EVAL_HOLDS, g.createResource(uri));
+        EvaluationInputs.addHeld(g, heldResources);
 
         // Pre-processing pipeline
         normalizeQuantityPredicates(g);
@@ -150,7 +153,7 @@ public class TurtleEvaluator {
 
         ReportTree report = reportTree(g, elements, overallPassed);
         if (!overallPassed) {
-            String reason = buildFailReason(allConditions);
+            String reason = Reasons.conditionsNotMet(allConditions);
             return EvaluationResult.degraded(reason, allConditions).withReport(report);
         }
         return EvaluationResult.fulfilled(allConditions).withReport(report);
@@ -390,6 +393,7 @@ public class TurtleEvaluator {
             if (vs != null) g.add(fn, RDF.value, vs.getObject());
             Statement us = g.getProperty(obs, QUAN_unit);
             if (us != null) g.add(fn, QUAN_unit, us.getObject());
+            if (obs.isURIResource()) g.add(fn, OBSERVATION_USED, obs);
         }
 
         // Pattern A: direct metric URI as rdf:first of a quantity condition
@@ -414,6 +418,7 @@ public class TurtleEvaluator {
     /** Makes the metric (or function result) node carry the observed value and unit as a quantity. */
     private void assignObserved(Model g, Resource node, Observed o) {
         g.addLiteral(node, RDF.value, o.value());
+        if (o.source() != null && o.source().isURIResource()) g.add(node, OBSERVATION_USED, o.source());
         if (o.unit() != null) g.add(node, QUAN_unit, g.createLiteral(o.unit()));
     }
 
@@ -444,14 +449,14 @@ public class TurtleEvaluator {
         Statement vs = g.getProperty(obs, RDF.value);
         if (vs == null) return null;
         if (vs.getObject().isLiteral()) {
-            return new Observed(vs.getObject().asLiteral(), unitOf(g, obs));
+            return new Observed(vs.getObject().asLiteral(), unitOf(g, obs), obs);
         }
         if (vs.getObject().isResource()) {
             Resource q = vs.getObject().asResource();
             Statement inner = g.getProperty(q, RDF.value);
             if (inner != null && inner.getObject().isLiteral()) {
                 String unit = unitOf(g, q);
-                return new Observed(inner.getObject().asLiteral(), unit != null ? unit : unitOf(g, obs));
+                return new Observed(inner.getObject().asLiteral(), unit != null ? unit : unitOf(g, obs), obs);
             }
         }
         return null;
@@ -924,6 +929,10 @@ public class TurtleEvaluator {
         if (obsUnit != null) c.put("observedUnit", obsUnit);
         if (bndUnit != null) c.put("boundUnit", bndUnit);
         if (metricUri != null) c.put("metric", metricUri);
+        if (firstStmt.getObject().isResource()) {
+            Statement used = g.getProperty(firstStmt.getObject().asResource(), OBSERVATION_USED);
+            if (used != null && used.getObject().isURIResource()) c.put("observation", used.getObject().asResource().getURI());
+        }
         if (node.isURIResource()) c.put("element", node.getURI());
         boolean passed;
         try {
@@ -1368,32 +1377,6 @@ public class TurtleEvaluator {
         if (error != null) c.put("error", error);
         c.put("passed", false);
         return c;
-    }
-
-    private String buildFailReason(List<Map<String, Object>> conditions) {
-        List<String> labels = conditions.stream()
-                .filter(c -> !Boolean.TRUE.equals(c.get("passed")))
-                .map(this::failLabel)
-                .toList();
-        return labels.isEmpty() ? "Conditions not met"
-                : "Conditions not met: " + String.join("; ", labels);
-    }
-
-    private String failLabel(Map<String, Object> c) {
-        if (c.containsKey("error")) return c.get("type") + ": " + c.get("error");
-        String t = String.valueOf(c.get("type"));
-        String sym = (String) c.get("operator");
-        if (sym == null) return t + ": FAIL";
-        Object obs = c.get("observed"); Object bnd = c.get("bound");
-        if (bnd == null) bnd = c.get("lower") + "…" + c.get("upper");
-        String ou = c.get("observedUnit") != null ? " " + c.get("observedUnit") : "";
-        String bu = c.get("boundUnit") != null ? " " + c.get("boundUnit") : "";
-        return obs + ou + " " + sym + " " + bnd + bu + ": FAIL";
-    }
-
-    private String joinTurtle(String... parts) {
-        return Arrays.stream(parts).filter(s -> s != null && !s.isBlank())
-                .collect(Collectors.joining("\n"));
     }
 
     // ── Minimal pair helper ──────────────────────────────────────────────────

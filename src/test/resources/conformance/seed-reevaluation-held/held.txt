@@ -1,0 +1,2 @@
+http://broadband-forum.org/ont/pon-resource#UNI-001-1
+http://broadband-forum.org/ont/pon-resource#CTAG-N-001

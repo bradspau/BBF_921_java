@@ -1,0 +1,120 @@
+# tio_a_delivery.rules — stage A: what the choice strata and the value stage need about delivery expectations
+# (TR290 §2.5): the delivery contribution, the class to deliver, held resources and the choice level of every pool.
+#
+# ── Stages (design §5.5 "Sets and pools"; JenaEvaluationEngine.stages) ───────────────────────────────────────────
+#   stage A  ->  choose-1  ->  choose-2  ->  value stage (tio_b_pools, tio_b_logic, tio_b_sets, tio_b_delivery)
+# A choice stratum (tio_c_choose.rules, one copy per level) chooses only from pools whose membership is complete when
+# it starts: the pools of level n-1 in choose-n. Each stratum is a separate reasoner chained on the previous one, so it
+# reads the previous strata's saturated output.
+#
+# ── Choice level (positive facts; the exact level is read in the strata by negating stage A facts only) ───────────
+#   ?x tmf:levelAtLeast tmf:Ln         # container ?x is complete only after choice stratum n (n = 0: after stage A).
+#                                      # Downward closed (L2 implies L1 and L0). L3 = "beyond the strata"
+#                                      # (JenaEvaluationEngine.MAX_CHOICE_DEPTH = 2): such a pool is never chosen from.
+# A pool's level is 0 if nothing it is built on can grow after stage A, otherwise the highest level of what it is
+# built on; a delivery target's level is its pool's level + 1 (its choice is made in that stratum), and at least 1
+# (a held resource is added in choose-1). A set:difference is at least 1 (it is computed from choose-1 on, by
+# tio_b_pools.rules). A container with unknown membership (tmf:unknownMembers) is L3. These are exactly the volatile
+# containers of tio_a_sets.rules (tmf:volatile, level >= 1). A pool that depends on its own target climbs to L3.
+# Seed: AvailableUNIInterfaces and AvailableSVLANAllocations L0 (chosen in choose-1), SelectedSVLANAllocation L1,
+# AvailableCTAGAllocations L1 via ( pon:fromSVLAN bbf:SelectedSVLANAllocation ) (chosen in choose-2).
+#
+# ── Delivery expectations ───────────────────────────────────────────────────────────────────────────────────────
+#   ?e rdf:type tmf:Delivery           # an instance of icm:DeliveryExpectation or of a subclass (ontology)
+#   ?e tmf:deliveryClass ?c            # icm:deliveryType, or tmf:Any when it has none (any member then counts, as in
+#                                      # the Java engine)
+#   ?x tmf:instanceOf ?c               # ?x is an instance of the delivery class ?c or of one of its subclasses
+#                                      # (TR290 §2.5.1 "an instance of the specified class"; DEVIATIONS.md entry 16)
+#   ?e tmf:contribution ?k             # one contribution per (target, class): the conjunct "the target has a member of
+#   ?k tmf:function tmf:Delivery       # the class" (TR290 §2.5.1, §2.3.3: an empty target is not compliant). Valued
+#   ?k tmf:deliveryTarget ?t           # in the value stage (tio_b_delivery.rules) after every choice, so the element
+#   ?k tmf:needsClass ?c               # gets exactly one value through the conjunction fold of tio_b_logic (it has a
+#   ?k tmf:deliveryPool ?p             # stage-A contributor, design §5.5.1 (b)). Without icm:target: false here.
+#   ?k tmf:choiceGroup ?g              # ?g = (target, class): the choice is made once per group, from the union of
+#   ?g tmf:groupTarget ?t ; tmf:groupClass ?c ;   the pools of its expectations (?p tmf:poolFor ?g) of the
+#                                      # stratum's level (DEVIATIONS.md entry 18)
+#   ?g tmf:hasHeld tmf:Yes             # a held resource has the delivery class: it is the choice, no pool is read
+#   ?h tmf:held tmf:Yes                # <urn:tmf921:evaluation> <urn:tmf921:evaluation#holds> ?h (design §5.2), an IRI
+#   ?t tmf:hasMemberOfType ?c          # target ?t has an rdfs:member of class ?c (monotone; again in every stratum)
+#
+# Negation here: noValue only over input facts (icm:deliveryType, icm:target), as in the other stage A files.
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+@prefix tmf:  <http://tmforum.org/api/v5/> .
+
+# ── 1. Delivery expectations and their class ────────────────────────────────────────────────────────────────────
+
+[deliveryClassAxiom: -> (icm:DeliveryExpectation rdf:type tmf:DeliveryElementClass)]
+[deliverySubclass: (?d rdf:type tmf:DeliveryElementClass) (?c rdfs:subClassOf ?d) -> (?c rdf:type tmf:DeliveryElementClass)]
+[deliveryInstance: (?c rdf:type tmf:DeliveryElementClass) (?e rdf:type ?c) -> (?e rdf:type tmf:Delivery)]
+
+[deliveryTyped: (?e rdf:type tmf:Delivery) (?e icm:deliveryType ?c) notLiteral(?c)
+    -> (?e tmf:deliveryClass ?c) (?c tmf:isDeliveryClass tmf:Yes)]
+# No class (or a literal, which names none): any member counts (the Java engine's objectResource gives null).
+[deliveryUntyped: (?e rdf:type tmf:Delivery) noValue(?e icm:deliveryType) -> (?e tmf:deliveryClass tmf:Any)]
+[deliveryLiteralType: (?e rdf:type tmf:Delivery) (?e icm:deliveryType ?c) isLiteral(?c)
+    -> (?e tmf:deliveryClass tmf:Any)]
+
+[instanceDirect: (?c tmf:isDeliveryClass tmf:Yes) (?x rdf:type ?c) -> (?x tmf:instanceOf ?c)]
+[instanceSubclass: (?c tmf:isDeliveryClass tmf:Yes) (?d rdfs:subClassOf ?c) -> (?d tmf:subclassOfDelivery ?c)]
+[instanceSubclass2: (?d tmf:subclassOfDelivery ?c) (?e rdfs:subClassOf ?d) -> (?e tmf:subclassOfDelivery ?c)]
+[instanceOfSubclass: (?d tmf:subclassOfDelivery ?c) (?x rdf:type ?d) -> (?x tmf:instanceOf ?c)]
+
+# ── 2. The delivery contribution ────────────────────────────────────────────────────────────────────────────────
+
+[deliveryContribution: (?e rdf:type tmf:Delivery) (?e icm:target ?t) notLiteral(?t) (?e tmf:deliveryClass ?c)
+    makeSkolem(?k, ?e, tmf:Delivery, ?t, ?c)
+    -> (?e tmf:contribution ?k) (?k tmf:function tmf:Delivery) (?k tmf:deliveryTarget ?t) (?k tmf:needsClass ?c)]
+[deliveryPool: (?e tmf:contribution ?k) (?k tmf:function tmf:Delivery) (?e icm:chooseFrom ?p) notLiteral(?p)
+    -> (?k tmf:deliveryPool ?p)]
+
+# No target, or a literal one: not compliant (TR290 §2.3.3), the Java engine's reason.
+[deliveryNoTarget: (?e rdf:type tmf:Delivery) noValue(?e icm:target) makeSkolem(?k, ?e, tmf:Delivery)
+    -> (?e tmf:contribution ?k) (?k tmf:function tmf:Delivery) (?k rdf:value "false"^^xsd:boolean)
+       (?k tmf:failure "missing icm:target") (?k tmf:valuedInA tmf:Yes)]
+[deliveryLiteralTarget: (?e rdf:type tmf:Delivery) (?e icm:target ?t) isLiteral(?t) makeSkolem(?k, ?e, tmf:Delivery)
+    -> (?e tmf:contribution ?k) (?k tmf:function tmf:Delivery) (?k rdf:value "false"^^xsd:boolean)
+       (?k tmf:failure "missing icm:target") (?k tmf:valuedInA tmf:Yes)]
+
+# ── 3. Held resources (design §5.2): an IRI the intent already holds ────────────────────────────────────────────
+
+[held: (<urn:tmf921:evaluation> <urn:tmf921:evaluation#holds> ?h) notLiteral(?h) notBNode(?h) -> (?h tmf:held tmf:Yes)]
+[hasHeld: (?g tmf:groupClass ?c) (?h tmf:held tmf:Yes) (?h tmf:instanceOf ?c) -> (?g tmf:hasHeld tmf:Yes)]
+
+# ── 3b. Choice groups: one choice per (target, class), from the union of the pools of every expectation that needs
+#        that class on that target (so one resource satisfies them all, whatever their order) ────────────────────
+
+[choiceGroup: (?k tmf:function tmf:Delivery) (?k tmf:deliveryTarget ?t) (?k tmf:needsClass ?c)
+    makeSkolem(?g, tmf:ChoiceGroup, ?t, ?c) -> (?k tmf:choiceGroup ?g) (?g tmf:groupTarget ?t) (?g tmf:groupClass ?c)]
+[choiceGroupPool: (?k tmf:choiceGroup ?g) (?k tmf:deliveryPool ?p) -> (?p tmf:poolFor ?g)]
+
+# ── 4. Members of a delivery target of the delivery class (input members here; choices in the strata) ──────────
+
+[targetMemberOfType: (?k tmf:deliveryTarget ?t) (?k tmf:needsClass ?c) (?t rdfs:member ?m) (?m tmf:instanceOf ?c)
+    -> (?t tmf:hasMemberOfType ?c)]
+[targetMemberAny: (?k tmf:deliveryTarget ?t) (?k tmf:needsClass tmf:Any) (?t rdfs:member ?m) notLiteral(?m)
+    -> (?t tmf:hasMemberOfType tmf:Any)]
+
+# ── 5. Choice levels ────────────────────────────────────────────────────────────────────────────────────────────
+
+[levels: -> (tmf:L0 tmf:nextLevel tmf:L1) (tmf:L1 tmf:nextLevel tmf:L2) (tmf:L2 tmf:nextLevel tmf:L3)
+            (tmf:L3 tmf:nextLevel tmf:L3)
+            (tmf:L1 tmf:levelBelow tmf:L0) (tmf:L2 tmf:levelBelow tmf:L1) (tmf:L3 tmf:levelBelow tmf:L2)]
+[levelDown: (?x tmf:levelAtLeast ?n) (?n tmf:levelBelow ?m) -> (?x tmf:levelAtLeast ?m)]
+
+[levelPool: (?e icm:chooseFrom ?p) notLiteral(?p) -> (?p tmf:levelAtLeast tmf:L0)]
+# The targets tio_a_sets marks volatile (volatileChoiceTarget, volatileDeliveryTarget)
+[levelChoiceTarget: (?e icm:chooseFrom ?p) (?e icm:target ?t) notLiteral(?t) -> (?t tmf:levelAtLeast tmf:L1)]
+[levelDeliveryTarget: (?e icm:deliveryType ?d) (?e icm:target ?t) notLiteral(?t) -> (?t tmf:levelAtLeast tmf:L1)]
+[levelAfterPool: (?e icm:chooseFrom ?p) (?e icm:target ?t) notLiteral(?t) (?p tmf:levelAtLeast ?n)
+    (?n tmf:nextLevel ?m) -> (?t tmf:levelAtLeast ?m)]
+[levelDifference: (?s set:difference ?l) -> (?s tmf:levelAtLeast tmf:L1)]
+[levelUnknown: (?c tmf:unknownMembers tmf:Yes) -> (?c tmf:levelAtLeast tmf:L3)]
+[levelCombined: (?l tmf:combinerOf ?s) (?c tmf:cellOf ?l) (?c rdf:first ?x) (?x tmf:levelAtLeast ?n)
+    -> (?s tmf:levelAtLeast ?n)]
+[levelFiltered: (?s set:resourcesWithPropertyObject ?l) (?l tmf:rwpoContainer ?x) (?x tmf:levelAtLeast ?n)
+    -> (?s tmf:levelAtLeast ?n)]

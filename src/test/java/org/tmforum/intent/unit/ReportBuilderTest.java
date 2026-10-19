@@ -4,19 +4,21 @@ import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.tmforum.intent.engine.ResultGraphWriter;
 import org.tmforum.intent.handler.ReportBuilder;
 import org.tmforum.intent.handler.TurtleEvaluator;
 import org.tmforum.intent.model.EvaluationResult;
 
 import java.io.StringReader;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
 
+import static org.tmforum.intent.unit.TestInputs.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** TR290 §4 reports built from the real seed intent and PON inventory. */
+/**
+ * TR290 §4 reports built from the real seed intent and PON inventory: the expression plus the shared result
+ * graph of the same evaluation.
+ */
 class ReportBuilderTest {
 
     private static final String REPORT = "http://tmforum.org/api/v5/reports/r1";
@@ -44,41 +46,27 @@ class ReportBuilderTest {
     void setUp() throws Exception {
         evaluator = new TurtleEvaluator();
         builder = new ReportBuilder();
-        intent = Files.readString(Path.of("seed_data/hsionlyintent_v0.5.ttl"));
-        inventory = Files.readString(Path.of("BBF_access/pon_resource_onto.ttl"))
-                + "\n" + Files.readString(Path.of("BBF_access/pon_resource_data.ttl"));
+        intent = TestInputs.seedIntent();
+        inventory = TestInputs.inventory();
     }
 
-    /** Observations as (metric, value, unit) triples; an empty unit means a value without unit. */
-    private static String observations(String... metricValueUnit) {
-        StringBuilder sb = new StringBuilder("""
-                @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-                @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-                @prefix met: <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
-                @prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
-                """);
-        for (int i = 0; i < metricValueUnit.length; i += 3) {
-            sb.append("<http://example.org/obs/").append(i).append("> a met:Observation ;\n")
-              .append("  met:observedMetric <").append(BBF).append(metricValueUnit[i]).append("> ;\n")
-              .append("  rdf:value \"").append(metricValueUnit[i + 1]).append("\"^^xsd:decimal ;\n");
-            if (!metricValueUnit[i + 2].isEmpty()) {
-                sb.append("  quan:unit \"").append(metricValueUnit[i + 2]).append("\" ;\n");
-            }
-            sb.append("  met:obtainedAt \"2026-06-11T10:00:0").append(i / 3).append("Z\"^^xsd:dateTime .\n");
-        }
-        return sb.toString();
-    }
-
-    private static final String[] ALL_OK = {
-            "DownstreamBandwidthMetric", "150", "Mbps", "UpstreamBandwidthMetric", "30", "Mbps",
-            "LatencyMetric", "8", "ms", "JitterMetric", "1.2", "ms", "PacketLossMetric", "0.02", "percent"};
-    private static final String[] BANDWIDTH_ONLY = {
-            "DownstreamBandwidthMetric", "150", "Mbps", "UpstreamBandwidthMetric", "30", "Mbps"};
 
     private Model report(String intentTtl, String... obs) {
-        EvaluationResult r = evaluator.evaluate(intentTtl, obs.length == 0 ? null : observations(obs), inventory);
-        return builder.build(r.report(), new ReportBuilder.ReportContext(REPORT, r.intentHandlingState(), 3,
+        String obsTtl = obs.length == 0 ? null : observations(obs);
+        EvaluationResult r = evaluator.evaluate(intentTtl, obsTtl, inventory);
+        return build(r, intentTtl, obsTtl, new ReportBuilder.ReportContext(REPORT, r.intentHandlingState(), 3,
                 Instant.parse("2026-06-11T10:00:00Z")));
+    }
+
+    private Model build(EvaluationResult r, String intentTtl, String obsTtl, ReportBuilder.ReportContext ctx) {
+        Model resultGraph = ResultGraphWriter.write(r.report(), obsTtl == null ? null : parse(obsTtl));
+        return builder.build(parse(intentTtl), resultGraph, ctx);
+    }
+
+    private static Model parse(String ttl) {
+        Model m = ModelFactory.createDefaultModel();
+        m.read(new StringReader(ttl), "http://tmforum.org/", "TURTLE");
+        return m;
     }
 
     private boolean ask(Model m, String where) {
@@ -92,7 +80,7 @@ class ReportBuilderTest {
 
     // ── Structure and results ─────────────────────────────────────────────────
 
-    @Test
+    @org.junit.jupiter.api.Test
     void fulfilled_everyReportedElementIsTrue_andCarriesTheReportHeader() {
         Model m = report(intent, ALL_OK);
 
@@ -104,7 +92,7 @@ class ReportBuilderTest {
         assertEquals(5, count(m, "?r a icm:ConditionReport"));
     }
 
-    @Test
+    @org.junit.jupiter.api.Test
     void partialObservations_showWhichConditionsAreNotMet_andWhy() {
         Model m = report(intent, BANDWIDTH_ONLY);
 
@@ -120,7 +108,7 @@ class ReportBuilderTest {
         assertEquals(3, count(m, "?e a icm:DeliveryExpectationReport ; icm:result true"));
     }
 
-    @Test
+    @org.junit.jupiter.api.Test
     void aViolatedCondition_isExplainedByItsValues() {
         Model m = report(intent, "DownstreamBandwidthMetric", "150", "Mbps", "UpstreamBandwidthMetric", "30", "Mbps",
                 "LatencyMetric", "40", "ms", "JitterMetric", "1.2", "ms", "PacketLossMetric", "0.02", "percent");
@@ -129,7 +117,7 @@ class ReportBuilderTest {
                 + "icm:reason [ rdfs:label \"40 ms < 25 ms is false\" ]"));
     }
 
-    @Test
+    @org.junit.jupiter.api.Test
     void resultFrom_followsTheIntentHierarchy() {
         Model m = report(intent, ALL_OK);
 
@@ -144,7 +132,7 @@ class ReportBuilderTest {
         assertEquals(0, count(m, "?e a icm:ExpectationReport"), "there is no composite expectation any more");
     }
 
-    @Test
+    @org.junit.jupiter.api.Test
     void deliveryReports_listTheResourcesChosen_inTargetReports() {
         Model m = report(intent, ALL_OK);
 
@@ -156,7 +144,7 @@ class ReportBuilderTest {
                 + "?t icm:targetCount 1 ; rdfs:member pon:CTAG-N-001"));
     }
 
-    @Test
+    @org.junit.jupiter.api.Test
     void aFailedDeliveryHasAReasonAndNoChosenResource() {
         String noFreeUni = inventory;
         inventory = noFreeUni.replace("pon:inUse         false ;", "pon:inUse         true ;");
@@ -169,7 +157,7 @@ class ReportBuilderTest {
 
     // ── Scope (TR290 §4.2) and observations (§4.6) ────────────────────────────
 
-    @Test
+    @org.junit.jupiter.api.Test
     void onlyElementsInTheReportingTargetAreReported_andTheIntentAlwaysIs() {
         // Keep just the intent and the five conditions in the reporting target
         String narrowed = intent.replaceFirst("(?s)bbf:HSIMonitoringTarget a icm:Target ;.*?bbf:HSIServiceTarget \\.",
@@ -184,7 +172,7 @@ class ReportBuilderTest {
         assertEquals(2, count(m, "?ir a icm:IntentReport ; icm:resultFrom ?c . ?c a icm:ConditionReport"));
     }
 
-    @Test
+    @org.junit.jupiter.api.Test
     void withoutAReportingExpectation_onlyTheIntentReportExists() {
         String noReporting = intent.replaceAll("(?s)bbf:HSIMonitoringExpectation a icm:ReportingExpectation ;.*?bbf:Periodic15m \\] \\.", "")
                 .replace("bbf:HSIMonitoringExpectation )", ")");
@@ -194,7 +182,7 @@ class ReportBuilderTest {
         assertTrue(ask(m, "?ir a icm:IntentReport ; icm:result true"));
     }
 
-    @Test
+    @org.junit.jupiter.api.Test
     void observedValues_areOnlyIncludedForAnObservationReportingExpectation() {
         Model plain = report(intent, ALL_OK);
         assertEquals(0, count(plain, "?c met:observed ?o"), "a basic reporting expectation omits observations");
@@ -206,9 +194,65 @@ class ReportBuilderTest {
                 + "met:observedMetric bbf:LatencyMetric ; rdf:value 8 ; quan:unit \"ms\" ]"));
     }
 
+    @org.junit.jupiter.api.Test
+    void observationReportingIncludesUnits() {
+        String observed = intent.replace("a icm:ReportingExpectation", "a icm:ObservationReportingExpectation");
+        Model m = report(observed, ALL_OK);
+
+        assertEquals(5, count(m, "?c a icm:ConditionReport ; met:observed [ quan:unit ?u ]"), "every observation has its unit");
+        assertTrue(ask(m, "?c icm:about bbf:HSI_DownstreamBandwidthCondition ; met:observed [ met:observedMetric "
+                + "bbf:DownstreamBandwidthMetric ; rdf:value 150 ; quan:unit \"Mbps\" ]"));
+        assertTrue(ask(m, "?c icm:about bbf:HSI_PacketLossCondition ; met:observed [ rdf:value 0.02 ; quan:unit \"percent\" ]"));
+    }
+
+    @org.junit.jupiter.api.Test
+    void blankNodeConditionIsNotReportedButAffectsItsParent() {
+        // A blank-node latency condition (< 5 ms, observed 8 ms) inside a blank-node log:allOf that also holds an
+        // IRI condition: the blank nodes get no report (TR290 §4.2) but make the performance expectation false.
+        String withBlank = intent.replace("bbf:HSI_PacketLossCondition ) .",
+                "[ log:allOf ( bbf:HSI_PacketLossCondition\n"
+                        + "  [ a icm:Condition ; quan:smaller ( bbf:LatencyMetric [ rdf:value \"5\"^^xsd:decimal ; "
+                        + "quan:unit \"ms\"^^xsd:string ] ) ] ) ] ) .");
+        assertNotEquals(intent, withBlank);
+        Model m = report(withBlank, ALL_OK);
+
+        assertEquals(0, count(m, "?r icm:about ?x . FILTER(isBlank(?x))"), "blank-node elements are not reported");
+        assertEquals(5, count(m, "?c a icm:ConditionReport ; icm:result true"), "every IRI condition holds");
+        assertEquals(5, count(m, "?perf icm:about bbf:HSIPerformanceExpectation ; icm:resultFrom ?c . "
+                + "?c a icm:ConditionReport"), "the IRI condition under the blank node still contributes");
+        assertTrue(ask(m, "?perf a icm:PropertyExpectationReport ; icm:about bbf:HSIPerformanceExpectation ; icm:result false"));
+        assertTrue(ask(m, "?ir a icm:IntentReport ; icm:result false"));
+    }
+
+    @org.junit.jupiter.api.Test
+    void shortCircuitedElements_areReportedFalse_notOmitted() {
+        // Deliberate: when a failed iv:validIf gate stops evaluation, the old tree omitted the gated children;
+        // the graph has no rdf:value for them, so they are reported false (default false).
+        String ttl = """
+                @prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+                @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+                @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+                @prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+                @prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+                @prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+                @prefix iv:   <http://tio.models.tmforum.org/tio/v3.6.0/IntentValidityOntology/> .
+                @prefix ex:   <http://example.org/> .
+                ex:I a icm:Intent ; log:allOf ( ex:E ex:R ) .
+                ex:E a icm:PropertyExpectation ; iv:ivvalidIf ex:ctx ; log:allOf ( ex:C ) .
+                ex:ctx iv:ivisValid "false"^^xsd:boolean .
+                ex:C a quan:quanatLeast ; rdf:first [ rdf:value "99"^^xsd:decimal ] ;
+                     rdf:rest [ rdf:first [ rdf:value "50"^^xsd:decimal ] ] .
+                ex:R a icm:ReportingExpectation ; icm:target ex:T .
+                ex:T a icm:Target ; rdfs:member ex:E , ex:C .
+                """;
+        Model m = report(ttl);
+        assertTrue(ask(m, "?r a icm:PropertyExpectationReport ; icm:about <http://example.org/E> ; icm:result false"));
+        assertTrue(ask(m, "?r a icm:ConditionReport ; icm:about <http://example.org/C> ; icm:result false"));
+    }
+
     // ── Plumbing ──────────────────────────────────────────────────────────────
 
-    @Test
+    @org.junit.jupiter.api.Test
     void theReportIsLinkedToItsTmfIntentReport_andSerialisesToTurtleThatParsesBack() {
         Model m = report(intent, ALL_OK);
 
@@ -219,7 +263,7 @@ class ReportBuilderTest {
         assertTrue(back.isIsomorphicWith(m));
     }
 
-    @Test
+    @org.junit.jupiter.api.Test
     void anExpressionWithoutAnIntentHasNothingToReportOn() {
         String metricOnly = """
                 @prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
@@ -229,6 +273,7 @@ class ReportBuilderTest {
                 _:b rdf:value "10"^^xsd:decimal .
                 """;
         EvaluationResult r = evaluator.evaluate(metricOnly, null, null);
-        assertNull(builder.build(r.report(), new ReportBuilder.ReportContext(REPORT, r.intentHandlingState(), 1, Instant.now())));
+        assertNull(build(r, metricOnly, null,
+                new ReportBuilder.ReportContext(REPORT, r.intentHandlingState(), 1, Instant.now())));
     }
 }

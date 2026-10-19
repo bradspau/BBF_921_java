@@ -11,6 +11,7 @@ Fuseki provides persistence through TDB2. No embedded RDF runtime is used in the
 - `http://tmforum.org/api/v5/ontology` — read-only ontology graph loaded separately.
 - `http://tmforum.org/api/v5/intents/{id}` — one named graph per Intent or ProbeIntent.
 - `http://tmforum.org/api/v5/reports/{id}` — one named graph per IntentReport.
+- `http://tmforum.org/api/v5/intents/{id}/inferred` — the evaluation engine's result graph for the intent (`rdf:value` true/false per element, chosen target members, `icm:reason`, observation links), replaced on every evaluation and dropped with the intent.
 - `http://tmforum.org/api/v5/hubs` — all Hub subscription triples.
 - `http://tmforum.org/api/v5/audit/{id}` — immutable StateChange audit graph.
 - `http://tmforum.org/api/v5/eval/{id}` — temporary evaluation graph used only by the intent handler.

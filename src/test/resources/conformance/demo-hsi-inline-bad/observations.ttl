@@ -1,0 +1,26 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix met:  <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix bbf:  <http://broadband-forum.org/Intent#> .
+@prefix ex:   <http://example.org/> .
+
+ex:obs-0 a met:Observation ;
+    met:observedMetric bbf:DownstreamBandwidthMetric ;
+    rdf:value "80"^^xsd:decimal ;
+    met:obtainedAt "2026-06-11T10:00:00Z"^^xsd:dateTime .
+
+ex:obs-1 a met:Observation ;
+    met:observedMetric bbf:UpstreamBandwidthMetric ;
+    rdf:value "30"^^xsd:decimal ;
+    met:obtainedAt "2026-06-11T10:00:00Z"^^xsd:dateTime .
+
+ex:obs-3 a met:Observation ;
+    met:observedMetric bbf:JitterMetric ;
+    rdf:value "1.2"^^xsd:decimal ;
+    met:obtainedAt "2026-06-11T10:00:00Z"^^xsd:dateTime .
+
+ex:obs-4 a met:Observation ;
+    met:observedMetric bbf:PacketLossMetric ;
+    rdf:value "0.02"^^xsd:decimal ;
+    met:obtainedAt "2026-06-11T10:00:00Z"^^xsd:dateTime .

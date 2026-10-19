@@ -1,0 +1,11 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix met:  <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix ex:   <http://example.org/> .
+
+ex:obs-bw a met:Observation ;
+    met:observedMetric ex:BandwidthMetric ;
+    rdf:value "150"^^xsd:decimal ;
+    quan:unit "Mbps" ;
+    met:obtainedAt "2026-06-11T10:00:00Z"^^xsd:dateTime .

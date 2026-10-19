@@ -1,0 +1,351 @@
+# tio_a_sets.rules — stage A: set functions (TR292F) in the specification form `?s set:fn ( args )` (TR292C §2).
+#
+# ── Pools are helper facts ────────────────────────────────────────────────────────────────────────────────────
+#   ?r tmf:memberOf ?c                # ?r is a member of container ?c: its input rdfs:member, plus whatever its set
+#                                     # functions define (TR292F §3, §4). Several set functions on one node are a
+#                                     # union (TR292A; DEVIATIONS.md entry 1). Never written as rdfs:member, so a pool
+#                                     # never reaches the result contract (ContractExtractor copies rdfs:member only
+#                                     # for tmf:chosenFor members); 1,000 free ports stay helper facts.
+#   ?n tmf:proxyOf "literal"          # a literal member (set:valuesOfObjectProperty values, a literal rdfs:member) is
+#                                     # represented by the node ?n = makeSkolem(tmf:LiteralMember, literal): the same
+#                                     # literal always gives the same node, so membership tests compare as usual.
+#   ?c tmf:container tmf:Yes          # ?c is read as a container: a subject of a set function, an argument container
+#                                     # of a set function, an icm:chooseFrom pool or a log:match* container. Only
+#                                     # these get their rdfs:member lifted to tmf:memberOf.
+# Why the member is the subject: before adding a derived triple Jena's RETE engine checks that it is new with
+# find(s, p, o), which scans every triple of the subject. With the pool as subject a 1,000-member pool costs about
+# 500,000 comparisons per pool (measured: ~300 ms for the seed with 1,000 free UNI ports); with the member as subject
+# each check reads only that resource's few triples. A literal cannot be a subject, hence the proxy nodes.
+#
+# ── Set constructors are not boolean contributors (tio_a_core: tmf:producesSet) ────────────────────────────────
+# set:resourcesOfType, resourcesWithProperty, resourcesWithPropertyObject, valuesOfObjectProperty, union,
+# intersection and difference have a container as result (fun:resultType rdfs:Container). They produce tmf:memberOf
+# only: no contribution node, no tmf:hasContributor (tio_a_core skips them even when the ontology declares them
+# fun:Function), so (a) they never give an element a boolean (an element whose only function is a set constructor
+# has no contributor and gets the default false, TR292E §4), and (b) a pool node, typed or anonymous, has no
+# contribution that could stay without value. Unimplemented set constructors (typesOfMembers, members*, newest/
+# oldestMember) stay off the implemented list and fail closed in tio_a_core (a false contribution on their subject).
+#
+# ── Boolean set functions are contributors (TR292F §5) ─────────────────────────────────────────────────────────
+# set:isMember, elementOf, empty, includedIn, intersectsWith, identical (§5 text; not in the vocabulary appendix) and
+# forAll get a contribution node exactly like the quantity functions (same skolem as tio_a_core):
+#   ?s tmf:contribution ?k . ?k tmf:function set:isMember ; tmf:arguments ?list ; rdf:type tmf:SetPredicate .
+# Their value needs negation over membership ("x is not a member"), so it is written in stage B
+# (tio_b_sets.rules) from the membership facts derived here, which are complete when stage B starts. Decided here
+# (tmf:valuedInA, rdf:value false, tmf:failure): an argument object that is not a list or too few arguments
+# ("missing operand nodes"), and a container argument whose membership is not final (below). Positive facts for
+# stage B: `?k tmf:setHit tmf:Yes` (isMember: x is in some container; elementOf: x is in all; empty: some container
+# has a member; intersectsWith: the first shares a member with each other one) and the forAll copies.
+#
+# ── Stages: set:difference and containers decided later ("volatile") ──────────────────────────────────────────
+# Union, intersection and the filters are monotone and computed here. Difference needs "m is not a member of the
+# subtracted containers", a negation over membership that this stage derives, so it is computed in stage B
+# (tio_b_sets.rules) from the facts here:
+#   ?l tmf:diffFirst ?A . ?m tmf:excludedFrom ?l   # first container; members of any subtracted container
+#   ?l tmf:diffUnsound tmf:Yes                     # a subtracted container is volatile: the difference has no members
+# A container is volatile (`?c tmf:volatile tmf:Yes`) when its members can still grow after stage A:
+#   * the icm:target of an expectation with icm:chooseFrom or icm:deliveryType: Task 15 adds the choice as
+#     `?target rdfs:member ?r` in stage B (TR290 §2.5.3);
+#   * the subject of set:difference (members derived in stage B);
+#   * a container with "unknown membership" (`tmf:unknownMembers`): it carries a container function that is not
+#     implemented (set:typesOfMembers, set:newestMember, icm:valuesOfTargetProperty, ...); its members never become
+#     complete, it keeps `?c tmf:setFailure "function not implemented: ..."`;
+#   * a set node with a volatile argument container (union/intersection/difference item, or the container
+#     argument of resourcesWithPropertyObject); its list gets `?l tmf:volatileList tmf:Yes`. Unknown membership
+#     propagates the same way.
+# Stage A computes what it can for a volatile node (e.g. nothing, for a filter by a target that has no members yet);
+# tio_b_sets.rules repeats the monotone rules, guarded by tmf:volatile/tmf:volatileList, so a member derived in stage B
+# (a choice, or a difference result) propagates: chosen svA ⇒ SelectedSVLAN rdfs:member svA (Task 15, stage B) ⇒
+# lifted to tmf:memberOf ⇒ the C-tag filter `( pon:fromSVLAN SelectedSVLAN )` matches the C-tags of svA ⇒ the
+# intersection pool. Within one stage a member derived by any earlier rule propagates the same way (RETE).
+# What must NOT happen is a negation over a volatile container's membership in stage B: it is incomplete there.
+# So every consumer fails closed: difference does not subtract a volatile container, nor take an unknown one as its
+# first argument (tmf:diffUnsound: no members, `?s tmf:setFailure`); a boolean set function with a volatile container
+# argument is false here ("container membership is not final ..."); so is log:matchAll/Any/None/One over one
+# (tio_a_logic cmatchNotFinal). A literal where a container is expected is "missing operand nodes". icm:chooseFrom over
+# a volatile pool (the C-tag pool) is chosen from in its own choice stratum (tio_a_delivery.rules levels,
+# tio_c_choose.rules), never by a negation over a pool that is still growing.
+#
+# ── Container argument of set:resourcesWithPropertyObject (DEVIATIONS.md entry 2, design §9.2) ─────────────────
+# An object argument that is a set node (it has a set constructor) or an icm:Target stands for its members, as in the
+# Java engine (isContainerArg); any other argument, a literal or a plain container included, is an object.
+#
+# Accepted extra form (DEVIATIONS.md entry 5, D4): `set:resourcesOfType ex:C` (one class, not a list).
+#
+# Negation in this file: noValue only over input facts (rdf:first of input list nodes; rdf:type icm:Target and set
+# function properties of an argument, which no rule derives), as the header of tio_a_quantity requires. The forAll
+# copies (builtin forAllCopy) add all triples of a copy in one rule firing, so these tests never see a partial copy.
+#
+# Needs the builtins of JenaBuiltins.register(): forAllCopy. Uses Jena's makeSkolem for the literal proxies.
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix fun:  <http://tio.models.tmforum.org/tio/v3.6.0/FunctionOntology/> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+@prefix tmf:  <http://tmforum.org/api/v5/> .
+
+# ── 1. Set nodes and containers ────────────────────────────────────────────────────────────────────────────────
+
+[setNodeOfType:     (?s set:resourcesOfType ?a)             -> (?s tmf:setNode tmf:Yes)]
+[setNodeWithProp:   (?s set:resourcesWithProperty ?a)       -> (?s tmf:setNode tmf:Yes)]
+[setNodeWithObject: (?s set:resourcesWithPropertyObject ?a) -> (?s tmf:setNode tmf:Yes)]
+[setNodeValues:     (?s set:valuesOfObjectProperty ?a)      -> (?s tmf:setNode tmf:Yes)]
+[setNodeUnion:      (?s set:union ?a)                       -> (?s tmf:setNode tmf:Yes)]
+[setNodeInter:      (?s set:intersection ?a)                -> (?s tmf:setNode tmf:Yes)]
+[setNodeDiff:       (?s set:difference ?a)                  -> (?s tmf:setNode tmf:Yes)]
+[setNodeContainer:  (?s tmf:setNode tmf:Yes)                -> (?s tmf:container tmf:Yes)]
+[poolContainer:     (?e icm:chooseFrom ?p) notLiteral(?p)   -> (?p tmf:container tmf:Yes)]
+
+# A container's own members (TR292F §2: rdfs:member; the PDF's examples add explicit members to a set node too).
+[liftMember: (?c tmf:container tmf:Yes) (?c rdfs:member ?m) notLiteral(?m) -> (?m tmf:memberOf ?c)]
+[liftLiteral: (?c tmf:container tmf:Yes) (?c rdfs:member ?v) isLiteral(?v) makeSkolem(?n, tmf:LiteralMember, ?v)
+    -> (?n tmf:proxyOf ?v) (?n tmf:memberOf ?c)]
+
+# Lists whose items are containers: cells (the head is its own first cell).
+[containerListHead: (?l tmf:containerList tmf:Yes) (?l rdf:first ?x) -> (?l tmf:cellOf ?l)]
+[containerListNext: (?c tmf:cellOf ?l) (?c rdf:rest ?r) (?r rdf:first ?x) -> (?r tmf:cellOf ?l)]
+[containerListItem: (?c tmf:cellOf ?l) (?c rdf:first ?x) notLiteral(?x) -> (?x tmf:container tmf:Yes)]
+
+# Members in every container from this cell to the end of the list (intersection, elementOf, includedIn).
+[inAllLast: (?c tmf:cellOf ?l) (?l tmf:needsAll tmf:Yes) (?c rdf:rest rdf:nil) (?c rdf:first ?x)
+    (?m tmf:memberOf ?x) -> (?m tmf:inAllFrom ?c)]
+[inAllNext: (?c tmf:cellOf ?l) (?l tmf:needsAll tmf:Yes) (?c rdf:rest ?r) (?m tmf:inAllFrom ?r)
+    (?c rdf:first ?x) (?m tmf:memberOf ?x) -> (?m tmf:inAllFrom ?c)]
+
+# ── 2. Volatile containers (see the header) ─────────────────────────────────────────────────────────────────────
+
+[volatileChoiceTarget:   (?e icm:chooseFrom ?p) (?e icm:target ?t) notLiteral(?t) -> (?t tmf:volatile tmf:Yes)]
+[volatileDeliveryTarget: (?e icm:deliveryType ?d) (?e icm:target ?t) notLiteral(?t) -> (?t tmf:volatile tmf:Yes)]
+[volatileDifference:     (?s set:difference ?l) -> (?s tmf:volatile tmf:Yes)]
+[volatileCombined: (?l tmf:combinerOf ?s) (?c tmf:cellOf ?l) (?c rdf:first ?x) (?x tmf:volatile tmf:Yes)
+    -> (?s tmf:volatile tmf:Yes) (?l tmf:volatileList tmf:Yes)]
+[volatileFiltered: (?s set:resourcesWithPropertyObject ?l) (?l tmf:rwpoContainer ?x) (?x tmf:volatile tmf:Yes)
+    -> (?s tmf:volatile tmf:Yes) (?l tmf:volatileList tmf:Yes)]
+
+# Unknown membership: a container that also carries a container function no rule implements (set:typesOfMembers,
+# set:newestMember, icm:valuesOfTargetProperty, ...). Its members are incomplete for good, so it is treated as
+# volatile (every consumer fails closed) and the reason is kept as `?c tmf:setFailure "..."` for a later report.
+# Recognised: any fun:Function (ontology) not on the implemented list; without the ontology, any set: property and
+# any icm:valuesOf* or icm:intentElements property that is not implemented (the container functions of TR290).
+[unknownDeclared: (?c tmf:container tmf:Yes) (?c ?f ?a) (?f rdf:type fun:Function) noValue(?f tmf:implemented tmf:Yes)
+    strConcat(?f, ?iri) regex(?iri, '(?:.*[/#])?([^/#]*)', ?n) strConcat('function not implemented: ', ?n, ?t)
+    -> (?c tmf:unknownMembers tmf:Yes) (?c tmf:setFailure ?t)]
+[unknownSetFunction: (?c tmf:container tmf:Yes) (?c ?f ?a) strConcat(?f, ?iri)
+    regex(?iri, 'http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/([^/#]+)', ?n)
+    noValue(?f tmf:implemented tmf:Yes) strConcat('function not implemented: ', ?n, ?t)
+    -> (?c tmf:unknownMembers tmf:Yes) (?c tmf:setFailure ?t)]
+[unknownIcmValues: (?c tmf:container tmf:Yes) (?c ?f ?a) strConcat(?f, ?iri)
+    regex(?iri, 'http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/(valuesOf[^/#]*|intentElements)', ?n)
+    noValue(?f tmf:implemented tmf:Yes) strConcat('function not implemented: ', ?n, ?t)
+    -> (?c tmf:unknownMembers tmf:Yes) (?c tmf:setFailure ?t)]
+[unknownIsVolatile: (?c tmf:unknownMembers tmf:Yes) -> (?c tmf:volatile tmf:Yes)]
+[unknownCombined: (?l tmf:combinerOf ?s) (?c tmf:cellOf ?l) (?c rdf:first ?x) (?x tmf:unknownMembers tmf:Yes)
+    -> (?s tmf:unknownMembers tmf:Yes)]
+[unknownFiltered: (?s set:resourcesWithPropertyObject ?l) (?l tmf:rwpoContainer ?x) (?x tmf:unknownMembers tmf:Yes)
+    -> (?s tmf:unknownMembers tmf:Yes)]
+
+# ── 3. set:resourcesOfType ( class ... ) (TR292F §4, §8.15): instances of the classes or their subclasses ───────
+
+[typeListHead: (?s set:resourcesOfType ?l) (?l rdf:first ?x) -> (?l tmf:typeCellOf ?s)]
+[typeListNext: (?c tmf:typeCellOf ?s) (?c rdf:rest ?r) (?r rdf:first ?x) -> (?r tmf:typeCellOf ?s)]
+[typeClass: (?c tmf:typeCellOf ?s) (?c rdf:first ?k) notLiteral(?k) -> (?s tmf:typeClass ?k)]
+# D4: a single class instead of a list
+[typeClassShort: (?s set:resourcesOfType ?k) notLiteral(?k) notEqual(?k, rdf:nil) noValue(?k rdf:first)
+    -> (?s tmf:typeClass ?k)]
+[typeSubclass: (?s tmf:typeClass ?k) (?d rdfs:subClassOf ?k) -> (?s tmf:typeClass ?d)]
+[typeMember: (?s tmf:typeClass ?k) (?x rdf:type ?k) -> (?x tmf:memberOf ?s)]
+
+# ── 4. set:resourcesWithProperty ( property ... ) (§4, §8.16): subjects of any of the properties ───────────────
+
+[withPropListHead: (?s set:resourcesWithProperty ?l) (?l rdf:first ?x) -> (?l tmf:withPropCellOf ?s)]
+[withPropListNext: (?c tmf:withPropCellOf ?s) (?c rdf:rest ?r) (?r rdf:first ?x) -> (?r tmf:withPropCellOf ?s)]
+[withProp: (?c tmf:withPropCellOf ?s) (?c rdf:first ?p) notLiteral(?p) notBNode(?p) -> (?s tmf:withProperty ?p)]
+[withPropMember: (?s tmf:withProperty ?p) (?x ?p ?o) -> (?x tmf:memberOf ?s)]
+
+# ── 5. set:resourcesWithPropertyObject ( property object ... ) (§4, §8.17) ──────────────────────────────────────
+# Members: subjects to which the property assigns any of the objects. The property and objects are keyed by the
+# argument list, so two filters on one node stay separate (and are then a union, entry 1).
+
+[rwpoProp: (?s set:resourcesWithPropertyObject ?l) (?l rdf:first ?p) notLiteral(?p) notBNode(?p)
+    -> (?l tmf:rwpoProp ?p)]
+[rwpoCellHead: (?s set:resourcesWithPropertyObject ?l) (?l rdf:rest ?r) (?r rdf:first ?x) -> (?r tmf:rwpoCellOf ?l)]
+[rwpoCellNext: (?c tmf:rwpoCellOf ?l) (?c rdf:rest ?r) (?r rdf:first ?x) -> (?r tmf:rwpoCellOf ?l)]
+
+# A set node or an icm:Target argument is a container (entry 2); anything else is an object.
+[rwpoContainerSet: (?c tmf:rwpoCellOf ?l) (?c rdf:first ?o) (?o tmf:setNode tmf:Yes)
+    -> (?l tmf:rwpoContainer ?o) (?o tmf:container tmf:Yes)]
+[rwpoContainerTarget: (?c tmf:rwpoCellOf ?l) (?c rdf:first ?o) (?o rdf:type icm:Target)
+    -> (?l tmf:rwpoContainer ?o) (?o tmf:container tmf:Yes)]
+[rwpoObjectLiteral: (?c tmf:rwpoCellOf ?l) (?c rdf:first ?o) isLiteral(?o) -> (?l tmf:rwpoObject ?o)]
+[rwpoObject: (?c tmf:rwpoCellOf ?l) (?c rdf:first ?o) notLiteral(?o) noValue(?o rdf:type icm:Target)
+    noValue(?o set:resourcesOfType) noValue(?o set:resourcesWithProperty) noValue(?o set:resourcesWithPropertyObject)
+    noValue(?o set:valuesOfObjectProperty) noValue(?o set:union) noValue(?o set:intersection)
+    noValue(?o set:difference)
+    -> (?l tmf:rwpoObject ?o)]
+
+[rwpoMatchObject: (?s set:resourcesWithPropertyObject ?l) (?l tmf:rwpoProp ?p) (?l tmf:rwpoObject ?o) (?x ?p ?o)
+    -> (?x tmf:memberOf ?s)]
+[rwpoMatchContainer: (?s set:resourcesWithPropertyObject ?l) (?l tmf:rwpoProp ?p) (?l tmf:rwpoContainer ?c)
+    (?m tmf:memberOf ?c) (?x ?p ?m) -> (?x tmf:memberOf ?s)]
+[rwpoMatchContainerLiteral: (?s set:resourcesWithPropertyObject ?l) (?l tmf:rwpoProp ?p) (?l tmf:rwpoContainer ?c)
+    (?n tmf:memberOf ?c) (?n tmf:proxyOf ?v) (?x ?p ?v) -> (?x tmf:memberOf ?s)]
+
+# ── 6. set:valuesOfObjectProperty ( property object ... ) (§4, §8.20): values of the property on the objects ────
+
+[valuesProp: (?s set:valuesOfObjectProperty ?l) (?l rdf:first ?p) notLiteral(?p) notBNode(?p)
+    -> (?l tmf:valuesProp ?p)]
+[valuesCellHead: (?s set:valuesOfObjectProperty ?l) (?l rdf:rest ?r) (?r rdf:first ?x) -> (?r tmf:valuesCellOf ?l)]
+[valuesCellNext: (?c tmf:valuesCellOf ?l) (?c rdf:rest ?r) (?r rdf:first ?x) -> (?r tmf:valuesCellOf ?l)]
+[valuesMember: (?s set:valuesOfObjectProperty ?l) (?l tmf:valuesProp ?p) (?c tmf:valuesCellOf ?l) (?c rdf:first ?o)
+    notLiteral(?o) (?o ?p ?v) notLiteral(?v) -> (?v tmf:memberOf ?s)]
+[valuesLiteral: (?s set:valuesOfObjectProperty ?l) (?l tmf:valuesProp ?p) (?c tmf:valuesCellOf ?l) (?c rdf:first ?o)
+    notLiteral(?o) (?o ?p ?v) isLiteral(?v) makeSkolem(?n, tmf:LiteralMember, ?v)
+    -> (?n tmf:proxyOf ?v) (?n tmf:memberOf ?s)]
+
+# ── 7. set:union / set:intersection ( container ... ) (§3, §8.6, §8.19); empty list: no members ─────────────────
+
+[unionList: (?s set:union ?l) notLiteral(?l) -> (?l tmf:containerList tmf:Yes) (?l tmf:combinerOf ?s)]
+[unionMember: (?s set:union ?l) (?c tmf:cellOf ?l) (?c rdf:first ?x) (?m tmf:memberOf ?x) -> (?m tmf:memberOf ?s)]
+
+[interList: (?s set:intersection ?l) notLiteral(?l)
+    -> (?l tmf:containerList tmf:Yes) (?l tmf:needsAll tmf:Yes) (?l tmf:combinerOf ?s)]
+[interMember: (?s set:intersection ?l) (?m tmf:inAllFrom ?l) -> (?m tmf:memberOf ?s)]
+
+# ── 8. set:difference ( container ... ) (§3, §8.1): the facts stage B subtracts with ───────────────────────────
+
+[diffList: (?s set:difference ?l) notLiteral(?l) -> (?l tmf:containerList tmf:Yes) (?l tmf:combinerOf ?s)]
+[diffFirst: (?s set:difference ?l) (?l rdf:first ?a) -> (?l tmf:diffFirst ?a)]
+[diffExcluded: (?s set:difference ?l) (?c tmf:cellOf ?l) notEqual(?c, ?l) (?c rdf:first ?b) (?m tmf:memberOf ?b)
+    -> (?m tmf:excludedFrom ?l)]
+[diffUnsound: (?s set:difference ?l) (?c tmf:cellOf ?l) notEqual(?c, ?l) (?c rdf:first ?b) (?b tmf:volatile tmf:Yes)
+    -> (?l tmf:diffUnsound tmf:Yes)]
+# A first container whose membership is unknown can never be complete either.
+[diffUnknownFirst: (?s set:difference ?l) (?l tmf:diffFirst ?a) (?a tmf:unknownMembers tmf:Yes)
+    -> (?l tmf:diffUnsound tmf:Yes)]
+# No members, and a reason a chooseFrom over it (Task 15) can report.
+[diffUnsoundFailure: (?s set:difference ?l) (?l tmf:diffUnsound tmf:Yes)
+    -> (?s tmf:setFailure "set:difference over a container whose membership is not final: no members")]
+
+# ── 9. Boolean set functions (§5): applications ─────────────────────────────────────────────────────────────────
+
+[setApplyIsMember: (?s set:isMember ?l) makeSkolem(?k, ?s, set:isMember, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function set:isMember) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:SetPredicate) (?k rdf:type tmf:ContainerPredicate)]
+[setApplyElementOf: (?s set:elementOf ?l) makeSkolem(?k, ?s, set:elementOf, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function set:elementOf) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:SetPredicate) (?k rdf:type tmf:ContainerPredicate)]
+[setApplyEmpty: (?s set:empty ?l) makeSkolem(?k, ?s, set:empty, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function set:empty) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:SetPredicate) (?k rdf:type tmf:ContainerPredicate)]
+[setApplyIncludedIn: (?s set:includedIn ?l) makeSkolem(?k, ?s, set:includedIn, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function set:includedIn) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:SetPredicate) (?k rdf:type tmf:ContainerPredicate)]
+[setApplyIntersectsWith: (?s set:intersectsWith ?l) makeSkolem(?k, ?s, set:intersectsWith, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function set:intersectsWith) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:SetPredicate) (?k rdf:type tmf:ContainerPredicate)]
+[setApplyIdentical: (?s set:identical ?l) makeSkolem(?k, ?s, set:identical, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function set:identical) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:SetPredicate) (?k rdf:type tmf:ContainerPredicate)]
+[setApplyForAll: (?s set:forAll ?l) makeSkolem(?k, ?s, set:forAll, ?l)
+    -> (?s tmf:contribution ?k) (?k tmf:function set:forAll) (?k tmf:arguments ?l)
+       (?k rdf:type tmf:SetPredicate)]
+
+# Minimum arity (§8.2-8.5, §8.7, §8.8; identical: none given), which arguments are containers, and which need the
+# all-containers walk.
+[setSignatures: -> (set:isMember tmf:minArity 2) (set:elementOf tmf:minArity 2) (set:empty tmf:minArity 1)
+                   (set:includedIn tmf:minArity 2) (set:intersectsWith tmf:minArity 2) (set:identical tmf:minArity 0)
+                   (set:forAll tmf:minArity 3)
+                   (set:isMember tmf:firstArgElement tmf:Yes) (set:elementOf tmf:firstArgElement tmf:Yes)
+                   (set:empty tmf:allArgsContainers tmf:Yes) (set:includedIn tmf:allArgsContainers tmf:Yes)
+                   (set:intersectsWith tmf:allArgsContainers tmf:Yes) (set:identical tmf:allArgsContainers tmf:Yes)
+                   (set:elementOf tmf:needsAll tmf:Yes) (set:includedIn tmf:needsAll tmf:Yes)]
+
+[setArgsList: (?k rdf:type tmf:ContainerPredicate) (?k tmf:arguments ?l) notLiteral(?l)
+    -> (?l tmf:containerList tmf:Yes)]
+[setArgsNeedAll: (?k rdf:type tmf:ContainerPredicate) (?k tmf:function ?f) (?f tmf:needsAll tmf:Yes)
+    (?k tmf:arguments ?l) notLiteral(?l) -> (?l tmf:needsAll tmf:Yes)]
+[setContainerArgAll: (?k rdf:type tmf:ContainerPredicate) (?k tmf:function ?f) (?f tmf:allArgsContainers tmf:Yes)
+    (?k tmf:arguments ?l) (?c tmf:cellOf ?l) (?c rdf:first ?x) notLiteral(?x) -> (?k tmf:containerArg ?x)]
+[setContainerArgRest: (?k rdf:type tmf:ContainerPredicate) (?k tmf:function ?f) (?f tmf:firstArgElement tmf:Yes)
+    (?k tmf:arguments ?l) (?c tmf:cellOf ?l) notEqual(?c, ?l) (?c rdf:first ?x) notLiteral(?x)
+    -> (?k tmf:containerArg ?x)]
+
+# Decided here: not a list, too few arguments, a container whose membership is not final.
+[setArgsLiteral: (?k rdf:type tmf:SetPredicate) (?k tmf:arguments ?l) isLiteral(?l)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes") (?k tmf:valuedInA tmf:Yes)]
+[setArgsNotList: (?k rdf:type tmf:SetPredicate) (?k tmf:arguments ?l) notLiteral(?l) notEqual(?l, rdf:nil)
+    noValue(?l rdf:first)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes") (?k tmf:valuedInA tmf:Yes)]
+[setArity: (?k rdf:type tmf:SetPredicate) (?k tmf:function ?f) (?f tmf:minArity ?min) (?k tmf:arguments ?l)
+    listLength(?l, ?n) lessThan(?n, ?min)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes") (?k tmf:valuedInA tmf:Yes)]
+# A literal where a container is expected (§8: argument type rdfs:Container) is an error, not an empty container.
+[setLiteralContainer: (?k rdf:type tmf:ContainerPredicate) (?k tmf:function ?f) (?f tmf:allArgsContainers tmf:Yes)
+    (?k tmf:arguments ?l) (?c tmf:cellOf ?l) (?c rdf:first ?x) isLiteral(?x)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes") (?k tmf:valuedInA tmf:Yes)]
+[setLiteralContainerRest: (?k rdf:type tmf:ContainerPredicate) (?k tmf:function ?f) (?f tmf:firstArgElement tmf:Yes)
+    (?k tmf:arguments ?l) (?c tmf:cellOf ?l) notEqual(?c, ?l) (?c rdf:first ?x) isLiteral(?x)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes") (?k tmf:valuedInA tmf:Yes)]
+[forAllLiteralContainer: (?k tmf:forAllContainer ?c) isLiteral(?c)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "missing operand nodes") (?k tmf:valuedInA tmf:Yes)]
+[setNotFinal: (?k tmf:containerArg ?x) (?x tmf:volatile tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)
+       (?k tmf:failure "container membership is not final: it depends on a choice, on set:difference or on a function that is not implemented")
+       (?k tmf:valuedInA tmf:Yes)]
+
+# ── 10. Boolean set functions: positive facts for stage B ───────────────────────────────────────────────────────
+
+# The element tested by isMember / elementOf: the first argument, or the proxy of a literal.
+[setElement: (?k tmf:function ?f) (?f tmf:firstArgElement tmf:Yes) (?k tmf:arguments ?l) (?l rdf:first ?x)
+    notLiteral(?x) -> (?k tmf:element ?x)]
+[setElementLiteral: (?k tmf:function ?f) (?f tmf:firstArgElement tmf:Yes) (?k tmf:arguments ?l) (?l rdf:first ?x)
+    isLiteral(?x) makeSkolem(?n, tmf:LiteralMember, ?x) -> (?k tmf:element ?n)]
+# isMember ( x C ... ): x is a member of any container (§8.8)
+[isMemberHit: (?k tmf:function set:isMember) (?k tmf:element ?x) (?k tmf:containerArg ?c) (?x tmf:memberOf ?c)
+    -> (?k tmf:setHit tmf:Yes)]
+# elementOf ( x C ... ): x is a member of all containers (§8.2)
+[elementOfHit: (?k tmf:function set:elementOf) (?k tmf:element ?x) (?k tmf:arguments ?l) (?l rdf:rest ?r)
+    (?x tmf:inAllFrom ?r) -> (?k tmf:setHit tmf:Yes)]
+# empty ( C ... ): true if none has members (§8.3); the hit is "some container has a member"
+[emptyHit: (?k tmf:function set:empty) (?k tmf:containerArg ?c) (?m tmf:memberOf ?c) -> (?k tmf:setHit tmf:Yes)]
+# intersectsWith ( C1 C2 ... ): C1 has a member in common with each of the others (§5 example: "It does not matter
+# that ex:UserGroup2 and ex:UserGroup3 do not have common members, because the function only checks for the first
+# argument against all other arguments"; §8.7's "members in all other containers" read with that example)
+[intersectsPair: (?k tmf:function set:intersectsWith) (?k tmf:arguments ?l) (?l rdf:first ?c1) (?c tmf:cellOf ?l)
+    notEqual(?c, ?l) (?c rdf:first ?x) (?m tmf:memberOf ?c1) (?m tmf:memberOf ?x) -> (?c tmf:sharesWithFirst ?k)]
+[intersectsLast: (?c tmf:sharesWithFirst ?k) (?c rdf:rest rdf:nil) -> (?c tmf:sharesFrom ?k)]
+[intersectsNext: (?c tmf:sharesWithFirst ?k) (?c rdf:rest ?r) (?r tmf:sharesFrom ?k) -> (?c tmf:sharesFrom ?k)]
+[intersectsHit: (?k tmf:function set:intersectsWith) (?k tmf:arguments ?l) (?l rdf:rest ?r) (?r tmf:sharesFrom ?k)
+    -> (?k tmf:setHit tmf:Yes)]
+
+# forAll ( X C Q ... ) (§5, §8.4): Q (and every further argument) is evaluated once per member of C, with X replaced
+# by the member. Each copy is made by forAllCopy from the input template; the copies are evaluated by the ordinary
+# rules (they are new nodes with the same functions). A condition argument without any function cannot be evaluated
+# (stage B: false).
+[forAllArgs: (?k tmf:function set:forAll) (?k tmf:arguments ?l) listLength(?l, ?n) ge(?n, 3)
+    listEntry(?l, 0, ?x) listEntry(?l, 1, ?c) (?l rdf:rest ?r1) (?r1 rdf:rest ?r2)
+    -> (?k tmf:forAllVar ?x) (?k tmf:forAllContainer ?c) (?k tmf:forAllBodies ?r2)]
+[forAllContainer: (?k tmf:forAllContainer ?c) notLiteral(?c) -> (?k tmf:containerArg ?c) (?c tmf:container tmf:Yes)]
+[forAllBodyHead: (?k tmf:forAllBodies ?b) -> (?b tmf:bodyCellOf ?k)]
+[forAllBodyNext: (?c tmf:bodyCellOf ?k) (?c rdf:rest ?r) (?r rdf:first ?q) -> (?r tmf:bodyCellOf ?k)]
+[forAllBodyLast: (?c tmf:bodyCellOf ?k) (?c rdf:rest rdf:nil) (?c rdf:first ?q) (?q tmf:contribution ?z)
+    -> (?c tmf:bodyOK tmf:Yes)]
+[forAllBodyRest: (?c tmf:bodyCellOf ?k) (?c rdf:rest ?r) (?r tmf:bodyOK tmf:Yes) (?c rdf:first ?q)
+    (?q tmf:contribution ?z) -> (?c tmf:bodyOK tmf:Yes)]
+# The condition templates: nodes reachable from a condition argument through blank nodes (the part forAllCopy
+# copies), following input properties only (not the tmf: helper facts). A template is not reported on its own
+# (ContractExtractor skips tmf:forAllTemplate). A set:forAll inside a template is not supported: the inner copy would
+# need the outer copy, which exists only as a stage-A deduction; fail closed.
+[forAllTemplateRoot: (?c tmf:bodyCellOf ?k) (?c rdf:first ?q) notLiteral(?q)
+    -> (?q tmf:inTemplateOf ?k) (?q tmf:forAllTemplate tmf:Yes)]
+[forAllTemplateNext: (?n tmf:inTemplateOf ?k) (?n ?p ?o) isBNode(?o) strConcat(?p, ?ps)
+    regex(?ps, '(?!http://tmforum.org/api/v5/).*') -> (?o tmf:inTemplateOf ?k)]
+[forAllNested: (?n tmf:inTemplateOf ?k) (?n set:forAll ?l)
+    -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure "set:forAll nested in set:forAll is not supported")
+       (?k tmf:valuedInA tmf:Yes)]
+[forAllHasMember: (?k tmf:forAllContainer ?s) (?m tmf:memberOf ?s) -> (?k tmf:forAllHasMember tmf:Yes)]
+[forAllCopy: (?c tmf:bodyCellOf ?k) (?c rdf:first ?q) notLiteral(?q) (?k tmf:forAllVar ?x)
+    (?k tmf:forAllContainer ?s) (?m tmf:memberOf ?s)
+    -> forAllCopy(?k, ?q, ?x, ?m)]

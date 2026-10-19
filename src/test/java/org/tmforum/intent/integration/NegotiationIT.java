@@ -53,6 +53,23 @@ class NegotiationIT {
     // ── Flow 1: ProbeIntent ───────────────────────────────────────────────────
 
     @Test
+    void probeIntent_malformedTurtle_isTerminated_andADegradedReportWithTheParseErrorIsCreated() {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("name", "ProbeMalformed");
+        body.put("@type", "ProbeIntent");
+        body.put("expression", Map.of("@type", "TurtleExpression", "expressionValue", "this is { not turtle ."));
+
+        ResponseEntity<Map> resp = rest.postForEntity(base + "/intent", body, Map.class);
+        assertEquals(201, resp.getStatusCode().value());
+        String id = (String) resp.getBody().get("id");
+
+        pollUntilStatus(id, "TERMINATED", 10);
+        Map<?, ?> report = pollForReport(id, "Degraded", 10);
+        assertTrue(String.valueOf(report.get("intentHandlingReason")).contains("Turtle parse error"),
+                () -> "reason was " + report.get("intentHandlingReason"));
+    }
+
+    @Test
     void probeIntent_passingExpression_autoTransitions_toActive() {
         // Expression with direct values that always pass (no metric ref)
         String turtle = """

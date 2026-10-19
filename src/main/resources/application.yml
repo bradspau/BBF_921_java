@@ -2,8 +2,9 @@ server:
   port: 8000
 
 intent:
+  evaluator: java
+  ontology-dir: ontology
   tdb2-path: tdb2-data
-  rules-path: classpath:rules/tio_all.rules
   base-url: http://localhost:${server.port}/tmf-api/intentManagement/v5
 
 spring:

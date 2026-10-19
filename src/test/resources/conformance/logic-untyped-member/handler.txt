@@ -1,0 +1,7 @@
+# Handler result (ResultAdapterTest): engine output dumped from both engines, then reviewed by hand against
+# expression.ttl, the Java oracle (TurtleEvaluator) and the PDFs; java- lines: the Java engine, where it differs.
+# DEVIATIONS 10: the untyped member has no entry; the listed matches agree with Java.
+state: Fulfilled
+reason: 
+condition: passed=false | type=logMatch
+condition: passed=true | type=logMatch

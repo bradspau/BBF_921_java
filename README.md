@@ -2,7 +2,7 @@
 
 A complete reimplementation of the [BBF_921](../BBF_921) Python/FastAPI TMF921 v5.0.0 server using **Java 21 + Spring Boot 3.3 + Apache Jena 4.10**.
 
-Key architectural difference from the Python version: Apache Jena TDB2 runs **in-process** (no remote Fuseki HTTP required). The TIO expression evaluator is a direct Java port of the Python 8-pass pipeline — no Jena rules are used as the primary evaluation path.
+Key architectural difference from the Python version: Apache Jena TDB2 runs **in-process** (no remote Fuseki HTTP required). Evaluation runs in one of two **selectable engines** (`intent.evaluator`): the default Java evaluator (a port of the Python pipeline) or a Jena rule engine over the TIO ontology. Both write the same result graph and can be compared (see [Evaluation engines](#evaluation-engines)).
 
 ---
 
@@ -54,7 +54,7 @@ curl http://localhost:8000/health
 
 Expected:
 ```json
-{"status": "UP", "graph": "UP"}
+{"status": "UP", "graph": "UP", "evaluator": {"engine": "java", "ready": true}}
 ```
 
 ---
@@ -159,6 +159,46 @@ The UI's admin features (dataset create/delete, backup) are not available in emb
 
 ---
 
+## Evaluation engines
+
+`intent.evaluator` selects who evaluates an intent. Both engines produce the same **result graph**, so everything
+downstream (reports, handling state, Flows 1-4) is engine-agnostic.
+
+| Value | Behaviour |
+|---|---|
+| `java` (default) | `TurtleEvaluator`: hand-written Java evaluator. Fast (about 2 ms per evaluation) and the oracle for the conformance corpus. |
+| `jena` | `JenaEvaluationEngine`: chained Jena `GenericRuleReasoner` stages over the ontology, expression, observations and resources (rule files in `src/main/resources/rules/`). About 15-45 ms per evaluation. Needs the licensed ontology files; without them `/health` reports the evaluator as not ready (HTTP 503) and evaluations are skipped with an error log. |
+| `compare` | Runs both, returns the Java outcome, and logs a `compare:` warning when the two result graphs differ, when the handler results (state, reason, condition entries, Flow 3 proposal) differ, or when the Jena engine fails or is not ready. Meant for development; no warnings means the engines agree. |
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.arguments=--intent.evaluator=jena       # or: java | compare
+INTENT_EVALUATOR=compare mvn spring-boot:run                                   # environment form
+INTENT_EVALUATOR=jena APP_PROFILES=access docker compose --profile access up --build   # Docker (default java)
+```
+
+`GET /health` shows `"evaluator": {"engine": "...", "ready": true|false}`.
+
+**Result graph.** Explicit `rdf:value true|false` on every IRI-identified intent, expectation and condition; the
+resources chosen for each delivery expectation (`rdfs:member` of the target); `icm:reason` where an element is false
+for a reason (no observation, unit mismatch, nothing to choose, value outside bound); the observation a metric
+condition used. It is stored per intent in the named graph `.../intents/{uuid}/inferred`, replaced on every
+evaluation (browse it in Fuseki). `icm:result` is not in this graph: the handler builds the TR290 reports from the
+graph and the expression (`ReportBuilder`, `ResultAdapter`).
+
+**Conformance corpus.** `src/test/resources/conformance/` holds cases (expression, observations, resources, expected
+graph) that run against both engines. Where the Jena engine deliberately follows the TM Forum PDFs rather than Java, the
+case has an `expected.jena.ttl` and an entry in `src/test/resources/conformance/DEVIATIONS.md` (PDF reference, what
+each engine does, the decision). `ReadinessGuardTest` keeps the Jena engine's ready flag honest.
+
+**Licensed ontology.** The TIO ontology files (`ontology/*.ttl`) are TM Forum licensed and are not in the repository.
+Tests that need them skip themselves with a message when the files are absent, so a fresh checkout builds and runs
+everything else; the full conformance and readiness runs happen on a machine that has them.
+
+The `handlerState` graph (`imo:conditionPassed`, written by `HandlerStateWriter`) is kept alongside the inferred graph;
+Flow 4 and notifications still read it.
+
+---
+
 ## Architecture
 
 ```
@@ -179,19 +219,15 @@ Apache Jena TDB2  (embedded, in-process)
      ▼   (on create/PATCH/observation)
 EvaluationDispatcher (handler/)  ──► @Async → evaluationExecutor pool
      │
-     ├── TurtleEvaluator.evaluate()
-     │     ├── normalizeQuantityPredicates
-     │     ├── normalizeSetPredicates
-     │     ├── resolveMetricRefs  ← injects latest met:Observation
-     │     ├── computeMathFunctions
-     │     ├── computeSetConstructors  ← set:resourcesOfType etc.
-     │     ├── resolveValidityChains
-     │     ├── deriveGuaranteeStates
-     │     └── deriveExtTypes
-     │         → evalNode (recursive tree walk)  → EvaluationResult
+     ├── EvaluationEngine.evaluate()   (intent.evaluator: java | jena | compare)
+     │     ├── java: TurtleEvaluator (normalise, resolve metrics, set constructors,
+     │     │         choice, tree walk) → ResultGraphWriter
+     │     └── jena: stage A facts → choice strata → stage B (rules/tio_*.rules)
+     │         → result graph  → InferredGraphStore (.../inferred named graph)
      │
+     ├── ResultAdapter  → EvaluationResult (state, reason, condition list)
      ├── HandlerStateWriter  → TDB2 handlerState named graph (OODA working memory)
-     ├── IntentReportRepository.create  → TDB2 report named graph
+     ├── ReportBuilder → IntentReportRepository.create  → TDB2 report named graph (TR290 report)
      ├── Flow 1: tryProbeTransition  (ProbeIntent ACKNOWLEDGED → ACTIVE/TERMINATED)
      ├── Flow 2: tryAutoActivate     (DEGRADED → ACTIVE on Fulfilled re-eval)
      ├── Flow 3: tryBestPropose      (failed bound → patch expressionValue)
@@ -204,6 +240,7 @@ Named graph URIs in TDB2 (base: `http://tmforum.org/api/v5`):
 |---|---|
 | `.../intents/{uuid}` | Intent + expression Turtle |
 | `.../intents/{uuid}/handlerState` | Per-condition evaluation facts |
+| `.../intents/{uuid}/inferred` | Engine result graph (rdf:value, chosen members, reasons), replaced per evaluation |
 | `.../intents/{uuid}/observations` | Metric observation records |
 | `.../reports/{uuid}` | IntentReport per evaluation cycle |
 | `http://tmforum.org/api/v5/hubs` | Hub registrations |
@@ -230,12 +267,15 @@ src/
 │   ├── exception/         GlobalExceptionHandler (TMF630)
 │   ├── graph/             Namespaces, GraphNodes, SchemaInit
 │   │   └── repositories/  IntentRepository, IntentReportRepository, …
-│   ├── handler/           TurtleEvaluator, EvaluationDispatcher,
-│   │                      HandlerStateWriter, ObservationStore, BestEffortLimits
+│   ├── engine/            EvaluationEngine seam, EngineConfig, Java/Jena/Comparing engines,
+│   │                      ResultContract, ResultGraphWriter, InferredGraphStore, ResultAdapter
+│   ├── handler/           TurtleEvaluator, JenaBuiltins, Quantities, ReportBuilder,
+│   │                      EvaluationDispatcher, HandlerStateWriter, ObservationStore, BestEffortLimits
 │   ├── model/             EvaluationResult
 │   └── service/           IntentService, StateMachine, NotificationService, …
 └── test/java/org/tmforum/intent/
-    ├── unit/              TurtleEvaluatorTest, StateMachineTest, IntentControllerTest, …
+    ├── unit/              TurtleEvaluatorTest, Jena*RulesTest, StateMachineTest, IntentControllerTest, …
+    ├── conformance/       ConformanceTest, ReadinessGuardTest (corpus in src/test/resources/conformance)
     └── integration/       IntentLifecycleIT, NegotiationIT, AccessDemoIT
 ```
 

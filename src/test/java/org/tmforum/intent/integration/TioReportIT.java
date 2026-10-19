@@ -145,4 +145,19 @@ class TioReportIT {
         String ttl = (String) expr.get("expressionValue");
         assertTrue(ttl.contains("IntentReport") && ttl.contains("icm:result"), ttl);
     }
+
+    @Test
+    void inferredGraphHoldsTheLatestResults() throws Exception {
+        String id = createActiveSeedIntent();
+        post(id, "DownstreamBandwidthMetric", 150.0, "Mbps");
+        post(id, "UpstreamBandwidthMetric", 30.0, "Mbps");
+        post(id, "LatencyMetric", 8.0, "ms");
+        post(id, "JitterMetric", 1.2, "ms");
+        post(id, "PacketLossMetric", 0.02, "percent");
+
+        String graph = "http://tmforum.org/api/v5/intents/" + id + "/inferred";
+        Awaitility.await().atMost(20, TimeUnit.SECONDS).pollInterval(300, TimeUnit.MILLISECONDS).until(() ->
+                !select("PREFIX bbf: <" + BBF + "> PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> "
+                        + "SELECT ?v WHERE { GRAPH <" + graph + "> { bbf:HSIIntent rdf:value ?v . FILTER (?v = true) } }").isEmpty());
+    }
 }

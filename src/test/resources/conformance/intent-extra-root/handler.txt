@@ -1,0 +1,14 @@
+# Handler result (ResultAdapterTest): engine output dumped from both engines, then reviewed by hand against
+# expression.ttl, the Java oracle (TurtleEvaluator) and the PDFs; java- lines: the Java engine, where it differs.
+# DEVIATIONS 29: with an IRI icm:Intent the rule engine's state is the intent's value (Fulfilled); the Java engine
+# ANDs every evaluation root, ex:X included (Degraded). The contract graphs agree (no expected.jena.ttl).
+# DEVIATIONS 30: root order. The rule engine lists the roots in IRI order (ex:Intent, then ex:X); the Java engine in
+# model iteration order, which with Jena 4.10 puts ex:X first.
+state: Fulfilled
+reason: 
+condition: bound=10 | observed=20 | operator=>= | passed=true | type=atLeast
+condition: bound=10 | observed=5 | operator=>= | passed=false | type=atLeast
+java-state: Degraded
+java-reason: Conditions not met: 5 >= 10: FAIL
+java-condition: bound=10 | observed=5 | operator=>= | passed=false | type=atLeast
+java-condition: bound=10 | observed=20 | operator=>= | passed=true | type=atLeast

@@ -1,0 +1,24 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+@prefix met:  <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix ex:   <http://example.org/> .
+
+# Legacy form: two set functions on one node. Java intersects them; TR292A says union (DEVIATIONS.md entry 1).
+ex:Intent a icm:Intent ;
+    log:allOf ( ex:E ) .
+
+ex:E a icm:DeliveryExpectation ;
+    icm:target ex:T ;
+    icm:deliveryType ex:Widget ;
+    icm:chooseFrom ex:Pool .
+
+ex:T a icm:Target .
+
+ex:Pool a icm:Target ;
+    set:resourcesOfType ( ex:Widget ) ;
+    set:resourcesWithPropertyObject ( ex:inUse false ) .

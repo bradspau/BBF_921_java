@@ -1,0 +1,9 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix ex:   <http://example.org/> .
+
+ex:svA a ex:SVLAN .
+ex:svB a ex:SVLAN .
+ex:a0 a ex:CTag ; ex:fromSVLAN ex:svB ; ex:inUse false .   # sorts first, but belongs to svB
+ex:b1 a ex:CTag ; ex:fromSVLAN ex:svA ; ex:inUse false .
+ex:b2 a ex:CTag ; ex:fromSVLAN ex:svA ; ex:inUse true .

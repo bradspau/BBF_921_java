@@ -12,13 +12,61 @@ TMF921 API under the `access` Spring profile. It verifies that:
 
 ---
 
+## The graphs this solution uses, and why
+
+Everything is stored as RDF in one TDB2 dataset, split into **named graphs**. Most graphs are **per intent**: each
+intent has its own set, identified by the intent's id, so one intent's observations, state and results never mix
+with another's. A few graphs are shared. Knowing which graph holds what tells you where to look at each step of
+this demo (the steps query them through Fuseki).
+
+| Graph (`http://tmforum.org/api/v5/…`) | One per | What it holds | Written by | Why it exists |
+|---|---|---|---|---|
+| `intents/{id}` | intent | The TMF921 `Intent` resource, including its expression (the Turtle, kept as an opaque string) and its lifecycle status. | `POST` / `PATCH /intent` | The source of truth for what the intent *asks for*. The evaluator reads the expression from here. |
+| `intents/{id}/observations` | intent | The metric observations posted for that intent (metric, value, unit, time). | `POST /intent/{id}/observation` | Observations are the live measurements the conditions are checked against. They are kept apart from the expression and merged with it at evaluation time. |
+| `intents/{id}/inferred` | intent | **The evaluation engine's answer**: an explicit `rdf:value true`/`false` on the intent, each expectation and each condition, the resources chosen for each delivery expectation (as `rdfs:member` of the target), an `icm:reason` on anything false because of an error or a missing observation, and a `met:observed` link to the observation each metric condition used. | The evaluation engine (java, jena or compare), after every evaluation | Both engines write **the same graph in the same vocabulary**, so everything downstream does not care which engine ran, and the two can be compared triple for triple (that is what `compare` mode does). It is replaced on every evaluation, so it always shows the latest answer. It does **not** contain `icm:result`: that belongs in the report (below). Browse it in Fuseki to see exactly what the engine decided. |
+| `intents/{id}/handlerState` | intent | The handler's working memory: the intent's handling state (`Fulfilled`/`Degraded`), when it was last evaluated, and one entry per condition (passed or not, observed value, bound, or the resource selected). | The handler, after every evaluation | The handler's record of the latest evaluation, one graph per intent, replaced on every evaluation. It is what the handler (and the notifications built on it) work from; it is not what keeps a choice stable. A resource chosen earlier is *held* because Flow 4 marked it in the `resources` graph (`pon:assignedToService`), and it is kept on re-evaluation instead of being chosen again (Step 6). |
+| `reports/{id}` | intent report | One `IntentReport` and, for an intent with an `icm:Intent`, the TR290 report beneath it: an `icm:result` for the intent, every expectation and every condition, what each was derived from (`icm:resultFrom`), why it is false (`icm:reason`), and the resources chosen (`icm:targetReport`). It points back to its intent with `tmf:parentIntent`. | The handler, after every evaluation | The report is what the API returns (`GET …/intentReport`) and what `icm:result` is queried from. A **new** report graph is created on every evaluation, so reports accumulate (newest first) and you can see the intent change over time. The handler builds it from the expression plus the `inferred` result, copying each `icm:result` from the matching `rdf:value`; it never decides truth itself. |
+| `resources` | shared | The PON resource inventory: ONTs, UNI ports, S-VLAN and C-tag allocations and their state (`pon:inUse`, `pon:operationalState`, …). | Loaded at startup from `BBF_access/`; updated by Flow 4 | The access domain's real-world state. The set constructors in the intent (`set:resourcesOfType`, `set:resourcesWithPropertyObject`, …) are resolved against it, and a Fulfilled evaluation writes `pon:inUse true` and `pon:assignedToService` back to it (Flow 4, Step 5). |
+
+Other shared graphs exist but are not used in this demo: `hubs` (notification subscriptions), `audit/{id}`
+(immutable state-change records) and `ontology`.
+
+How they fit together on one evaluation:
+
+```
+intents/{id} (expression) ┐
+intents/{id}/observations ├─ merged ─►  evaluation engine  ─►  intents/{id}/inferred   (the answer)
+resources (inventory)     ┘                                          │
+                                                                     ├─►  reports/{new id}        (TR290 report, icm:result)
+                                                                     ├─►  intents/{id}/handlerState (state + per-condition results)
+                                                                     └─►  resources               (Flow 4: pon:inUse, only when Fulfilled;
+                                                                                                    read back next time as the held choice)
+```
+
+Which graph to look at:
+
+| To see… | Look in |
+|---|---|
+| Whether each condition is met (`icm:result`), and why not | `reports/{id}`, via the `results` helper in Step 4 |
+| What the engine itself decided, in raw form (and to check java, jena and compare agree) | `intents/{id}/inferred` |
+| The handler's record of the latest state and per-condition results | `intents/{id}/handlerState` |
+| Which ports and tags are in use, and which intent holds them (`pon:assignedToService`) | `resources` |
+
+To list every graph and its size in Fuseki:
+
+```sparql
+SELECT ?g (COUNT(*) AS ?triples) WHERE { GRAPH ?g { ?s ?p ?o } } GROUP BY ?g ORDER BY ?g
+```
+
+---
+
 ## Architecture
 
 ```
 POST /intent          →  TDB2 intent named graph
 POST /observation     →  TDB2 observations graph  (per intent)
                                  ↓ merged at evaluation time
-         TurtleEvaluator.evaluate()   ← Java, embedded Jena, access profile
+         EvaluationEngine (intent.evaluator: java | jena | compare), access profile
                                  ↓
          Set constructors resolve against resource graph (TDB2)
                                  ↓
@@ -83,42 +131,88 @@ curl http://localhost:8001/health
 
 Expected:
 ```json
-{"status": "UP", "graph": "UP"}
+{"status": "UP", "graph": "UP", "evaluator": {"engine": "java", "ready": true}}
 ```
 
 > All steps below use port **8001**. Set once: `BASE=http://localhost:8001/tmf-api/intentManagement/v5`
 
 ---
 
+## Choosing the evaluation engine
+
+The evaluation engine is selected by `intent.evaluator`: `java` (default), `jena` (the Jena rule engine) or
+`compare` (runs both, returns Java's answer, logs differences). The demo behaves the same on all three; the
+choice only changes who computes the result. Spring maps the property to the environment variable
+`INTENT_EVALUATOR`.
+
+**Docker** (`docker-compose.yml` passes `INTENT_EVALUATOR` through, default `java`):
+
+```bash
+INTENT_EVALUATOR=jena    APP_PROFILES=access,fuseki docker compose --profile access up --build
+INTENT_EVALUATOR=compare APP_PROFILES=access,fuseki docker compose --profile access up --build
+```
+
+**Dev server:**
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.profiles=access,fuseki -Dspring-boot.run.arguments=--intent.evaluator=jena
+# or: INTENT_EVALUATOR=compare mvn spring-boot:run -Dspring-boot.run.profiles=access,fuseki
+```
+
+The Jena engine needs the licensed ontology files in `ontology/` (it reports not ready without them; check
+`curl http://localhost:8001/health`, field `evaluator`). In `compare` mode, look for `compare:` warnings in the
+log; none means the engines agree. After an evaluation, the engine's result graph is in the named graph
+`http://tmforum.org/api/v5/intents/{id}/inferred`, which you can browse in Fuseki.
+
+---
+
 ## The intent expression
 
-The HSI expression (`seed_data/hsionlyintent_v0.5.ttl`) uses TIO set constructors:
+The HSI expression (`seed_data/hsionlyintent_v0.5.ttl`) uses TIO set constructors. Pools are combined with an
+explicit `set:intersection` (several set functions on one node would combine as a union, TR292A):
 
 ```
-┌─ log:allOf ─────────────────────────────────────────────────────────┐
+┌─ bbf:HSIIntent  log:allOf ──────────────────────────────────────────┐
+│    UNI expectation, S-tag expectation, C-tag expectation,            │
+│    performance expectation, monitoring expectation                   │
 │                                                                      │
-│  icm:DeliveryExpectation                                             │
-│    icm:target  set:SelectedUNIs                                      │
-│    icm:deliveryType  bbf:HSIService                                  │
+│  icm:DeliveryExpectation (UNI)                                       │
+│    icm:target          bbf:SelectedUNIInterface                      │
+│    icm:deliveryType    pon:UNIPort        <- needed, see below       │
+│    icm:chooseFrom      bbf:AvailableUNIInterfaces                    │
 │                                                                      │
-│  set:SelectedUNIs                                                    │
-│    set:resourcesOfType pon:UNIPort                                   │
-│    set:resourcesWithPropertyObject (pon:inUse false)                 │
-│    set:resourcesWithPropertyObject (pon:operationalState pon:Up)     │
+│  bbf:AvailableUNIInterfaces                                          │
+│    set:intersection (                                                │
+│      [ set:resourcesOfType ( pon:UNIPort ) ]                         │
+│      [ set:resourcesWithPropertyObject ( pon:inUse false ) ]         │
+│      [ set:resourcesWithPropertyObject ( pon:operationalState        │
+│                                          pon:Up ) ]                  │
+│      [ set:resourcesWithPropertyObject ( pon:provisioningState       │
+│                                          pon:Ready ) ] )             │
 │                                                                      │
-│  log:allOf  (5× metric conditions)                                   │
-│    quan:atLeast DownstreamBandwidthMetric 100                        │
-│    quan:atLeast UpstreamBandwidthMetric 20                           │
-│    quan:smaller LatencyMetric 25                                     │
-│    quan:smaller JitterMetric 3                                       │
-│    quan:smaller PacketLossMetric 0.1                                 │
+│  (S-VLAN and C-tag expectations choose the same way; the C-tag pool  │
+│   is limited to the chosen S-VLAN)                                   │
+│                                                                      │
+│  icm:PropertyExpectation  log:allOf  (5x metric conditions)          │
+│    quan:atLeast ( DownstreamBandwidthMetric 100 Mbps )               │
+│    quan:atLeast ( UpstreamBandwidthMetric 20 Mbps )                  │
+│    quan:smaller ( LatencyMetric 25 ms )                              │
+│    quan:smaller ( JitterMetric 3 ms )                                │
+│    quan:smaller ( PacketLossMetric 0.1 percent )                     │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-`set:SelectedUNIs` resolves to all UNI ports that are:
+`bbf:AvailableUNIInterfaces` resolves to all UNI ports that are:
 - typed `pon:UNIPort`
 - have `pon:inUse false`
-- have `pon:operationalState pon:Up`
+- have `pon:operationalState pon:Up` and `pon:provisioningState pon:Ready`
+
+The handler chooses one member of that pool (the lowest IRI) as the member of `bbf:SelectedUNIInterface`.
+
+> **`icm:deliveryType` is required** on every delivery expectation whose resource the intent should keep.
+> A held resource is only kept on re-evaluation when it is an instance of the expectation's delivery type; an
+> expectation without one leaks a newly allocated resource on each re-evaluation (open bd issue "Untyped delivery
+> expectation leaks one resource per re-evaluation").
 
 On Fulfilled evaluation, Flow 4 writes `pon:inUse true` and
 `pon:assignedToService <intent-uri>` to the matched ports.
@@ -242,6 +336,150 @@ curl -s "$BASE/intent/$INTENT_ID/intentReport" \
 
 It is long (one entry per intent element), so the steps below query it in Fuseki instead (the `results` helper in
 Step 4), which shows one row per element.
+
+**Pretty-print the full report.** The raw Turtle above is hard to read: long URIs and no obvious order. This
+prints the whole newest report as a tree, from the report's own fields down to the intent, its expectations and
+their conditions, with the `icm:result` of every element, the reason for each false one and the resources chosen:
+
+```bash
+pip install rdflib    # once; only this snippet needs it
+
+curl -s "$BASE/intent/$INTENT_ID/intentReport" | python3 -c '
+import sys, json
+from rdflib import Graph, Namespace, RDF, RDFS
+
+ICM = Namespace("http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/")
+short = lambda u: str(u).rsplit("#", 1)[-1].rsplit("/", 1)[-1]
+
+report = json.load(sys.stdin)[0]            # newest report
+print("IntentReport", report["id"])
+for k in ("creationDate", "intentId", "intentHandlingState", "intentHandlingReason"):
+    print(f"  {k + chr(58):22}{report.get(k)}")
+
+g = Graph().parse(data=report["expression"]["expressionValue"], format="turtle")
+
+def show(node, depth):
+    pad = "    " * depth
+    kind = short(next(g.objects(node, RDF.type), "?"))
+    about = short(next(g.objects(node, ICM.about), "?"))
+    result = next(g.objects(node, ICM.result), "?")
+    print(f"{pad}{kind:28} {about:38} result={str(result).lower()}")
+    for reason in g.objects(node, ICM.reason):
+        print(f"{pad}  · reason: {g.value(reason, RDFS.label)}")
+    for tr in g.objects(node, ICM.targetReport):
+        members = ", ".join(sorted(short(m) for m in g.objects(tr, RDFS.member))) or "(none)"
+        print(f"{pad}  · target {short(next(g.objects(tr, ICM.about), chr(63)))}: {members}")
+    for child in sorted(g.objects(node, ICM.resultFrom), key=short):
+        show(child, depth + 1)
+
+print()
+for root in g.subjects(RDF.type, ICM.IntentReport):
+    show(root, 0)
+'
+```
+
+Expected for the initial report: the intent is `false`, the three delivery expectations are `true` with the
+resources chosen, the monitoring expectation is `true`, and the performance expectation is `false` because all
+five of its conditions are `false` with a `no observation` reason:
+
+```
+IntentReport 0b1c…
+  creationDate:         2026-10-19T08:19:04.177794517Z
+  intentId:             8c39…
+  intentHandlingState:  Degraded
+  intentHandlingReason: Conditions not met: atLeast: no observation: DownstreamBandwidthMetric; … PacketLossMetric
+
+IntentReport                 HSIIntent                              result=false
+    DeliveryExpectationReport    HSICTAGProvisioningExpectation         result=true
+      · target SelectedCTAGAllocation: CTAG-N-001
+    ReportingExpectationReport   HSIMonitoringExpectation               result=true
+    PropertyExpectationReport    HSIPerformanceExpectation              result=false
+      · target HSIServiceTarget: HSIServiceInstance
+        ConditionReport              HSI_DownstreamBandwidthCondition       result=false
+          · reason: no observation: DownstreamBandwidthMetric
+        ConditionReport              HSI_JitterCondition                    result=false
+          · reason: no observation: JitterMetric
+        ConditionReport              HSI_LatencyCondition                   result=false
+          · reason: no observation: LatencyMetric
+        ConditionReport              HSI_PacketLossCondition                result=false
+          · reason: no observation: PacketLossMetric
+        ConditionReport              HSI_UpstreamBandwidthCondition         result=false
+          · reason: no observation: UpstreamBandwidthMetric
+    DeliveryExpectationReport    HSISTagProvisioningExpectation         result=true
+      · target SelectedSVLANAllocation: SVLAN-N-HSI
+    DeliveryExpectationReport    HSIServiceProvisioningExpectation      result=true
+      · target SelectedUNIInterface: UNI-001-1
+```
+
+Run the same snippet after any later step to see the report change; it always shows the newest one. (To see an
+older report, change `[0]` to a later index: the list is newest first.)
+
+### See the intent and its reports in Fuseki
+
+The intent and every report are also stored as RDF, and with the `fuseki` profile you can look at them directly
+(see "The graphs this solution uses" above for what each graph is). Either open the Fuseki UI at
+<http://localhost:3030>, choose the dataset `/intents`, and paste a query below into the **query** tab (replace
+`$INTENT_ID` with your intent's id, `echo "$INTENT_ID"`), or run it from the shell with this helper:
+
+```bash
+sparql() { curl -s -G http://localhost:3030/intents/sparql -H 'Accept: text/csv' --data-urlencode "query=$1"; }
+```
+
+**Which graphs does this intent have?** The intent itself, the handler's state and the engine's inferred result.
+(A fourth, `…/observations`, appears in Step 4 when the first observation is posted.)
+
+```bash
+sparql "SELECT ?g (COUNT(*) AS ?triples) WHERE { GRAPH ?g { ?s ?p ?o }
+        FILTER (CONTAINS(STR(?g), \"$INTENT_ID\")) } GROUP BY ?g ORDER BY ?g"
+```
+
+**The intent resource** (id, name, lifecycle status, the IRI of its expression; the expression text itself is a
+long string, so it is left out here):
+
+```bash
+sparql "SELECT ?p ?o WHERE { GRAPH <http://tmforum.org/api/v5/intents/$INTENT_ID> { ?s ?p ?o }
+        FILTER (STRLEN(STR(?o)) < 200) } ORDER BY ?p"
+```
+
+**Its reports, newest first.** Each report is its own named graph, linked to the intent by `tmf:parentIntent`. Right
+after Steps 1 and 2 there are two (one when the intent was created, one when it was activated), both `Degraded`:
+
+```bash
+sparql "PREFIX tmf: <http://tmforum.org/api/v5/>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+SELECT ?report ?created ?state WHERE {
+  GRAPH ?report { ?report tmf:parentIntent <http://tmforum.org/api/v5/intents/$INTENT_ID> ;
+                          dcterms:created ?created .
+                  OPTIONAL { ?report tmf:intentHandlingState ?state } }
+} ORDER BY DESC(?created)"
+```
+
+**Everything in the newest report graph.** The first part is the `IntentReport` resource (state, reason, link
+to its intent). The rest is the TR290 report itself, one node per intent element with `icm:result`, `icm:about`,
+`icm:resultFrom` and `icm:reason`; it is also kept whole, as text, in `expressionValue`:
+
+```bash
+REPORT=$(sparql "PREFIX tmf: <http://tmforum.org/api/v5/>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+SELECT ?report WHERE { GRAPH ?report { ?report tmf:parentIntent <http://tmforum.org/api/v5/intents/$INTENT_ID> ;
+                                               dcterms:created ?created } } ORDER BY DESC(?created) LIMIT 1" \
+  | tail -1 | tr -d '\r')
+
+sparql "SELECT ?s ?p ?o WHERE { GRAPH <$REPORT> { ?s ?p ?o } } ORDER BY ?s ?p ?o"
+```
+
+One row per element, with its result and reason, is easier to read: that is the `results` helper in Step 4.
+The engine's own answer, before it was turned into a report, is in the `…/inferred` graph:
+
+```bash
+sparql "SELECT ?s ?p ?o WHERE { GRAPH <http://tmforum.org/api/v5/intents/$INTENT_ID/inferred> { ?s ?p ?o } }
+        ORDER BY ?s ?p"
+```
+
+Expected on the initial state: `rdf:value false` for `HSIIntent`, `HSIPerformanceExpectation` and the five
+conditions, `rdf:value true` for the three delivery expectations and the monitoring expectation, the chosen
+resources as `rdfs:member` of the selected targets, and an `icm:reason` ("no observation: …") on each condition.
+There is no `icm:result` here: that is in the report graph.
 
 ---
 
@@ -687,8 +925,10 @@ referenced by `icm:DeliveryExpectation` and `icm:target`.
 | Class | What it does |
 |---|---|
 | `SchemaInit.loadResourceInventory()` | Loads `BBF_access/*.ttl` into TDB2 resource graph |
-| `TurtleEvaluator.computeSetConstructors()` | Resolves `set:resourcesOfType`, `set:resourcesWithPropertyObject` |
-| `TurtleEvaluator.evalDeliveryExpectation()` | Checks `icm:target` container has members of `icm:deliveryType` |
+| `TurtleEvaluator.computeSetConstructors()` | Java engine: resolves `set:resourcesOfType`, `set:resourcesWithPropertyObject` |
+| `TurtleEvaluator.evalDeliveryExpectation()` | Java engine: checks `icm:target` container has members of `icm:deliveryType` |
+| `JenaEvaluationEngine` + `rules/tio_a_sets.rules`, `tio_c_choose.rules`, `tio_b_delivery.rules` | Jena engine: the same set, choice and delivery logic as rules |
+| `ReportBuilder`, `ResultAdapter` | Turn either engine's result graph into the TR290 report and the handler result |
 | `HandlerStateWriter.writeResourceAllocation()` | Writes `pon:inUse true` + `pon:assignedToService` |
 | `HandlerStateWriter.resourcesAlreadyAllocated()` | ASK-query idempotency guard |
 | `EvaluationDispatcher.tryResourceAllocation()` | Flow 4: calls writeResourceAllocation on Fulfilled |

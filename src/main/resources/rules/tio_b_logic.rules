@@ -1,0 +1,167 @@
+# tio_b_logic.rules — stage B: boolean defaults, conjunction of contributions, the logical operators
+# log:allOf/anyOf/noneOf/oneOf over RDF lists (TR292E §2, §6) and the results of the statement functions log:match*.
+#
+# Pattern decided by the stage-chaining spike (design §5.5.1, RuleStagesSpikeTest):
+#   * noValue only over facts that are complete when stage B starts: input, ontology and stage A's output
+#     (tio_a_core: tmf:Element, tmf:hasContributor, tmf:valuedInA, the contribution order and the values of
+#     stage-A-valued contributions; tio_a_logic: hits and misses). Never over a fact this stage derives: in
+#     particular, the rdf:value of a contribution is negated only when stage A decided it (tmf:valuedInA), and the
+#     rdf:value of an operator member only when the member has no contributor (its values are then input, or the
+#     default, which fires only when it has none).
+#   * Everything else is monotone: a value is derived only once everything it depends on is known.
+#   * Every rule here that writes rdf:value writes it on a subject with a stage-A-derived tmf:hasContributor (an
+#     element with contributions, or a contribution node), except the default, which writes false on a typed element
+#     with no contributor and no value; so the default never races with another rule.
+#
+# Results:
+#   ?k rdf:value true|false            # each operator / match application (contribution node), exactly one
+#   ?e rdf:value true|false            # each element (or other node) with contributions: their conjunction
+#   ?e tmf:result tmf:T|tmf:F          # the same, as a helper the operator members read (see 3.)
+#   ?e rdf:value false                 # default: typed element (tmf:Element) with no contributor and no value
+#
+# Nothing here writes a value on [ met:lastValue ( ... ) ] (not a function application, not an element), and no rule
+# gives a value to a contribution that has none: stage A decides every quantity and every unimplemented function.
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix tmf:  <http://tmforum.org/api/v5/> .
+
+# ── 1. Default false (TR292A §4; TR292E §4 p.13: "A condition without properties that determine its value would be
+#       assumed to have the value false by default") ─────────────────────────────────────────────────────────────
+
+[default: (?e rdf:type tmf:Element) noValue(?e tmf:hasContributor) noValue(?e rdf:value)
+    -> (?e rdf:value "false"^^xsd:boolean)]
+
+# ── 2. Conjunction of the contributions of one element (TR292A §4; TR292E §4 p.14) ─────────────────────────────
+# A contribution is F when false. A stage-A-valued contribution (tmf:valuedInA) is T when true and not also false,
+# so a degenerate two-valued one counts as false; its values are complete, so the noValue is sound. A stage-B-valued
+# contribution (operators, match functions) is single-valued by construction and is T when true; nothing about its
+# own value is negated. The element is false as soon as one contribution is F; it is true once every contribution,
+# walked in tio_a_core's fixed order from the last, is T. Both are monotone; exactly one of them fires.
+
+[contribTA: (?k tmf:valuedInA tmf:Yes) (?k rdf:value "true"^^xsd:boolean)
+    noValue(?k rdf:value "false"^^xsd:boolean) -> (?k tmf:cls tmf:T)]
+[contribTB: (?k tmf:function ?f) noValue(?k tmf:valuedInA tmf:Yes) (?k rdf:value "true"^^xsd:boolean)
+    -> (?k tmf:cls tmf:T)]
+[contribF: (?k tmf:function ?f) (?k rdf:value "false"^^xsd:boolean) -> (?k tmf:cls tmf:F)]
+
+[conjunctionFalse: (?e tmf:contribution ?k) (?k tmf:cls tmf:F)
+    -> (?e rdf:value "false"^^xsd:boolean) (?e tmf:result tmf:F)]
+[allTrueLast: (?e tmf:contribution ?k) noValue(?k tmf:contribHasLater) (?k tmf:cls tmf:T)
+    -> (?k tmf:allTrueFrom tmf:Yes)]
+[allTrueNext: (?a tmf:contribBefore ?b) noValue(?a tmf:contribGap ?b) (?b tmf:allTrueFrom tmf:Yes) (?a tmf:cls tmf:T)
+    -> (?a tmf:allTrueFrom tmf:Yes)]
+[conjunctionTrue: (?e tmf:contribution ?k) noValue(?k tmf:contribHasEarlier) (?k tmf:allTrueFrom tmf:Yes)
+    -> (?e rdf:value "true"^^xsd:boolean) (?e tmf:result tmf:T)]
+
+# ── 3. Operator argument lists: cells and members ──────────────────────────────────────────────────────────────
+
+[cellHead: (?k rdf:type tmf:BooleanListFunction) (?k tmf:arguments ?l) notLiteral(?l) notEqual(?l, rdf:nil)
+    -> (?l rdf:type tmf:LogCell)]
+[cellRest: (?l rdf:type tmf:LogCell) (?l rdf:rest ?r) notEqual(?r, rdf:nil) -> (?r rdf:type tmf:LogCell)]
+
+# Each cell's member is T, F or Skip (TR292E §2: an argument that is not boolean is removed from the list).
+# Literals: a boolean literal is an argument; any other literal is skipped.
+[argLiteralT: (?x rdf:type tmf:LogCell) (?x rdf:first "true"^^xsd:boolean)  -> (?x tmf:logArg tmf:T)]
+[argLiteralF: (?x rdf:type tmf:LogCell) (?x rdf:first "false"^^xsd:boolean) -> (?x tmf:logArg tmf:F)]
+[argLiteralOther: (?x rdf:type tmf:LogCell) (?x rdf:first ?m) isLiteral(?m) notDType(?m, xsd:boolean)
+    -> (?x tmf:logArg tmf:Skip)]
+
+# A node with contributions: its conjunction (section 2). Its own input rdf:value, if any, is not read.
+[argResultT: (?x rdf:type tmf:LogCell) (?x rdf:first ?m) (?m tmf:result tmf:T) -> (?x tmf:logArg tmf:T)]
+[argResultF: (?x rdf:type tmf:LogCell) (?x rdf:first ?m) (?m tmf:result tmf:F) -> (?x tmf:logArg tmf:F)]
+
+# A node without contributor: its values are input, or the default false (only when it has no value), so the
+# negations below read complete facts. Any false wins over true; a boolean value wins over a non-boolean one.
+[argValueT: (?x rdf:type tmf:LogCell) (?x rdf:first ?m) notLiteral(?m) noValue(?m tmf:hasContributor)
+    (?m rdf:value "true"^^xsd:boolean) noValue(?m rdf:value "false"^^xsd:boolean) -> (?x tmf:logArg tmf:T)]
+[argValueF: (?x rdf:type tmf:LogCell) (?x rdf:first ?m) notLiteral(?m) noValue(?m tmf:hasContributor)
+    (?m rdf:value "false"^^xsd:boolean) -> (?x tmf:logArg tmf:F)]
+[argValueOther: (?x rdf:type tmf:LogCell) (?x rdf:first ?m) notLiteral(?m) noValue(?m tmf:hasContributor)
+    (?m rdf:value ?v) notDType(?v, xsd:boolean)
+    noValue(?m rdf:value "true"^^xsd:boolean) noValue(?m rdf:value "false"^^xsd:boolean)
+    -> (?x tmf:logArg tmf:Skip)]
+# No value and none to come: no contributor and not an element (an element gets the default false).
+# The tmf:Element guard is load-bearing for soundness: it is what makes noValue(?m rdf:value) read a complete fact.
+# Without it, a typed member could be skipped before the default gives it false, and get two classifications.
+[argNoValue: (?x rdf:type tmf:LogCell) (?x rdf:first ?m) notLiteral(?m) noValue(?m tmf:hasContributor)
+    noValue(?m rdf:type tmf:Element) noValue(?m rdf:value) -> (?x tmf:logArg tmf:Skip)]
+
+# ── 4. Per-cell summary from the tail: true members in this suffix (N0, N1, N2 = two or more) and whether one is
+#       false. A cell's summary exists only once its whole suffix is resolved. ─────────────────────────────────
+
+[logNil: -> (rdf:nil tmf:logTrues tmf:N0) (rdf:nil tmf:logHasFalse tmf:No)]
+[walkT0: (?x tmf:logArg tmf:T) (?x rdf:rest ?r) (?r tmf:logTrues tmf:N0) -> (?x tmf:logTrues tmf:N1)]
+[walkT1: (?x tmf:logArg tmf:T) (?x rdf:rest ?r) (?r tmf:logTrues tmf:N1) -> (?x tmf:logTrues tmf:N2)]
+[walkT2: (?x tmf:logArg tmf:T) (?x rdf:rest ?r) (?r tmf:logTrues tmf:N2) -> (?x tmf:logTrues tmf:N2)]
+[walkTH: (?x tmf:logArg tmf:T) (?x rdf:rest ?r) (?r tmf:logHasFalse ?h) -> (?x tmf:logHasFalse ?h)]
+[walkFN: (?x tmf:logArg tmf:F) (?x rdf:rest ?r) (?r tmf:logTrues ?n) -> (?x tmf:logTrues ?n)]
+[walkFH: (?x tmf:logArg tmf:F) (?x rdf:rest ?r) (?r tmf:logHasFalse ?h) -> (?x tmf:logHasFalse tmf:Yes)]
+[walkSN: (?x tmf:logArg tmf:Skip) (?x rdf:rest ?r) (?r tmf:logTrues ?n) -> (?x tmf:logTrues ?n)]
+[walkSH: (?x tmf:logArg tmf:Skip) (?x rdf:rest ?r) (?r tmf:logHasFalse ?h) -> (?x tmf:logHasFalse ?h)]
+
+# ── 5. Operators read the head cell (TR292E §6.1, §6.2, §6.10, §6.11; empty list: allOf, anyOf, oneOf false,
+#       noneOf true) ─────────────────────────────────────────────────────────────────────────────────────────────
+
+[allOfT: (?k tmf:function log:allOf) (?k tmf:arguments ?l) (?l tmf:logHasFalse tmf:No) (?l tmf:logTrues ?n)
+    notEqual(?n, tmf:N0) -> (?k rdf:value "true"^^xsd:boolean)]
+[allOfF: (?k tmf:function log:allOf) (?k tmf:arguments ?l) (?l tmf:logHasFalse tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+[allOfE: (?k tmf:function log:allOf) (?k tmf:arguments ?l) (?l tmf:logTrues tmf:N0)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+[anyOfT: (?k tmf:function log:anyOf) (?k tmf:arguments ?l) (?l tmf:logTrues ?n) notEqual(?n, tmf:N0)
+    -> (?k rdf:value "true"^^xsd:boolean)]
+[anyOfF: (?k tmf:function log:anyOf) (?k tmf:arguments ?l) (?l tmf:logTrues tmf:N0)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+[noneOfT: (?k tmf:function log:noneOf) (?k tmf:arguments ?l) (?l tmf:logTrues tmf:N0)
+    -> (?k rdf:value "true"^^xsd:boolean)]
+[noneOfF: (?k tmf:function log:noneOf) (?k tmf:arguments ?l) (?l tmf:logTrues ?n) notEqual(?n, tmf:N0)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+[oneOfT: (?k tmf:function log:oneOf) (?k tmf:arguments ?l) (?l tmf:logTrues tmf:N1)
+    -> (?k rdf:value "true"^^xsd:boolean)]
+[oneOfF: (?k tmf:function log:oneOf) (?k tmf:arguments ?l) (?l tmf:logTrues ?n) notEqual(?n, tmf:N1)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+
+# No argument list at all (a literal or a node that is not a list): false.
+[operatorNotAList: (?k tmf:argsNotAList tmf:Yes) -> (?k rdf:value "false"^^xsd:boolean)]
+
+# ── 6. Statement evaluation functions (TR292E §3, §6.4-6.9), from stage A's hits and misses ────────────────────
+# Closed world; an incomplete or missing statement, or an empty container, gives false. A container match over a
+# container whose membership is not final at the end of stage A (tmf:volatile, tio_a_sets.rules) is decided false in
+# stage A (tmf:valuedInA, tio_a_logic cmatchNotFinal); the container rules below skip it.
+
+[matchT: (?k tmf:function log:match) (?k tmf:hit ?s) -> (?k rdf:value "true"^^xsd:boolean)]
+[matchF: (?k tmf:function log:match) noValue(?k tmf:hit) -> (?k rdf:value "false"^^xsd:boolean)]
+
+[matchAllT: (?k tmf:function log:matchAll) (?k tmf:hit ?m) noValue(?k tmf:miss) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "true"^^xsd:boolean)]
+[matchAllF: (?k tmf:function log:matchAll) (?k tmf:miss ?m) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+[matchAllE: (?k tmf:function log:matchAll) noValue(?k tmf:hit) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+
+[matchAnyT: (?k tmf:function log:matchAny) (?k tmf:hit ?m) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "true"^^xsd:boolean)]
+[matchAnyF: (?k tmf:function log:matchAny) noValue(?k tmf:hit) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+
+[matchNoneT: (?k tmf:function log:matchNone) (?k tmf:matchMember ?m) noValue(?k tmf:hit) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "true"^^xsd:boolean)]
+[matchNoneF: (?k tmf:function log:matchNone) (?k tmf:hit ?m) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+[matchNoneE: (?k tmf:function log:matchNone) noValue(?k tmf:matchMember) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+
+[matchOneT: (?k tmf:function log:matchOne) (?k tmf:hit ?m) noValue(?k tmf:twoHits) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "true"^^xsd:boolean)]
+[matchOneF: (?k tmf:function log:matchOne) (?k tmf:twoHits tmf:Yes) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+[matchOneE: (?k tmf:function log:matchOne) noValue(?k tmf:hit) noValue(?k tmf:valuedInA tmf:Yes)
+    -> (?k rdf:value "false"^^xsd:boolean)]
+
+[matchStatementT: (?k tmf:function log:matchStatement) (?k tmf:matchMember ?m) noValue(?k tmf:miss)
+    -> (?k rdf:value "true"^^xsd:boolean)]
+[matchStatementF: (?k tmf:function log:matchStatement) (?k tmf:miss ?m) -> (?k rdf:value "false"^^xsd:boolean)]
+[matchStatementE: (?k tmf:function log:matchStatement) noValue(?k tmf:matchMember)
+    -> (?k rdf:value "false"^^xsd:boolean)]

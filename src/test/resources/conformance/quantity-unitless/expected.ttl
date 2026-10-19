@@ -1,0 +1,35 @@
+# Recorded from the java engine with -Dconformance.record=true, then reviewed by hand.
+@prefix bbf: <http://broadband-forum.org/Intent#> .
+@prefix ex: <http://example.org/> .
+@prefix icm: <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix met: <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix pon: <http://broadband-forum.org/ont/pon-resource#> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ex:BandwidthCondition
+    icm:reason [ rdf:type icm:Reason ; rdfs:label "unit mismatch: a value without unit cannot be compared with 'Mbps'" ] ;
+    met:observed ex:obs-bw ;
+    rdf:value false .
+
+ex:Intent
+    rdf:value false .
+
+ex:PerformanceExpectation
+    rdf:value false .
+
+ex:SessionCountCondition
+    met:observed ex:obs-sessions ;
+    rdf:value true .
+
+ex:obs-bw
+    met:observedMetric ex:BandwidthMetric ;
+    rdf:type met:Observation ;
+    rdf:value "150"^^xsd:decimal .
+
+ex:obs-sessions
+    met:observedMetric ex:SessionCountMetric ;
+    rdf:type met:Observation ;
+    rdf:value "5"^^xsd:decimal .

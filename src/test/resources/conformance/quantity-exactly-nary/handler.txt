@@ -1,0 +1,11 @@
+# Handler result (ResultAdapterTest): engine output dumped from both engines, then reviewed by hand against
+# expression.ttl, the Java oracle (TurtleEvaluator) and the PDFs; java- lines: the Java engine, where it differs.
+# DEVIATIONS 24: all three arguments compared; each entry shows the pair its reason names (5 and 6).
+state: Degraded
+reason: Conditions not met: 5 == 6: FAIL; 5 == 6: FAIL
+condition: bound=6 | observed=5 | operator=== | passed=false | type=exactly
+condition: bound=6 | observed=5 | operator=== | passed=false | type=exactly
+java-state: Degraded
+java-reason: Conditions not met: 5 == 6: FAIL
+java-condition: bound=5 | observed=5 | operator=== | passed=true | type=exactly
+java-condition: bound=6 | observed=5 | operator=== | passed=false | type=exactly

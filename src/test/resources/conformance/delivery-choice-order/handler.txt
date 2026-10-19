@@ -1,0 +1,11 @@
+# Handler result (ResultAdapterTest): engine output dumped from both engines, then reviewed by hand against
+# expression.ttl, the Java oracle (TurtleEvaluator) and the PDFs; java- lines: the Java engine, where it differs.
+# DEVIATIONS 17: both choices are made whatever the order, so the C-tag expectation has b1.
+state: Fulfilled
+reason: 
+condition: passed=true | selected=http://example.org/b1 | type=DeliveryExpectation
+condition: passed=true | selected=http://example.org/svA | type=DeliveryExpectation
+java-state: Degraded
+java-reason: Conditions not met: DeliveryExpectation: no candidate of type CTag in chooseFrom pool
+java-condition: error=no candidate of type CTag in chooseFrom pool | passed=false | type=DeliveryExpectation
+java-condition: passed=true | selected=http://example.org/svA | type=DeliveryExpectation

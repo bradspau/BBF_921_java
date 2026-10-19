@@ -1,0 +1,7 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix met: <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+<http://example.org/obs/1> a met:Observation ;
+  met:observedMetric <http://example.org/m> ;
+  rdf:value "7"^^xsd:decimal ;
+  met:obtainedAt "2026-06-11T10:00:00Z"^^xsd:dateTime .

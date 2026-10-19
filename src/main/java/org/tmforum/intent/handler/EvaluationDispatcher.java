@@ -9,6 +9,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.tmforum.intent.engine.EvaluationEngine;
+import org.tmforum.intent.engine.EvaluationInput;
+import org.tmforum.intent.engine.EvaluationOutcome;
+import org.tmforum.intent.engine.InferredGraphStore;
 import org.tmforum.intent.graph.Namespaces;
 import org.tmforum.intent.graph.repositories.IntentRepository;
 import org.tmforum.intent.graph.repositories.IntentReportRepository;
@@ -18,7 +22,9 @@ import org.tmforum.intent.service.StateMachine;
 
 import java.io.StringWriter;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.tmforum.intent.graph.GraphNodes;
+import java.io.StringReader;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -43,7 +49,7 @@ public class EvaluationDispatcher {
     @Value("${intent.base-url}")
     private String baseUrl;
 
-    private final TurtleEvaluator evaluator;
+    private final EvaluationEngine engine;
     private final ObservationStore observationStore;
     private final HandlerStateWriter handlerStateWriter;
     private final BestEffortLimits bestEffortLimits;
@@ -52,13 +58,14 @@ public class EvaluationDispatcher {
     private final NotificationService notificationService;
     private final ReportBuilder reportBuilder;
     private final Dataset dataset;
+    private final InferredGraphStore inferredGraphStore;
 
     // Per-intent locks guard DEGRADED→ACTIVE auto-transition against concurrent evaluations
     private final ConcurrentHashMap<String, ReentrantLock> transitionLocks = new ConcurrentHashMap<>();
     // Per-intent locks serialise whole evaluations (see runEvaluation)
     private final ConcurrentHashMap<String, ReentrantLock> evaluationLocks = new ConcurrentHashMap<>();
 
-    public EvaluationDispatcher(TurtleEvaluator evaluator,
+    public EvaluationDispatcher(EvaluationEngine engine,
                                   ObservationStore observationStore,
                                   HandlerStateWriter handlerStateWriter,
                                   BestEffortLimits bestEffortLimits,
@@ -66,8 +73,10 @@ public class EvaluationDispatcher {
                                   IntentReportRepository reportRepository,
                                   NotificationService notificationService,
                                   ReportBuilder reportBuilder,
-                                  Dataset dataset) {
-        this.evaluator = evaluator;
+                                  Dataset dataset,
+                                  InferredGraphStore inferredGraphStore) {
+        this.inferredGraphStore = inferredGraphStore;
+        this.engine = engine;
         this.observationStore = observationStore;
         this.handlerStateWriter = handlerStateWriter;
         this.bestEffortLimits = bestEffortLimits;
@@ -129,18 +138,35 @@ public class EvaluationDispatcher {
             return;
         }
 
+        org.tmforum.intent.engine.EngineStatus engineStatus = engine.status();
+        if (!engineStatus.ready()) {
+            log.error("evaluator '{}' is not ready: {}", engine.name(), engineStatus.reason());
+            return;
+        }
+
         // Get observations and resources Turtle
         String obsTurtle = observationStore.getObservationsTurtle(intentId);
         String resTurtle = getResourcesTurtle();
         List<String> heldResources = handlerStateWriter.heldResources(intentId);
 
-        // Evaluate (with timeout guard via interruption)
+        // Evaluate (there is no timeout; the call runs to completion on the evaluation executor)
         EvaluationResult result;
+        EvaluationOutcome outcome = null;
         try {
-            result = evaluateWithTimeout(expressionTurtle, obsTurtle, resTurtle, heldResources, intentId);
+            outcome = evaluateWithTimeout(expressionTurtle, obsTurtle, resTurtle, heldResources, intentId);
+            result = outcome.result();
         } catch (Exception e) {
             log.warn("runEvaluation: evaluation failed for intent {}: {}", intentId, e.getMessage());
             result = EvaluationResult.degraded("Evaluation error: " + e.getMessage(), List.of());
+        }
+
+        // Keep the latest result graph; a storage failure must not change the evaluation result
+        if (outcome != null && outcome.resultGraph() != null) {
+            try {
+                inferredGraphStore.replace(intentId, outcome.resultGraph());
+            } catch (Exception e) {
+                log.error("runEvaluation: could not store inferred graph for intent {}", intentId, e);
+            }
         }
 
         // Write OODA working memory
@@ -153,9 +179,22 @@ public class EvaluationDispatcher {
         Map<String, Object> reportData = buildReportData(reportId, reportHref, intentId, now, result);
 
         // TR290 intent report (icm:result per intent element), carried as the report's Turtle expression
-        Model tioReport = reportBuilder.build(result.report(), new ReportBuilder.ReportContext(
-                GraphNodes.reportNode(reportId), result.intentHandlingState(),
-                reportRepository.count(intentId) + 1, Instant.parse(now)));
+        // Built from the expression and the engine's result graph; none if the evaluation produced no graph
+        // A malformed expression, or an evaluation that produced no graph, gives no TR290 report; the normal
+        // IntentReport and the flows below proceed as they would without one.
+        Model tioReport = null;
+        if (outcome != null && outcome.resultGraph() != null && !outcome.resultGraph().isEmpty()) {
+            try {
+                Model expressionModel = ModelFactory.createDefaultModel();
+                expressionModel.read(new StringReader(expressionTurtle), "http://tmforum.org/", "TURTLE");
+                tioReport = reportBuilder.build(expressionModel, outcome.resultGraph(), new ReportBuilder.ReportContext(
+                        GraphNodes.reportNode(reportId), result.intentHandlingState(),
+                        reportRepository.count(intentId) + 1, Instant.parse(now)));
+            } catch (Exception e) {
+                log.warn("runEvaluation: no TR290 report for intent {}: {}", intentId, e.getMessage());
+                tioReport = null;
+            }
+        }
         if (tioReport != null) {
             Map<String, Object> expression = new LinkedHashMap<>();
             expression.put("@type", "TurtleExpression");
@@ -278,12 +317,12 @@ public class EvaluationDispatcher {
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    private EvaluationResult evaluateWithTimeout(String expressionTurtle, String obsTurtle,
+    private EvaluationOutcome evaluateWithTimeout(String expressionTurtle, String obsTurtle,
                                                    String resTurtle, List<String> heldResources,
                                                    String intentId) {
         // Run evaluation in current thread (already in evaluationExecutor pool).
         // The pool provides concurrency; we don't add another layer here.
-        return evaluator.evaluate(expressionTurtle, obsTurtle, resTurtle, heldResources);
+        return engine.evaluate(new EvaluationInput(intentId, expressionTurtle, obsTurtle, resTurtle, heldResources));
     }
 
     private String getResourcesTurtle() {

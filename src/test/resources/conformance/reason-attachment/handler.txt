@@ -1,0 +1,10 @@
+# Handler result (ResultAdapterTest): engine output dumped from both engines, then reviewed by hand against
+# expression.ttl, the Java oracle (TurtleEvaluator) and the PDFs; java- lines: the Java engine, where it differs.
+# DEVIATIONS 26 is about the contract only: both engines list every application, the anonymous ones included, with
+# its own value, so the handler results agree.
+state: Degraded
+reason: Conditions not met: 80 Mbps >= 100 Mbps: FAIL; atLeast: no observation: LatencyMetric
+condition: bound=4 | observed=5 | operator=>= | passed=true | type=atLeast
+condition: bound=100 | boundUnit=Mbps | observed=80 | observedUnit=Mbps | operator=>= | passed=false | type=atLeast
+condition: error=no observation: LatencyMetric | operator=>= | passed=false | type=atLeast
+condition: bound=5 | observed=6 | operator=>= | passed=true | type=atLeast

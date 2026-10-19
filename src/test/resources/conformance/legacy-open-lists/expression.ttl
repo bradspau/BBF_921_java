@@ -1,0 +1,24 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix ex:   <http://example.org/> .
+
+# The legacy class-typed quantity form with argument lists left open (no rdf:nil), as NegotiationIT and
+# IntentLifecycleIT write them; the Java engine reads rdf:first / rdf:rest directly (TurtleEvaluator.evalTwoArg,
+# evalRange). One condition per function, so the flat-scan order is fixed. No icm:Intent: empty contract; the
+# handler results must agree (Task 17 fix round).
+
+# Only the first cell, no rdf:rest: "missing operand nodes" (no observed value reported).
+ex:A a quan:quanatLeast ; rdf:first ex:m .
+
+# rdf:rest to a node without rdf:first: "missing bound node".
+ex:B a quan:quansmaller ; rdf:first ex:m ; rdf:rest [ ] .
+
+# Two open cells, equal: true.
+ex:C a quan:quanexactly ; rdf:first ex:m ; rdf:rest [ rdf:first [ rdf:value "7"^^xsd:decimal ] ] .
+
+# inRange with only two open cells: "missing operand nodes".
+ex:D a quan:quaninRange ; rdf:first ex:m ; rdf:rest [ rdf:first [ rdf:value "5"^^xsd:decimal ] ] .
+
+# An open list whose metric has no observation: "no observation: gone".
+ex:E a quan:quanatMost ; rdf:first ex:gone ; rdf:rest [ rdf:first [ rdf:value "3"^^xsd:decimal ] ] .

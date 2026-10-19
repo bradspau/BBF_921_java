@@ -1,0 +1,16 @@
+# Hand-derived from the PDF (rule engine expectation); differs from expected.ttl (Java). See DEVIATIONS.md entry 8.
+@prefix ex: <http://example.org/> .
+@prefix icm: <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ex:BareIcm rdf:value false .      # TR292E §4: no property determines its value, false by default (Java: true)
+
+ex:BareLog rdf:value false .
+
+ex:Expectation rdf:value false .
+
+ex:Intent rdf:value false .
+
+ex:Svc1Up rdf:value true .

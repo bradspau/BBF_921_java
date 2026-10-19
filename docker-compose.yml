@@ -13,6 +13,7 @@ services:
     environment:
       # Add Fuseki:  APP_PROFILES=standalone,fuseki docker compose --profile standalone up
       SPRING_PROFILES_ACTIVE: ${APP_PROFILES:-standalone}
+      INTENT_EVALUATOR: ${INTENT_EVALUATOR:-java}   # java | jena | compare
       INTENT_FUSEKI_LOOPBACK: "false"   # container must bind all interfaces; host side is localhost-only
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8000/health"]
@@ -35,6 +36,7 @@ services:
     environment:
       # Add Fuseki:  APP_PROFILES=access,fuseki docker compose --profile access up
       SPRING_PROFILES_ACTIVE: ${APP_PROFILES:-access}
+      INTENT_EVALUATOR: ${INTENT_EVALUATOR:-java}   # java | jena | compare
       INTENT_FUSEKI_LOOPBACK: "false"   # container must bind all interfaces; host side is localhost-only
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8001/health"]
@@ -57,6 +59,7 @@ services:
     environment:
       # Add Fuseki:  APP_PROFILES=aggregation,fuseki docker compose --profile aggregation up
       SPRING_PROFILES_ACTIVE: ${APP_PROFILES:-aggregation}
+      INTENT_EVALUATOR: ${INTENT_EVALUATOR:-java}   # java | jena | compare
       INTENT_FUSEKI_LOOPBACK: "false"   # container must bind all interfaces; host side is localhost-only
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8000/health"]

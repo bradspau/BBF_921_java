@@ -1,0 +1,9 @@
+# Handler result (ResultAdapterTest): engine output dumped from both engines, then reviewed by hand against
+# expression.ttl, the Java oracle (TurtleEvaluator) and the PDFs; java- lines: the Java engine, where it differs.
+# DEVIATIONS 1: union pool, lowest candidate w1.
+state: Fulfilled
+reason: 
+condition: passed=true | selected=http://example.org/w1 | type=DeliveryExpectation
+java-state: Fulfilled
+java-reason: 
+java-condition: passed=true | selected=http://example.org/w2 | type=DeliveryExpectation

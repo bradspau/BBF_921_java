@@ -4,8 +4,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
+ * Private trace of the Java engine: read only by {@code ResultGraphWriter}, which turns it into the shared
+ * result graph. Reports are built from that graph, not from this type.
+ *
  * Evaluation outcome for one intent element (intent, expectation or condition), kept as a tree that
- * mirrors the intent so a TR290 report can be built from it.
+ * mirrors the intent so the result graph can be written from it.
  *
  * @param uri           IRI of the intent element (only IRIs can be reported on, TR290 §4.2)
  * @param kind          Intent | DeliveryExpectation | PropertyExpectation | ReportingExpectation | Expectation | Condition

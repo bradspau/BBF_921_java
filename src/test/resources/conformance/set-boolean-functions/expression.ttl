@@ -1,0 +1,43 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix ex:   <http://example.org/> .
+
+# Boolean set functions (TR292F §5, §8) in the function form (TR292C §2). Expected by the PDF:
+# IsGold, InRegion, Included, Intersects, AllAvailable true; NotGold, NoneEmpty, Hot false; so the expectation and
+# the intent are false (DEVIATIONS.md entry 14).
+ex:Intent a icm:Intent ;
+    log:allOf ( ex:Expectation ) .
+
+ex:Expectation a icm:Expectation ;
+    log:allOf ( ex:IsGold ex:NotGold ex:InRegion ex:NoneEmpty ex:Included ex:Intersects ex:AllAvailable ex:Hot ) .
+
+# §8.8: User1 is a gold user; User3 is not
+ex:IsGold a log:Condition ; set:isMember ( ex:User1 ex:GoldUsers ) .
+ex:NotGold a log:Condition ; set:isMember ( ex:User3 ex:GoldUsers ) .
+
+# §8.2 over a set-constructor node (§8.17): Node1 is in region SubnetA
+ex:InRegion a log:Condition ;
+    set:elementOf ( ex:Node1 [ set:resourcesWithPropertyObject ( ex:region ex:SubnetA ) ] ) .
+
+# §8.3: the gold users are not empty
+ex:NoneEmpty a log:Condition ; set:empty ( ex:GoldUsers ) .
+
+# §8.5 over a union (§8.19): every gold user is a gold user or another user
+ex:Included a log:Condition ; set:includedIn ( ex:GoldUsers [ set:union ( ex:GoldUsers ex:Others ) ] ) .
+
+# §8.7, the PDF's own example: Team1 shares a member with Team2 and with Team3 (Team2 and Team3 share none)
+ex:Intersects a log:Condition ; set:intersectsWith ( ex:Team1 ex:Team2 ex:Team3 ) .
+
+# §8.4 with §8.20: every availability value of the two slices is greater than 0.97
+ex:AllAvailable a log:Condition ;
+    set:forAll ( _:value
+                 [ set:valuesOfObjectProperty ( ex:availability ex:Slice1 ex:Slice2 ) ]
+                 [ quan:greater ( _:value 0.97 ) ] ) .
+
+# §8.3 with §8.16: some node has a temperature reading, so the container is not empty
+ex:Hot a log:Condition ; set:empty ( [ set:resourcesWithProperty ( ex:temp ) ] ) .

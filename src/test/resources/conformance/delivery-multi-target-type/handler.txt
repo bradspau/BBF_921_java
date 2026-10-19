@@ -1,0 +1,13 @@
+# Handler result (ResultAdapterTest): engine output dumped from both engines, then reviewed by hand against
+# expression.ttl, the Java oracle (TurtleEvaluator) and the PDFs; java- lines: the Java engine, where it differs.
+# DEVIATIONS 19: one entry per (target, type) of each expectation; T3 has no Gadget.
+state: Degraded
+reason: Conditions not met: DeliveryExpectation: no candidate of type Gadget in chooseFrom pool
+condition: passed=true | selected=http://example.org/w1 | type=DeliveryExpectation
+condition: passed=true | selected=http://example.org/w1 | type=DeliveryExpectation
+condition: error=no candidate of type Gadget in chooseFrom pool | passed=false | type=DeliveryExpectation
+condition: passed=true | selected=http://example.org/w3 | type=DeliveryExpectation
+java-state: Degraded
+java-reason: Conditions not met: DeliveryExpectation: no candidate of type Gadget in chooseFrom pool
+java-condition: passed=true | selected=http://example.org/w1 | type=DeliveryExpectation
+java-condition: error=no candidate of type Gadget in chooseFrom pool | passed=false | type=DeliveryExpectation

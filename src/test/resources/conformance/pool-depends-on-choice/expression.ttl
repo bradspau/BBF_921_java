@@ -1,0 +1,30 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+@prefix met:  <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix ex:   <http://example.org/> .
+
+# 802.1ad: a C-tag is chosen from the S-VLAN the S-tag expectation chose. The object of
+# set:resourcesWithPropertyObject is a target (a container): it stands for its members (an extension of TR292F).
+ex:Intent a icm:Intent ;
+    log:allOf ( ex:Top ) .
+
+ex:Top a icm:Expectation ;
+    log:allOf ( ex:STagE ex:CTagE ) .
+
+ex:STagE a icm:DeliveryExpectation ;
+    icm:target ex:SelectedSVLAN ; icm:deliveryType ex:SVLAN ; icm:chooseFrom ex:SVLANs .
+ex:SelectedSVLAN a icm:Target .
+ex:SVLANs a icm:Target ; set:resourcesOfType ( ex:SVLAN ) .
+
+ex:CTagE a icm:DeliveryExpectation ;
+    icm:target ex:SelectedCTag ; icm:deliveryType ex:CTag ; icm:chooseFrom ex:CTags .
+ex:SelectedCTag a icm:Target .
+ex:CTags a icm:Target ;
+    set:intersection ( [ set:resourcesOfType ( ex:CTag ) ]
+                       [ set:resourcesWithPropertyObject ( ex:inUse false ) ]
+                       [ set:resourcesWithPropertyObject ( ex:fromSVLAN ex:SelectedSVLAN ) ] ) .

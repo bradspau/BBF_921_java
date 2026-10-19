@@ -1,0 +1,66 @@
+# Recorded from the java engine with -Dconformance.record=true, then reviewed by hand.
+@prefix bbf: <http://broadband-forum.org/Intent#> .
+@prefix ex: <http://example.org/> .
+@prefix icm: <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix met: <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix pon: <http://broadband-forum.org/ont/pon-resource#> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://example.org/obs/0>
+    met:observedMetric bbf:DownstreamBandwidthMetric ;
+    quan:unit "Mbps" ;
+    rdf:type met:Observation ;
+    rdf:value "150"^^xsd:decimal .
+
+<http://example.org/obs/3>
+    met:observedMetric bbf:UpstreamBandwidthMetric ;
+    quan:unit "Mbps" ;
+    rdf:type met:Observation ;
+    rdf:value "30"^^xsd:decimal .
+
+bbf:HSICTAGProvisioningExpectation
+    rdf:value true .
+
+bbf:HSIIntent
+    rdf:value false .
+
+bbf:HSIPerformanceExpectation
+    rdf:value false .
+
+bbf:HSISTagProvisioningExpectation
+    rdf:value true .
+
+bbf:HSIServiceProvisioningExpectation
+    rdf:value true .
+
+bbf:HSI_DownstreamBandwidthCondition
+    met:observed <http://example.org/obs/0> ;
+    rdf:value true .
+
+bbf:HSI_JitterCondition
+    icm:reason [ rdf:type icm:Reason ; rdfs:label "no observation: JitterMetric" ] ;
+    rdf:value false .
+
+bbf:HSI_LatencyCondition
+    icm:reason [ rdf:type icm:Reason ; rdfs:label "no observation: LatencyMetric" ] ;
+    rdf:value false .
+
+bbf:HSI_PacketLossCondition
+    icm:reason [ rdf:type icm:Reason ; rdfs:label "no observation: PacketLossMetric" ] ;
+    rdf:value false .
+
+bbf:HSI_UpstreamBandwidthCondition
+    met:observed <http://example.org/obs/3> ;
+    rdf:value true .
+
+bbf:SelectedCTAGAllocation
+    rdfs:member pon:CTAG-N-001 .
+
+bbf:SelectedSVLANAllocation
+    rdfs:member pon:SVLAN-N-HSI .
+
+bbf:SelectedUNIInterface
+    rdfs:member pon:UNI-001-1 .

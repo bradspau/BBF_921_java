@@ -1,7 +1,12 @@
 # Selectable evaluation engines with a shared result graph
 
-Status: draft for approval. Beads: `bbf921j-4qm` (P1).
+Status: implemented (Tasks 0-18), 2026-10-19. Beads: `bbf921j-4qm` (P1).
 Date: 2026-10-18.
+
+Open follow-ups: bd "Jena delivery engine: shared-target choice edge cases"; bd "Untyped delivery expectation leaks one
+resource per re-evaluation"; bd "Java evaluator crashes with ArithmeticException on extreme-exponent numerals"; bd
+`bbf921j-dp2` (NegotiationIT Flow 2, unrelated); performance: the Jena engine takes about 15-45 ms per evaluation
+against about 2 ms for Java, which is acceptable for the demos and has not been tuned.
 
 ## 1. Intent and why
 
@@ -94,7 +99,10 @@ EvaluationOutcome: the result graph (a Jena Model in the vocabulary of 5.2)
 
 - Two implementations: `JavaEvaluationEngine` (wraps `TurtleEvaluator`) and `JenaEvaluationEngine`.
 - Selection by property at startup (`@ConditionalOnProperty` or a small factory). Mode `compare` (a third value)
-  runs both, logs any difference in the result graphs, and returns the Java outcome. It is for development and CI.
+  runs both, logs any difference in the result graphs and, separately, any difference in the handler result
+  projection (state, reason string, the ordered condition entries restricted to the keys `src/main` consumes, and the
+  Flow 3 proposal; `HandlerProjection`), and returns the Java outcome. The handler comparison matters for expressions
+  without an IRI `icm:Intent`, whose result graph is empty (Task 17). It is for development and CI.
 - Readiness: `JenaEvaluationEngine.status()` reports not ready until the conformance suite is green (5.6).
   If `jena` is selected while not ready, the application starts, `/health` reports the evaluator as not ready
   with the reason (builder's call whether this is HTTP 503), and evaluations are skipped with an error log rather
@@ -112,7 +120,7 @@ in the contract.
 |---|---|---|
 | `?e rdf:value "true"^^xsd:boolean` or `"false"^^xsd:boolean`, exactly one | every IRI-identified `icm:Intent`, `icm:Expectation` (all subclasses) and `icm:Condition`/`log:Condition` in the intent | TR292A §4: associated value of boolean type, default `false`, contributions combined by conjunction (`log:allOf`). TR290 §2.2: intent and expectation truth values are compliance. |
 | `?target rdfs:member ?resource` | each resource chosen for an `icm:DeliveryExpectation`, including resources the intent already holds | TR290 §2.5.3: choices become members of the target. |
-| `?e icm:reason ?r . ?r a icm:Reason ; rdfs:label "..."` | an element that is `false` because a function errored or nothing could be chosen: no observation, unit mismatch, no candidate of the delivery type | TR290 §4.5.2 (`icm:Reason`); TR292C §8 errors. The PDFs define no engine-level error vocabulary beyond this; the text is the human explanation. |
+| `?e icm:reason ?r . ?r a icm:Reason ; rdfs:label "..."` | an element that is `false` because a function errored, nothing could be chosen, or a comparison failed: no observation, unit mismatch, no candidate of the delivery type, a value outside its bound (text `<observed> <unit> <op> <bound> <unit> is false`) | TR290 §4.5.2 (`icm:Reason`); TR292C §8 errors. The PDFs define no engine-level error vocabulary beyond this; the text is the human explanation. |
 | `?condition met:observed ?observation`, plus the observation individual's own triples (`a met:Observation`, `met:observedMetric`, `rdf:value`, `quan:unit`) | a condition whose first argument is a metric: the observation individual it used | TR290 §4.6 / TR292G. Lets the report show the observed value and unit without the report builder re-deriving them or reading the observations store. |
 
 Not in the contract:
@@ -187,14 +195,103 @@ saturated facts.
   `tio_choose.rules`) and held resources; roll-up to expectations and the intent; reasons.
 - **Builtins** (`JenaBuiltins`): `lexLess` (exists), a unit-aware quantity comparison, newest-observation selection.
   Only where rules cannot express it.
-- **List handling.** Fixed arity: `listEntry`/`listLength`. Variable arity: cell propagation helpers. Nested
-  function-valued arguments (`[ met:lastValue ( m ) ]`) are ordinary anonymous nodes and need no special case.
+- **List handling.** Fixed arity: `listEntry`/`listLength`. Variable arity: cell propagation helpers.
+- **Quantity arguments are classified inline in stage A** (`tio_a_quantity.rules`, see its header). Each argument
+  cell resolves to `tmf:argNode`/`tmf:argValue` (+ `tmf:argUnit`) or to `tmf:argMissing`. The cases are a literal,
+  a node with its own `rdf:value`, `[ met:lastValue ( m ) ]` (newest observation of `m`), and any other node, which
+  is treated as a metric (closed world: no observation means missing). Nested function-valued arguments therefore
+  *do* need a special case. Any other value-producing function used as a quantity argument (for example
+  `[ quan:sum ( ... ) ]`) needs its own classification rule. Without one it is taken as a metric, and it must not
+  get `rdf:value` derived in stage A, because the classification negates `rdf:value` on input argument nodes.
+- **Sets and pools (Task 14, `tio_a_sets.rules`, `tio_b_sets.rules`).** Pool membership is the helper fact
+  `?r tmf:memberOf ?container`, never `rdfs:member`, so pool members never reach the contract (only chosen members do,
+  as `rdfs:member` with `tmf:chosenFor`). The member is the subject because Jena's duplicate check scans the subject's
+  triples; literal members are skolem proxy nodes (`tmf:proxyOf`). Set constructors (`tmf:producesSet`) are not
+  boolean contributors; boolean set functions are contributions like the quantity functions. A container is
+  **volatile** (`tmf:volatile`) when its members can still grow after stage A: a delivery target (choices are added
+  in a later stratum), a `set:difference` result (computed in stage B), a container with **unknown membership**
+  (`tmf:unknownMembers`, a container function that is not implemented, with `tmf:setFailure`), and every pool built on
+  one. Stage B recomputes volatile pools positively, so members chosen later propagate, but no rule negates a volatile
+  container's membership: boolean set functions, `log:match*` and a subtracting `set:difference` over one fail closed.
+  **Choosing from a volatile pool (`icm:chooseFrom` over the C-tag pool, which follows the S-VLAN choice) needs its
+  own stratum** (a stage per choice level); a stage-B `noValue` over such a pool's members is unsound.
+- **Choice strata (Task 15).** Stages: A → choose-1 … choose-`MAX_CHOICE_DEPTH` (2) → B. Stage A derives each
+  container's level positively (`tmf:levelAtLeast`, `tio_a_delivery.rules`: a pool is level 0 unless built on something
+  that grows after stage A; a delivery target is its pool's level + 1, at least 1; a difference at least 1; unknown
+  membership beyond the strata). choose-n (`tio_c_choose.rules`, a template loaded once per level, plus
+  `tio_b_pools.rules`) chooses only from pools of level n-1; its negations read stage A facts or, through the builtins
+  `prevLowest`/`prevNone`, only the previous stage. Held resources of the delivery type are chosen in choose-1 and the
+  pool is not read. Each delivery expectation has a stage-A contribution (`tmf:function tmf:Delivery`) valued in stage
+  B (`tio_b_delivery.rules`): true iff its target has a member of the delivery type (subclasses included,
+  DEVIATIONS.md entry 16); choices do not depend on the expectations' order (entry 17). Deeper pools fail closed.
 - `rdf:value` is the associated-value property (TR292C §2-4 and every example). TR292C §11.7 names
   `tio:assumedValue` as the default `fun:resultProperty`; it appears nowhere else in the specification set and
   is not defined in the ontology, so it is treated as an editorial inconsistency.
-- One source of truth for the rule files. Today `tio_all.rules` exists in `ontology/jena-rules/` and
-  `src/main/resources/rules/` (identical copies). The runtime copy is authoritative; the ontology copy is dropped
-  or generated.
+- One source of truth for the rule files: `src/main/resources/rules/` is authoritative. The legacy `tio_all.rules`
+  (runtime and `ontology/jena-rules/` copies) and `tio_choose.rules` were deleted in Task 18; the other files in
+  `ontology/jena-rules/` are the supplied RDFox-derived reference rules and are not loaded at runtime.
+
+#### 5.5.1 Decision from the stage-chaining spike (Task 10)
+
+Proved by `RuleStagesSpikeTest` (all four operators, all 8 true/false combinations, empty lists, non-boolean
+members, defaulted members, nesting up to 4 levels; 6-100 fixed-seed shuffles of triples and rule order; both
+chainings agree).
+
+- **Chaining.** `createInfModel(stageB, stageAInf)` is correct *for rules that obey the invariant below*;
+  copying stage A into a plain `Model` first gives the same results, with no measurable difference in cost
+  (about 1.2 ms for a 20-condition intent, rules parsed each time). Either is fine; Tasks 12-16 use chaining.
+- **Invariant: `noValue` only over facts that are complete when the stage starts** (input structure or a
+  previous, saturated stage), never over facts the same stage derives. Changing the chaining does not rescue
+  rules that break it: the naive `allOf` ("true if no member is not true", default false via
+  `noValue(?c rdf:value)`) gives wrong or double (`true` and `false`) values in 80-100% of runs, in both chainings.
+- **Pattern: two stages, logic is monotone.**
+  - Stage A also derives the structural fact `?c tmf:hasContributor ?p` for every `?c ?p ?args` with
+    `?p a fun:Function`.
+  - Stage B default: `(?c a log:Condition) noValue(?c tmf:hasContributor) noValue(?c rdf:value) -> false`. Safe
+    because nothing in stage B gives a value to an element without a contributor. Preconditions: (a) the function
+    ontology TTLs (LogicalOperators etc.) are in stage A's input, so `hasContributor` is derived for operator
+    conditions (the spike inlines them as `ONTOLOGY`); (b) every stage-B rule that writes `rdf:value` has a
+    subject with a stage-A-derived `hasContributor`, including the expectation and intent truth values of Tasks
+    14-16; (c) `rdf:type log:Condition` (and any type the default reads) is never derived in stage B: type
+    inference belongs in stage A.
+  - Stage B list cells: `(?c log:allOf ?l) -> (?l a tmf:LogCell)` (one rule per operator),
+    `(?l a tmf:LogCell) (?l rdf:rest ?r) -> (?r a tmf:LogCell)`. Each cell's member is classified `tmf:arg`
+    `T`/`F`/`Skip` (`Skip`: non-boolean value or literal (`notDType`), or no value, no contributor and untyped).
+  - Each cell carries a summary computed from the tail: `rdf:nil` has `tmf:trues N0`, `tmf:hasFalse No`; a cell's
+    summary is derived from its own `arg` and its `rdf:rest`'s summary (`trues` capped at `N2`). The summary exists
+    only when the whole suffix is resolved, so a nested operator's value is simply waited for.
+  - Operators read the head cell: allOf true iff `hasFalse No` and `trues` not `N0`; anyOf true iff `trues` not
+    `N0`; noneOf true iff `N0`; oneOf true iff `N1`; each is false in the complementary cases.
+- **Sets (Task 14).** Set results are not `rdf:value` facts: pools are `tmf:memberOf` helper facts (stage A, plus a
+  guarded stage-B recomputation for volatile pools); `set:difference` and the boolean set functions' values are stage B,
+  negating only stage-A membership of non-volatile containers. Universal tests ("every member ...") use the builtin
+  `allSubjectsIn`, which reads its universe from the previous stage. See 5.5 "Sets and pools" for volatile containers.
+- **Empty lists (TR292E §6):** allOf, anyOf, oneOf `( )` = false; noneOf `( )` = true. (allOf empty is *false*
+  in the PDF, not the vacuous true.)
+- **For Tasks 12-16:** follow the invariant; derive every structural fact a negation needs in stage A; have
+  every stage A function produce an explicit `true`/`false` (an error is `false` plus `icm:reason`), since an
+  element whose contributor never resolves leaves the walk waiting and stays without value (a final
+  post-B fill to `false` would not propagate into enclosing operators). Not covered by the spike: conjunction of
+  *several* contributors on one element (TR292A §4; TR292E §4 p.13, which also gives the default `false`).
+  "No contribution that is not true" is the naive pattern again; make it monotone (false if any contribution is
+  false; true once a stage-A-known number or list of contributions are all true, e.g. a count builtin in stage A).
+  Never write per-contributor results directly onto the element's `rdf:value`: a member with conflicting values
+  gets two classifications and its operator two values. No Java builtin was needed for the operators.
+- **Deviations from the Java engine** (`TurtleEvaluator`, the conformance oracle). The spike follows the PDFs:
+  - `log:allOf ( )`: Java true (`applyCombinator`, `allMatch` on an empty list, :1333-1338); TR292E §6.1 false.
+    Empty anyOf/noneOf/oneOf agree with the PDF.
+  - A bare typed `log:Condition` with no properties: Java true ("Unknown/opaque — pass silently", :866-868);
+    TR292E §4 (p.13) false by default.
+  - Literal boolean members (`( true false )`): Java drops them (`filter(RDFNode::isResource)`, :815); TR292E §2
+    makes them boolean arguments, so the spike counts them.
+  - An untyped member with no value: Java counts it true (opaque, :866-868); the spike drops it as non-boolean
+    (TR292E §2).
+  - A list whose children are all opaque: Java fails the operator (`opaqueChildren`, :821-825), so noneOf is false;
+    the spike drops those members and noneOf of the empty remainder is true (TR292E §2, §6.10).
+
+  Task 13 MUST add corpus cases for each of these (`logic-*`, each with `expected.ttl` = the Java engine's output
+  and `expected.jena.ttl` = the PDF result where they differ) and the matching `DEVIATIONS.md` entries, so the
+  Jena column shows no unexplained mismatches. (Not added now: the register test requires an existing case.)
 
 ### 5.6 Conformance and comparison
 
@@ -241,7 +338,7 @@ saturated facts.
 - How the conformance corpus is stored (Turtle files per case or in code).
 - How reasons are worded (the contract fixes the structure, not the text), as long as engines produce the same
   text for the same case.
-- Whether to keep `HandlerStateWriter`'s `handlerState` graph or retire it in favour of the inferred graph.
+- (Decided in Task 18: `handlerState` is kept, see section 10.)
 - Performance tuning of the ontology-loaded model (measure first: about 4,200 triples of ontology per evaluation).
 
 ## 8. Known inconsistencies and risks
@@ -270,3 +367,14 @@ saturated facts.
    register, and the rule engine implements it.
 
 Status: approved by the owner on 2026-10-18. Next step: the implementation plan.
+
+## 10. Decisions made during execution
+
+- **`handlerState` graph kept (Task 18, owner).** `HandlerStateWriter` still writes the per-intent `handlerState`
+  graph (`imo:conditionPassed`). Flow 4 (resource allocation write-back) and notifications read it, and retiring it
+  is outside this plan. Cost: there are two parallel records of an evaluation's results, the `handlerState` graph and
+  the `/inferred` graph, written on every evaluation and able to drift in principle (both come from the same
+  `EvaluationResult`/outcome, so they do not in practice). A later change can move Flow 4 and notifications to the
+  inferred graph and drop `handlerState`.
+- **Unused reasoner removed (Task 18).** The `ruleReasoner` bean in `JenaConfig` and the `intent.rules-path`
+  property are gone; the Jena engine builds its own staged reasoners.

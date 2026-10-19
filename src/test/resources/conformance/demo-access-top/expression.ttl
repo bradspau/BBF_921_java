@@ -1,0 +1,12 @@
+@prefix bbf: <http://broadband-forum.org/Intent#> .
+@prefix log: <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+# docs/Access_HSI_Demo.md step 8, unchanged.
+bbf:Top log:allOf (
+  bbf:DL_Check
+  bbf:UL_Check
+) .
+bbf:DL_Check quan:atLeast ( <http://broadband-forum.org/Intent#DownstreamBandwidthMetric> [ rdf:value "100"^^xsd:decimal ] ) .
+bbf:UL_Check quan:atLeast ( <http://broadband-forum.org/Intent#UpstreamBandwidthMetric> [ rdf:value "20"^^xsd:decimal ] ) .

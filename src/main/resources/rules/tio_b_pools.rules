@@ -1,0 +1,40 @@
+# tio_b_pools.rules — the pools that can still grow after stage A: set:difference and the volatile containers
+# (tio_a_sets.rules header). Loaded into every stage after stage A: each choice stratum (tio_c_choose.rules, design
+# §5.5 "Sets and pools") and the value stage. Every rule here is monotone except `difference`, whose negations read
+# only stage A facts (tmf:excludedFrom of non-volatile containers, tmf:diffUnsound), complete in every later stage.
+#
+# Why in every stage: a choice made in choice stratum n (`?target rdfs:member ?r`) must reach the pools built on that
+# target in the same stratum, so that stratum n+1 can choose from them with their membership complete. A difference
+# over containers complete after stage A is complete after the first stratum (its level is at least 1,
+# tio_a_delivery.rules).
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+@prefix tmf:  <http://tmforum.org/api/v5/> .
+
+# ── 1. set:difference ( A B ... ): members of A that are in none of the others (§3, §8.1) ───────────────────────
+# Subtracting a volatile container is not decidable here (its members may still grow): no members (diffUnsound).
+
+[difference: (?s set:difference ?l) (?l tmf:diffFirst ?a) (?m tmf:memberOf ?a) noValue(?l tmf:diffUnsound tmf:Yes)
+    noValue(?m tmf:excludedFrom ?l) -> (?m tmf:memberOf ?s)]
+
+# ── 2. Volatile containers: the monotone rules of tio_a_sets again, so members derived in this stage (a choice added
+#       as rdfs:member of a target, a difference result) propagate to the pools built on them ─────────────────────
+
+[bLiftMember: (?c tmf:volatile tmf:Yes) (?c tmf:container tmf:Yes) (?c rdfs:member ?m) notLiteral(?m)
+    -> (?m tmf:memberOf ?c)]
+[bLiftLiteral: (?c tmf:volatile tmf:Yes) (?c tmf:container tmf:Yes) (?c rdfs:member ?v) isLiteral(?v)
+    makeSkolem(?n, tmf:LiteralMember, ?v) -> (?n tmf:proxyOf ?v) (?n tmf:memberOf ?c)]
+[bRwpoMatch: (?l tmf:volatileList tmf:Yes) (?s set:resourcesWithPropertyObject ?l) (?l tmf:rwpoProp ?p)
+    (?l tmf:rwpoContainer ?c) (?m tmf:memberOf ?c) (?x ?p ?m) -> (?x tmf:memberOf ?s)]
+[bRwpoMatchLiteral: (?l tmf:volatileList tmf:Yes) (?s set:resourcesWithPropertyObject ?l) (?l tmf:rwpoProp ?p)
+    (?l tmf:rwpoContainer ?c) (?n tmf:memberOf ?c) (?n tmf:proxyOf ?v) (?x ?p ?v) -> (?x tmf:memberOf ?s)]
+[bUnionMember: (?l tmf:volatileList tmf:Yes) (?s set:union ?l) (?c tmf:cellOf ?l) (?c rdf:first ?x)
+    (?m tmf:memberOf ?x) -> (?m tmf:memberOf ?s)]
+[bInAllLast: (?l tmf:volatileList tmf:Yes) (?l tmf:needsAll tmf:Yes) (?c tmf:cellOf ?l) (?c rdf:rest rdf:nil)
+    (?c rdf:first ?x) (?m tmf:memberOf ?x) -> (?m tmf:inAllFrom ?c)]
+[bInAllNext: (?l tmf:volatileList tmf:Yes) (?l tmf:needsAll tmf:Yes) (?c tmf:cellOf ?l) (?c rdf:rest ?r)
+    (?m tmf:inAllFrom ?r) (?c rdf:first ?x) (?m tmf:memberOf ?x) -> (?m tmf:inAllFrom ?c)]
+[bInterMember: (?l tmf:volatileList tmf:Yes) (?s set:intersection ?l) (?m tmf:inAllFrom ?l) -> (?m tmf:memberOf ?s)]
