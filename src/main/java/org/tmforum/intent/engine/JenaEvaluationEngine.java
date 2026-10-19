@@ -39,14 +39,16 @@ import java.util.function.UnaryOperator;
  * one per level up to {@link #MAX_CHOICE_DEPTH}) and stage B ({@link #STAGE_B}), each a reasoner chained on the
  * previous stage's {@link InfModel}; then {@link ContractExtractor} and {@link ResultAdapter}.
  *
- * <p>Not ready until the conformance suite passes ({@link #READY}, flipped in Task 17), and never ready without
- * the ontology files.
+ * <p>Ready when the conformance suite passes ({@link #READY}) and the ontology files load; never ready without them.
  */
 @Component
 public class JenaEvaluationEngine implements EvaluationEngine {
 
-    /** Flipped to true once the conformance suite passes for this engine (Task 17). */
-    public static final boolean READY = false;
+    /**
+     * The declared readiness (design 5.1, 5.6): true since the whole conformance corpus passes for this engine (Task
+     * 17). {@code ReadinessGuardTest} fails whenever this disagrees with the corpus.
+     */
+    public static final boolean READY = true;
 
     /** Stage A rule files (positive facts), classpath resources under {@code rules/}, in load order. */
     public static final List<String> STAGE_A = List.of("tio_a_core.rules", "tio_a_quantity.rules",
@@ -91,8 +93,12 @@ public class JenaEvaluationEngine implements EvaluationEngine {
 
     @Override
     public EngineStatus status() {
-        if (OntologyModels.load(ontologyDir).isEmpty()) {
-            return EngineStatus.notReady("ontology files not found in ontology/");
+        try {
+            if (OntologyModels.load(ontologyDir).isEmpty()) {
+                return EngineStatus.notReady("ontology files not found in ontology/");
+            }
+        } catch (RuntimeException e) {         // a malformed TTL file: report it, never throw from status()
+            return EngineStatus.notReady("ontology files do not load: " + e.getMessage());
         }
         return READY ? EngineStatus.ok() : EngineStatus.notReady("conformance suite not passing");
     }

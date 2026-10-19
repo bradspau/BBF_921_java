@@ -71,12 +71,22 @@ class JenaEngineSkeletonTest {
     }
 
     @Test
-    void statusNotReadyWhileConformanceNotPassing() {
+    void statusReadyWithTheOntologySinceTheConformanceSuitePasses() {
         assumeOntology();
         EngineStatus s = new JenaEvaluationEngine(ONTOLOGY).status();
+        assertTrue(JenaEvaluationEngine.READY);
+        assertTrue(s.ready(), () -> "not ready: " + s.reason());
+        assertNull(s.reason());
+    }
+
+    @Test
+    void statusNotReadyWithTheParseErrorWhenAnOntologyFileIsMalformed(@TempDir Path tmp) throws IOException {
+        Files.writeString(tmp.resolve("a.ttl"), "<http://example.org/a> <http://example.org/p> 1 .");
+        Files.writeString(tmp.resolve("broken.ttl"), "<http://example.org/b> <http://example.org/p> \"unterminated .");
+        EngineStatus s = assertDoesNotThrow(() -> new JenaEvaluationEngine(tmp).status());
         assertFalse(s.ready());
-        assertFalse(JenaEvaluationEngine.READY);
-        assertEquals("conformance suite not passing", s.reason());
+        assertTrue(s.reason().startsWith("ontology files do not load: "), s.reason());
+        assertTrue(s.reason().contains("line: 1"), () -> "the parse error text is included: " + s.reason());
     }
 
     // ── OntologyModels ───────────────────────────────────────────────────────
