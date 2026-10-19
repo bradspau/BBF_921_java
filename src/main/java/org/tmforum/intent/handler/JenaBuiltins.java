@@ -60,6 +60,11 @@ import java.time.format.DateTimeParseException;
  *       not candidates. Fails when there is none. Used by the choice strata (tio_c_choose.rules): the minimum in one
  *       pass instead of a quadratic "a lower candidate exists" join, read from facts that are complete when the stage
  *       starts, so the choice is the same whatever order the rules fire in.</li>
+ *   <li>{@code prevLowestInPools(?g, ?prevLevel, ?thisLevel, ?c, ?out)}: as {@code prevLowest}, over the union of the
+ *       pools {@code ?p} with {@code (?p tmf:poolFor ?g)} whose level is exactly {@code ?prevLevel}
+ *       ({@code tmf:levelAtLeast ?prevLevel} and not {@code ?thisLevel}): their members ({@code tmf:memberOf}) that
+ *       are {@code tmf:instanceOf ?c} (any member when {@code ?c} is {@code tmf:Any}). One choice per (target, class)
+ *       group of the choice strata (tio_c_choose.rules). Reads the previous stage only.</li>
  *   <li>{@code prevNone(?s, ?p, ?o)}: the previous stage (the raw graph) has no {@code (?s ?p ?o)}. A
  *       {@code noValue} that cannot see facts derived in the current stage.</li>
  * </ul>
@@ -92,6 +97,7 @@ public final class JenaBuiltins {
         BuiltinRegistry.theRegistry.register(new ForAllCopy());
         BuiltinRegistry.theRegistry.register(new PrevLowest());
         BuiltinRegistry.theRegistry.register(new PrevNone());
+        BuiltinRegistry.theRegistry.register(new PrevLowestInPools());
     }
 
     private static final Node RDF_TYPE = RDF.type.asNode();
@@ -306,6 +312,53 @@ public final class JenaBuiltins {
             Node out = getArg(length - 1, args, context);
             if (out != null && !out.isVariable()) return out.equals(best);
             return context.getEnv().bind(args[length - 1], best);
+        }
+    }
+
+    private static final Node TMF_POOL_FOR = NodeFactory.createURI(Namespaces.TMF + "poolFor");
+    private static final Node TMF_LEVEL_AT_LEAST = NodeFactory.createURI(Namespaces.TMF + "levelAtLeast");
+    private static final Node TMF_MEMBER_OF = NodeFactory.createURI(Namespaces.TMF + "memberOf");
+    private static final Node TMF_INSTANCE_OF = NodeFactory.createURI(Namespaces.TMF + "instanceOf");
+    private static final Node TMF_ANY = NodeFactory.createURI(Namespaces.TMF + "Any");
+
+    /** {@code prevLowestInPools(?g, ?prevLevel, ?thisLevel, ?c, ?out)}: see the class comment. */
+    static final class PrevLowestInPools extends BaseBuiltin {
+        @Override
+        public String getName() { return "prevLowestInPools"; }
+
+        @Override
+        public int getArgLength() { return 5; }
+
+        @Override
+        public boolean bodyCall(Node[] args, int length, RuleContext context) {
+            if (length != 5) return false;
+            Node g = getArg(0, args, context), prev = getArg(1, args, context), self = getArg(2, args, context);
+            Node c = getArg(3, args, context);
+            for (Node n : new Node[]{g, prev, self, c}) if (n == null || n.isVariable()) return false;
+            Graph raw = previousStage(context);
+            Node best = null;
+            String bestKey = null;
+            try {
+                for (Triple pt : raw.find(Node.ANY, TMF_POOL_FOR, g).toList()) {
+                    Node p = pt.getSubject();
+                    if (!raw.contains(p, TMF_LEVEL_AT_LEAST, prev) || raw.contains(p, TMF_LEVEL_AT_LEAST, self)) continue;
+                    for (Triple mt : raw.find(Node.ANY, TMF_MEMBER_OF, p).toList()) {
+                        Node r = mt.getSubject();
+                        if (r.isLiteral() || raw.contains(r, TMF_PROXY_OF, Node.ANY)) continue;
+                        String key = candidateKey(r);
+                        if (bestKey != null && key.compareTo(bestKey) >= 0) continue;
+                        if (!c.equals(TMF_ANY) && !raw.contains(r, TMF_INSTANCE_OF, c)) continue;
+                        best = r;
+                        bestKey = key;
+                    }
+                }
+            } catch (RuntimeException e) {
+                return false;                     // backstop: a builtin fails, never throws
+            }
+            if (best == null) return false;
+            Node out = getArg(4, args, context);
+            if (out != null && !out.isVariable()) return out.equals(best);
+            return context.getEnv().bind(args[4], best);
         }
     }
 

@@ -1,0 +1,20 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+@prefix met:  <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix ex:   <http://example.org/> .
+
+# Two expectations need a widget in the same target, each from its own pool; the first one's pool has only the
+# higher-named widget.
+ex:Intent a icm:Intent ;
+    log:allOf ( ex:E1 ex:E2 ) .
+
+ex:E1 a icm:DeliveryExpectation ; icm:target ex:T ; icm:deliveryType ex:Widget ; icm:chooseFrom ex:P1 .
+ex:E2 a icm:DeliveryExpectation ; icm:target ex:T ; icm:deliveryType ex:Widget ; icm:chooseFrom ex:P2 .
+ex:T a icm:Target .
+ex:P1 a icm:Target ; rdfs:member ex:w2 .
+ex:P2 a icm:Target ; rdfs:member ex:w1 .

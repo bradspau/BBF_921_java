@@ -12,10 +12,12 @@ import org.tmforum.intent.conformance.ConformanceCase;
 import org.tmforum.intent.conformance.ConformanceLoader;
 import org.tmforum.intent.engine.*;
 import org.tmforum.intent.graph.Namespaces;
+import org.tmforum.intent.handler.TurtleEvaluator;
 
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Delivery expectations, {@code icm:chooseFrom} and held resources (TR290 §2.5, design §5.2, §5.5): stage A
@@ -52,6 +54,10 @@ class JenaDeliveryRulesTest {
     }
 
     static InfModel runModel(Model parsed, long seed, boolean withOntology) {
+        return runModel(parsed, seed, withOntology, JenaEvaluationEngine.MAX_CHOICE_DEPTH);
+    }
+
+    static InfModel runModel(Model parsed, long seed, boolean withOntology, int depth) {
         List<Statement> stmts = new ArrayList<>(parsed.listStatements().toList());
         if (seed != 0) Collections.shuffle(stmts, new Random(seed));
         Model input = ModelFactory.createDefaultModel();
@@ -62,7 +68,7 @@ class JenaDeliveryRulesTest {
             List<Rule> r = new ArrayList<>(rules);
             if (seed != 0) Collections.shuffle(r, new Random(seed * 31 + 7));
             return r;
-        });
+        }, depth);
     }
 
     interface Check {
@@ -434,6 +440,7 @@ class JenaDeliveryRulesTest {
      */
     @Test
     void deliveryPoolAndSeedCorpusCasesMatchApartFromReasonsAndObservations() {
+        assumeTrue(JenaLogicRulesTest.ontology().isPresent(), "the contract's element types need the ontology");
         Map<String, ConformanceCase> cases = new TreeMap<>();
         ConformanceLoader.loadAll().forEach(c -> cases.put(c.name(), c));
         List<String> names = cases.keySet().stream()
@@ -444,8 +451,7 @@ class JenaDeliveryRulesTest {
             Model input = EvaluationInputs.parse(EvaluationInputs.join(c.expression(), c.observations(), c.resources()));
             EvaluationInputs.addHeld(input, c.held());
             Model expected = withoutTask16(c.expectedJena() != null ? c.expectedJena() : c.expected());
-            List<Boolean> modes = JenaLogicRulesTest.ontology().isPresent() ? List.of(true) : List.of();
-            for (boolean withOntology : modes) {     // the contract's element types need the ontology
+            for (boolean withOntology : List.of(true)) {
                 for (long seed : SEEDS) {
                     InfModel m = runModel(input, seed, withOntology);
                     Model actual = withoutTask16(ContractExtractor.extract(m));
@@ -527,6 +533,92 @@ class JenaDeliveryRulesTest {
     }
 
     // ── hardening: the input cannot assert helper facts; the extractor reports the derived value ──────────────────
+
+    @Test
+    void helperTriplesInObservationsAndResourcesAreIgnoredToo() {
+        String expression = JenaSetRulesTest.PREFIXES + """
+                ex:Intent a icm:Intent ; log:allOf ( ex:E ex:C ) .
+                ex:E a icm:DeliveryExpectation ; icm:target ex:T ; icm:deliveryType ex:Widget .
+                ex:T a icm:Target .
+                ex:C a icm:Condition ; quan:atLeast ( 3 5 ) .
+                """;
+        String spoof = JenaSetRulesTest.PREFIXES + """
+                @prefix tmf: <http://tmforum.org/api/v5/> .
+                ex:T rdfs:member ex:x . ex:x tmf:chosenFor ex:T ; tmf:instanceOf ex:Widget .
+                ex:T tmf:hasMemberOfType ex:Widget .
+                ex:C tmf:result tmf:T . ex:Intent tmf:result tmf:T .
+                """;
+        for (String[] in : List.of(new String[]{spoof, ""}, new String[]{"", spoof})) {
+            Model contract = new JenaEvaluationEngine().evaluate(
+                    new EvaluationInput("spoof", expression, in[0], in[1], Set.of())).resultGraph();
+            assertFalse(contract.contains(null, RDFS.member), "ex:x was not chosen");
+            assertTrue(contract.containsLiteral(contract.getResource(EX + "C"), RDF.value, false));
+            assertFalse(contract.containsLiteral(contract.getResource(EX + "C"), RDF.value, true));
+            assertFalse(contract.containsLiteral(contract.getResource(EX + "Intent"), RDF.value, true));
+        }
+    }
+
+    @Test
+    void aHoldsFactInTheInputIsIgnoredByBothEngines() {
+        String expression = JenaSetRulesTest.PREFIXES + "ex:Intent a icm:Intent ; log:allOf ( ex:E ) .\n" + DELIVERY
+                + "ex:Pool a icm:Target ; rdfs:member ex:w1 .\n";
+        String resources = JenaSetRulesTest.PREFIXES + """
+                ex:w1 a ex:Widget . ex:w0 a ex:Widget .
+                <urn:tmf921:evaluation> <urn:tmf921:evaluation#holds> ex:w0 .
+                """;
+        for (EvaluationEngine engine : List.of(new JavaEvaluationEngine(new TurtleEvaluator()), new JenaEvaluationEngine())) {
+            Model contract = engine.evaluate(new EvaluationInput("held-spoof", expression, "", resources, Set.of()))
+                    .resultGraph();
+            assertEquals(Set.of("w1"), targetMembers(contract, EX + "T"), engine.name());
+            // the handler's own held facts still count
+            Model held = engine.evaluate(new EvaluationInput("held", expression, "", resources, Set.of(EX + "w0")))
+                    .resultGraph();
+            assertEquals(Set.of("w0"), targetMembers(held, EX + "T"), engine.name());
+        }
+    }
+
+    @Test
+    void sharedTargetIsChosenOnceFromTheUnionOfThePoolsWhateverTheOrder() {
+        String t = """
+                ex:Intent a icm:Intent ; log:allOf ( %s ) .
+                ex:E1 a icm:DeliveryExpectation ; icm:target ex:T ; icm:deliveryType ex:Widget ; icm:chooseFrom ex:P1 .
+                ex:E2 a icm:DeliveryExpectation ; icm:target ex:T ; icm:deliveryType ex:Widget ; icm:chooseFrom ex:P2 .
+                ex:T a icm:Target .
+                ex:P1 rdfs:member %s . ex:P2 rdfs:member %s .
+                ex:w1 a ex:Widget . ex:w2 a ex:Widget .
+                """;
+        for (String order : List.of("ex:E1 ex:E2", "ex:E2 ex:E1")) {
+            for (String[] pools : List.of(new String[]{"ex:w2", "ex:w1"}, new String[]{"ex:w1", "ex:w2"})) {
+                InfModel m = allRuns(String.format(t, order, pools[0], pools[1]),
+                        all(members(Map.of("T", set("w1"))), values(Map.of("E1", true, "E2", true, "Intent", true))));
+                assertEquals(1, ContractExtractor.extract(m).listStatements(null, RDFS.member, (RDFNode) null)
+                        .toList().size(), "one resource satisfies both expectations");
+            }
+        }
+    }
+
+    @Test
+    void withoutChoiceStrataNothingIsChosenAndTheDeliveriesFailClosed() {
+        Map<String, ConformanceCase> cases = new HashMap<>();
+        ConformanceLoader.loadAll().forEach(c -> cases.put(c.name(), c));
+        String text = "chooseFrom pool membership is not final: it depends on a function that is not implemented"
+                + " or on choices nested too deeply";
+        for (String name : List.of("delivery-chooses-lowest", "pool-depends-on-choice", "seed-fulfilled")) {
+            ConformanceCase c = cases.get(name);
+            Model input = EvaluationInputs.parse(EvaluationInputs.join(c.expression(), c.observations(), c.resources()));
+            InfModel none = runModel(input, 0, false, 0);
+            assertFalse(none.contains(null, CHOSEN_FOR), name + ": no stratum, no choice");
+            Set<String> fails = new TreeSet<>();
+            for (Statement st : none.listStatements(null, ResourceFactory.createProperty(TMF + "failure"), (RDFNode) null).toList()) {
+                fails.add(st.getString());
+            }
+            assertTrue(fails.contains(text), () -> name + ": " + fails);
+            InfModel two = runModel(input, 0, false, 2);
+            assertTrue(two.contains(null, CHOSEN_FOR), name + ": the strata choose");
+            assertFalse(two.listStatements(null, ResourceFactory.createProperty(TMF + "failure"), (RDFNode) null)
+                    .toList().stream().anyMatch(st -> st.getString().equals(text)), name);
+        }
+    }
 
     @Test
     void helperTriplesInTheInputAreIgnored() {

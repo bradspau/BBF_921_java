@@ -212,3 +212,39 @@ PDF references: TR290 = Intent Common Model v3.8.0 (TR290A v3.6.0 has matching s
   the order of a `log:allOf` list no meaning for evaluation (TR292E §6.1).
 - Decision: the rule engine chooses in strata by dependency level (design §5.5, tio_c_choose.rules), whatever the
   order. `expected.jena.ttl`: S-VLAN `ex:svA`, C-tag `ex:b1`; `ex:CTagE`, `ex:STagE`, `ex:Intent` `true`.
+- See entry 18 for expectations that share a target: the same order-independence, one choice from their pools' union.
+
+## 18. Expectations sharing a target: one choice from the union of their pools (Task 15 fix round)
+
+- case: delivery-shared-target
+- Java: expectations are evaluated in list order (entry 17); the first one that needs the type chooses the lowest
+  candidate of its own pool (`ex:w2` from `ex:P1`) and the second finds the target satisfied.
+- PDF: TR290 §2.5.3 leaves the choice to the handler ("Any subset can be chosen"); the order of a `log:allOf` list has
+  no evaluation meaning (entry 17).
+- Decision (owner ruling, Task 15 review): the rule engine chooses once per (target, delivery type) and choice stratum,
+  the lowest candidate of the union of the pools of every expectation that needs that type on that target. One resource
+  satisfies all of them (so allocation write-back claims one), whatever their order: the order-independence of
+  entry 17 applied to a shared target. `expected.jena.ttl`: `ex:T rdfs:member ex:w1`; `ex:E1`, `ex:E2`, `ex:Intent`
+  `true`.
+
+## 19. Several targets or delivery types on one expectation (Task 15 fix round)
+
+- case: delivery-multi-target-type
+- Java: reads one `icm:target` and one `icm:deliveryType` (`objectResource`, the first statement the model returns);
+  the others are ignored. In the case it fills `ex:T2` only and checks `ex:E2` against `ex:Gadget` only.
+- PDF: TR290 §2.4/§2.5.1 give no cardinality for `icm:target` or `icm:deliveryType`; by TR292E §4 every property that
+  determines the value contributes, by conjunction.
+- Decision: the rule engine keeps its behaviour: one contribution per (target, type), combined by conjunction; each
+  target gets a member of each type. `expected.jena.ttl`: `ex:T1` and `ex:T2` get `ex:w1`, `ex:T3` gets `ex:w3`;
+  `ex:E1` `true`, `ex:E2` `false` (no Gadget), `ex:Intent` `false`.
+
+## 20. Members a target gets from a set function do not count as delivered (Task 15 fix round)
+
+- case: delivery-function-target
+- Java: a target with a set function is materialised (`normalizeSetPredicates`), so its computed members are target
+  members and `ex:E` is `true` without any choice.
+- PDF: TR290 §2.3.3 says target members are "the logical result of the knowledge present", which reads in Java's
+  favour; §2.5.3 describes delivery as choosing from `icm:chooseFrom` and adding the choice to the target.
+- Decision (owner ruling, Task 15 review): the rule engine keeps its behaviour: only `rdfs:member` of the target (input,
+  held or chosen) counts for a delivery expectation. `expected.jena.ttl`: `ex:E`, `ex:Intent` `false` ("no target member
+  of type Widget").

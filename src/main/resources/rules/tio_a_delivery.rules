@@ -30,7 +30,10 @@
 #   ?k tmf:deliveryTarget ?t           # in the value stage (tio_b_delivery.rules) after every choice, so the element
 #   ?k tmf:needsClass ?c               # gets exactly one value through the conjunction fold of tio_b_logic (it has a
 #   ?k tmf:deliveryPool ?p             # stage-A contributor, design §5.5.1 (b)). Without icm:target: false here.
-#   ?k tmf:hasHeld tmf:Yes             # a held resource has the delivery class: it is the choice, the pool is not read
+#   ?k tmf:choiceGroup ?g              # ?g = (target, class): the choice is made once per group, from the union of
+#   ?g tmf:groupTarget ?t ; tmf:groupClass ?c ;   the pools of its expectations (?p tmf:poolFor ?g) of the
+#                                      # stratum's level (DEVIATIONS.md entry 18)
+#   ?g tmf:hasHeld tmf:Yes             # a held resource has the delivery class: it is the choice, no pool is read
 #   ?h tmf:held tmf:Yes                # <urn:tmf921:evaluation> <urn:tmf921:evaluation#holds> ?h (design §5.2), an IRI
 #   ?t tmf:hasMemberOfType ?c          # target ?t has an rdfs:member of class ?c (monotone; again in every stratum)
 #
@@ -80,8 +83,14 @@
 # ── 3. Held resources (design §5.2): an IRI the intent already holds ────────────────────────────────────────────
 
 [held: (<urn:tmf921:evaluation> <urn:tmf921:evaluation#holds> ?h) notLiteral(?h) notBNode(?h) -> (?h tmf:held tmf:Yes)]
-[hasHeld: (?k tmf:function tmf:Delivery) (?k tmf:needsClass ?c) (?h tmf:held tmf:Yes) (?h tmf:instanceOf ?c)
-    -> (?k tmf:hasHeld tmf:Yes)]
+[hasHeld: (?g tmf:groupClass ?c) (?h tmf:held tmf:Yes) (?h tmf:instanceOf ?c) -> (?g tmf:hasHeld tmf:Yes)]
+
+# ── 3b. Choice groups: one choice per (target, class), from the union of the pools of every expectation that needs
+#        that class on that target (so one resource satisfies them all, whatever their order) ────────────────────
+
+[choiceGroup: (?k tmf:function tmf:Delivery) (?k tmf:deliveryTarget ?t) (?k tmf:needsClass ?c)
+    makeSkolem(?g, tmf:ChoiceGroup, ?t, ?c) -> (?k tmf:choiceGroup ?g) (?g tmf:groupTarget ?t) (?g tmf:groupClass ?c)]
+[choiceGroupPool: (?k tmf:choiceGroup ?g) (?k tmf:deliveryPool ?p) -> (?p tmf:poolFor ?g)]
 
 # ── 4. Members of a delivery target of the delivery class (input members here; choices in the strata) ──────────
 

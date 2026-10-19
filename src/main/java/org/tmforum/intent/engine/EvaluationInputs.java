@@ -45,8 +45,13 @@ public final class EvaluationInputs {
         return g;
     }
 
-    /** Adds {@code <urn:tmf921:evaluation> <urn:tmf921:evaluation#holds> <iri>} for each held resource. */
+    /**
+     * Adds {@code <urn:tmf921:evaluation> <urn:tmf921:evaluation#holds> <iri>} for each held resource. Every triple
+     * the input itself gives {@code <urn:tmf921:evaluation>} is removed first: only the handler says what the intent
+     * holds, so an expression, observation or resource document cannot claim a resource as held.
+     */
     public static void addHeld(Model g, Collection<String> held) {
+        g.removeAll(EVAL_CONTEXT, null, null);
         if (held == null) return;
         for (String uri : held) g.add(EVAL_CONTEXT, EVAL_HOLDS, g.createResource(uri));
     }

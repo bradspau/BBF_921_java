@@ -9,9 +9,10 @@
 # Soundness. choose-n chooses only from pools of level n-1, whose members are complete when it starts (they depend
 # only on stage A and on choices made in earlier strata, propagated there by tio_b_pools.rules). Every negation reads
 # a fact that is complete when the stratum starts:
-#   * noValue(?p tmf:levelAtLeast ...), noValue(?k tmf:hasHeld): stage A facts;
-#   * prevNone / prevLowest (JenaBuiltins) read the previous stage only (the raw graph), never this stratum's own
-#     deductions: "the target has no member of the class yet" and "the lowest candidate of the class in the pool".
+#   * noValue(?g tmf:hasHeld): a stage A fact; the pools' levels are read by prevLowestInPools from stage A facts;
+#   * prevNone / prevLowest / prevLowestInPools (JenaBuiltins) read the previous stage only (the raw graph), never
+#     this stratum's own deductions: "the target has no member of the class yet" and "the lowest candidate of the
+#     class in the group's pools of level n-1".
 # Nothing here negates a pool's tmf:memberOf with noValue. Positive facts added: the choice, as the target member
 # `?t rdfs:member ?r` (TR290 §2.5.3 "considered additions to the target") with the marker `?r tmf:chosenFor ?t` that
 # ContractExtractor reads; and tmf:hasMemberOfType (monotone), which the next strata and the value stage read.
@@ -20,10 +21,12 @@
 # one, made in choose-1, the pool is not read); else, if the target has no member of the class yet, the lowest
 # candidate of the class in the pool (JenaBuiltins.candidateKey: IRI text order, which is lexLess's order); a target
 # that already has one is satisfied and nothing is chosen. Without a delivery class, any member counts and held
-# resources are not used (as in the Java engine). Two expectations choosing in the same stratum for the same target
-# each see only the members it had when the stratum started (deterministic; the Java engine is sequential instead).
+# resources are not used (as in the Java engine). The choice is made once per (target, class) group, from the union
+# of the pools (of this stratum's level) of every expectation that needs that class on that target: one resource
+# satisfies them all, and the result does not depend on their order (DEVIATIONS.md entry 18; the Java engine lets the
+# first expectation in expression order choose from its own pool).
 #
-# Needs the builtins of JenaBuiltins.register(): prevLowest, prevNone.
+# Needs the builtins of JenaBuiltins.register(): prevLowest, prevLowestInPools, prevNone.
 
 @prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
@@ -31,19 +34,14 @@
 
 # ── 1. Held resources: the lowest held resource of the delivery class (first stratum only) ──────────────────────
 
-[heldChoice: (tmf:ThisLevel tmf:levelBelow tmf:L0) (?k tmf:function tmf:Delivery) (?k tmf:hasHeld tmf:Yes)
-    (?k tmf:deliveryTarget ?t) (?k tmf:needsClass ?c) prevLowest(tmf:held, tmf:Yes, tmf:instanceOf, ?c, ?h)
+[heldChoice: (tmf:ThisLevel tmf:levelBelow tmf:L0) (?g tmf:hasHeld tmf:Yes) (?g tmf:groupTarget ?t)
+    (?g tmf:groupClass ?c) prevLowest(tmf:held, tmf:Yes, tmf:instanceOf, ?c, ?h)
     -> (?t rdfs:member ?h) (?h tmf:chosenFor ?t)]
 
-# ── 2. A choice from a pool of the previous level ───────────────────────────────────────────────────────────────
+# ── 2. One choice per (target, class) group, from the union of its pools of the previous level ──────────────────
 
-[poolChoice: (?k tmf:deliveryPool ?p) (?p tmf:levelAtLeast tmf:PrevLevel) noValue(?p tmf:levelAtLeast tmf:ThisLevel)
-    (?k tmf:needsClass ?c) notEqual(?c, tmf:Any) noValue(?k tmf:hasHeld tmf:Yes) (?k tmf:deliveryTarget ?t)
-    prevNone(?t, tmf:hasMemberOfType, ?c) prevLowest(tmf:memberOf, ?p, tmf:instanceOf, ?c, ?r)
-    -> (?t rdfs:member ?r) (?r tmf:chosenFor ?t)]
-[poolChoiceAny: (?k tmf:deliveryPool ?p) (?p tmf:levelAtLeast tmf:PrevLevel) noValue(?p tmf:levelAtLeast tmf:ThisLevel)
-    (?k tmf:needsClass tmf:Any) (?k tmf:deliveryTarget ?t)
-    prevNone(?t, tmf:hasMemberOfType, tmf:Any) prevLowest(tmf:memberOf, ?p, ?r)
+[poolChoice: (?g tmf:groupTarget ?t) (?g tmf:groupClass ?c) noValue(?g tmf:hasHeld tmf:Yes)
+    prevNone(?t, tmf:hasMemberOfType, ?c) prevLowestInPools(?g, tmf:PrevLevel, tmf:ThisLevel, ?c, ?r)
     -> (?t rdfs:member ?r) (?r tmf:chosenFor ?t)]
 
 # ── 3. Members of the delivery class (monotone, as in tio_a_delivery.rules) ─────────────────────────────────────

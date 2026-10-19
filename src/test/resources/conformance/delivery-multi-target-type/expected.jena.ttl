@@ -1,0 +1,18 @@
+@prefix bbf: <http://broadband-forum.org/Intent#> .
+@prefix ex: <http://example.org/> .
+@prefix icm: <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix met: <http://tio.models.tmforum.org/tio/v3.6.0/MetricsAndObservations/> .
+@prefix pon: <http://broadband-forum.org/ont/pon-resource#> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+# The rule engine (DEVIATIONS.md entry 19): every target gets a member of every delivery type.
+ex:E1 rdf:value true .
+ex:T1 rdfs:member ex:w1 .
+ex:T2 rdfs:member ex:w1 .
+ex:E2 rdf:value false ;
+    icm:reason [ rdf:type icm:Reason ; rdfs:label "no candidate of type Gadget in chooseFrom pool" ] .
+ex:T3 rdfs:member ex:w3 .
+ex:Intent rdf:value false .

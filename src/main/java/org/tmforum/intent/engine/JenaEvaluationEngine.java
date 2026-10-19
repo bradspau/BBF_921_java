@@ -151,9 +151,20 @@ public class JenaEvaluationEngine implements EvaluationEngine {
      * passes the identity.
      */
     public static InfModel infer(Model base, UnaryOperator<List<Rule>> order) {
+        return infer(base, order, MAX_CHOICE_DEPTH);
+    }
+
+    /**
+     * As {@link #infer(Model, UnaryOperator)} with {@code maxChoiceDepth} choice strata instead of
+     * {@link #MAX_CHOICE_DEPTH} (0 to 2; tests use it to show what the strata do). Production uses the default.
+     */
+    public static InfModel infer(Model base, UnaryOperator<List<Rule>> order, int maxChoiceDepth) {
+        if (maxChoiceDepth < 0 || maxChoiceDepth > MAX_CHOICE_DEPTH) {
+            throw new IllegalArgumentException("choice depth 0.." + MAX_CHOICE_DEPTH + ": " + maxChoiceDepth);
+        }
         Model previous = base;
         InfModel stage = null;
-        for (List<Rule> rules : stages()) {
+        for (List<Rule> rules : stages(maxChoiceDepth)) {
             stage = ModelFactory.createInfModel(reasoner(order.apply(rules)), previous);
             previous = stage;
         }
@@ -163,17 +174,21 @@ public class JenaEvaluationEngine implements EvaluationEngine {
 
     /** The rules of each stage in order: stage A, one choice stratum per level, stage B. */
     public static List<List<Rule>> stages() {
+        return stages(MAX_CHOICE_DEPTH);
+    }
+
+    static List<List<Rule>> stages(int depth) {
         List<List<Rule>> stages = new ArrayList<>();
-        stages.add(rules(STAGE_A, 0));
-        for (int level = 1; level <= MAX_CHOICE_DEPTH; level++) stages.add(rules(CHOICE_STAGE, level));
-        stages.add(rules(STAGE_B, 0));
+        stages.add(rules(STAGE_A, 0, depth));
+        for (int level = 1; level <= depth; level++) stages.add(rules(CHOICE_STAGE, level, depth));
+        stages.add(rules(STAGE_B, 0, depth));
         return stages;
     }
 
-    private static List<Rule> rules(List<String> files, int level) {
+    private static List<Rule> rules(List<String> files, int level, int depth) {
         List<Rule> rules = new ArrayList<>();
         for (String f : files) {
-            rules.addAll(RULES.computeIfAbsent(f + "@" + level, k -> parseRules(f, level)));
+            rules.addAll(RULES.computeIfAbsent(f + "@" + level + "/" + depth, k -> parseRules(f, level, depth)));
         }
         return rules;
     }
@@ -195,6 +210,10 @@ public class JenaEvaluationEngine implements EvaluationEngine {
      * {@code tmf:L<MAX_CHOICE_DEPTH>}.
      */
     public static List<Rule> parseRules(String name, int level) {
+        return parseRules(name, level, MAX_CHOICE_DEPTH);
+    }
+
+    private static List<Rule> parseRules(String name, int level, int depth) {
         String path = "rules/" + name;
         InputStream s = JenaEvaluationEngine.class.getClassLoader().getResourceAsStream(path);
         if (s == null) throw new IllegalStateException("rule file not on the classpath: " + path);
@@ -204,7 +223,7 @@ public class JenaEvaluationEngine implements EvaluationEngine {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-        text = text.replace("tmf:MaxLevel", "tmf:L" + MAX_CHOICE_DEPTH);
+        text = text.replace("tmf:MaxLevel", "tmf:L" + depth);
         if (level > 0) {
             text = text.replace("tmf:ThisLevel", "tmf:L" + level).replace("tmf:PrevLevel", "tmf:L" + (level - 1));
         }
