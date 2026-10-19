@@ -188,3 +188,27 @@ PDF references: TR290 = Intent Common Model v3.8.0 (TR290A v3.6.0 has matching s
 - Decision: the rule engine implements the PDF (explicit members are lifted to the pool's members alongside the
   functions'). `expected.jena.ttl`: pool `ex:w1`, `ex:w2`, `ex:z9`; `ex:T rdfs:member ex:w1`; `ex:E` and `ex:Intent`
   `true`. The choice itself is Task 15's; the pool membership is tested by `JenaSetRulesTest`.
+
+## 16. The delivery type includes its subclasses (Task 15)
+
+- case: delivery-subclass-type
+- Java: a candidate or target member counts for `icm:deliveryType ex:Widget` only with `rdf:type ex:Widget` itself
+  (`TurtleEvaluator.sortedMembers`, `g.contains(m, RDF.type, type)`), so an instance of a subclass is not chosen:
+  "no candidate of type Widget in chooseFrom pool".
+- PDF: TR290 §2.5.1 "the delivered resource shall be an instance of the specified class"; with
+  `ex:BigWidget rdfs:subClassOf ex:Widget` an instance of `ex:BigWidget` is an instance of `ex:Widget` (RDFS). The
+  set functions already read classes this way in both engines (`set:resourcesOfType`, TR292F §8.15).
+- Decision: the rule engine counts subclass instances (`tmf:instanceOf`, tio_a_delivery.rules), for choices, held
+  resources and the expectation's value. `expected.jena.ttl`: `ex:T rdfs:member ex:b1`; `ex:E`, `ex:Intent` `true`.
+
+## 17. Choices do not depend on the order of the expectations (Task 15)
+
+- case: delivery-choice-order
+- Java: expectations are evaluated in list order and each chooses when it is evaluated; a pool that depends on another
+  expectation's choice (the C-tag pool on the chosen S-VLAN, entry 2) is empty if that expectation comes later, so
+  the C-tag expectation is `false` ("no candidate of type CTag in chooseFrom pool"). The seed lists the S-tag
+  expectation first for this reason.
+- PDF: TR290 §2.3.3 the members of a target "are rather the logical result of the knowledge present"; the PDFs give
+  the order of a `log:allOf` list no meaning for evaluation (TR292E §6.1).
+- Decision: the rule engine chooses in strata by dependency level (design §5.5, tio_c_choose.rules), whatever the
+  order. `expected.jena.ttl`: S-VLAN `ex:svA`, C-tag `ex:b1`; `ex:CTagE`, `ex:STagE`, `ex:Intent` `true`.

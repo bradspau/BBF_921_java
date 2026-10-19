@@ -22,8 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * The TIO Jena rules themselves: every functor they use must exist, and the rules must derive what the
- * ontology says they should. Rules run in two stages: stage A derives positive facts; stage B makes the
- * handler's choices and uses negation, so it runs over the saturated result of stage A.
+ * ontology says they should (the legacy tio_all.rules; the engine's staged rules have their own tests).
  */
 class JenaRulesTest {
 
@@ -125,80 +124,6 @@ class JenaRulesTest {
         assertFalse(holds(stageA(comparison("quanatMost", "26.0", "25.0"))));
     }
 
-    // ── icm:chooseFrom (TR290 §2.5.3) ─────────────────────────────────────────
-
-    private InfModel choose(String turtle) throws Exception {
-        InfModel a = stageA(turtle);
-        return infer(a, RUNTIME_RULES.resolve("tio_choose.rules"));
-    }
-
-    private static final String DELIVERY = """
-            ex:E a icm:DeliveryExpectation ;
-                icm:target ex:T ; icm:deliveryType ex:Widget ; icm:chooseFrom ex:Pool .
-            ex:T a icm:Target .
-            """;
-
-    private List<String> membersOfTarget(InfModel m) {
-        return m.listObjectsOfProperty(m.getResource("http://example.org/T"), org.apache.jena.vocabulary.RDFS.member)
-                .toList().stream().map(Object::toString).sorted().toList();
-    }
-
-    private boolean complies(InfModel m) {
-        return m.contains(m.getResource("http://example.org/E"),
-                m.getProperty("http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/result"),
-                m.createTypedLiteral(true));
-    }
-
-    @Test
-    void chooseFrom_choosesTheLowestNamedCandidateOfTheDeliveryType() throws Exception {
-        // Pool members listed out of order, one of the wrong type, to make the order matter
-        InfModel m = choose(DELIVERY + """
-                ex:Pool a icm:Target ; rdfs:member ex:w3 , ex:g0 , ex:w1 , ex:w2 .
-                ex:w1 a ex:Widget . ex:w2 a ex:Widget . ex:w3 a ex:Widget . ex:g0 a ex:Gadget .
-                """);
-
-        assertEquals(List.of("http://example.org/w1"), membersOfTarget(m));
-        assertTrue(complies(m), "the delivery expectation complies once a candidate is chosen");
-    }
-
-    @Test
-    void chooseFrom_withNoCandidateOfTheRightType_chooseNothing_andDoesNotComply() throws Exception {
-        InfModel m = choose(DELIVERY + """
-                ex:Pool a icm:Target ; rdfs:member ex:g1 .
-                ex:g1 a ex:Gadget .
-                """);
-
-        assertTrue(membersOfTarget(m).isEmpty());
-        assertFalse(complies(m));
-    }
-
-    @Test
-    void chooseFrom_doesNotChooseAgainWhenTheTargetAlreadyHasAMemberOfTheType() throws Exception {
-        InfModel m = choose(DELIVERY + """
-                ex:T rdfs:member ex:w9 .
-                ex:w9 a ex:Widget .
-                ex:Pool a icm:Target ; rdfs:member ex:w1 , ex:w2 .
-                ex:w1 a ex:Widget . ex:w2 a ex:Widget .
-                """);
-
-        assertEquals(List.of("http://example.org/w9"), membersOfTarget(m));
-        assertTrue(complies(m));
-    }
-
-    @Test
-    void chooseFrom_choosesPerExpectation() throws Exception {
-        InfModel m = choose(DELIVERY + """
-                ex:Pool a icm:Target ; rdfs:member ex:w2 , ex:w1 .
-                ex:w1 a ex:Widget . ex:w2 a ex:Widget .
-                ex:E2 a icm:DeliveryExpectation ;
-                    icm:target ex:T2 ; icm:deliveryType ex:Gadget ; icm:chooseFrom ex:Pool2 .
-                ex:T2 a icm:Target .
-                ex:Pool2 a icm:Target ; rdfs:member ex:g2 , ex:g1 .
-                ex:g1 a ex:Gadget . ex:g2 a ex:Gadget .
-                """);
-
-        assertEquals(List.of("http://example.org/w1"), membersOfTarget(m));
-        assertEquals(List.of("http://example.org/g1"), m.listObjectsOfProperty(m.getResource("http://example.org/T2"),
-                org.apache.jena.vocabulary.RDFS.member).toList().stream().map(Object::toString).toList());
-    }
+    // The icm:chooseFrom cases moved to JenaDeliveryRulesTest (Task 15), with tio_choose.rules' successor
+    // tio_c_choose.rules (choice strata).
 }

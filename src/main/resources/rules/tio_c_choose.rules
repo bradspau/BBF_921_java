@@ -1,0 +1,54 @@
+# tio_c_choose.rules — a choice stratum: the intent handler's choices for icm:chooseFrom (TR290 §2.5.3) and the
+# resources the intent already holds (design §5.2). Successor of tio_choose.rules.
+#
+# TEMPLATE. JenaEvaluationEngine loads this file once per choice level n = 1 .. MAX_CHOICE_DEPTH, replacing
+# tmf:PrevLevel by tmf:L(n-1) and tmf:ThisLevel by tmf:Ln, and runs each copy as its own stage (choose-n) between
+# stage A and the value stage, together with tio_b_pools.rules, each chained on the previous stage
+# (createInfModel(choose-n, choose-(n-1))). Levels: tio_a_delivery.rules.
+#
+# Soundness. choose-n chooses only from pools of level n-1, whose members are complete when it starts (they depend
+# only on stage A and on choices made in earlier strata, propagated there by tio_b_pools.rules). Every negation reads
+# a fact that is complete when the stratum starts:
+#   * noValue(?p tmf:levelAtLeast ...), noValue(?k tmf:hasHeld): stage A facts;
+#   * prevNone / prevLowest (JenaBuiltins) read the previous stage only (the raw graph), never this stratum's own
+#     deductions: "the target has no member of the class yet" and "the lowest candidate of the class in the pool".
+# Nothing here negates a pool's tmf:memberOf with noValue. Positive facts added: the choice, as the target member
+# `?t rdfs:member ?r` (TR290 §2.5.3 "considered additions to the target") with the marker `?r tmf:chosenFor ?t` that
+# ContractExtractor reads; and tmf:hasMemberOfType (monotone), which the next strata and the value stage read.
+#
+# Policy (the Java engine's, DEVIATIONS.md entry 6): a held resource of the delivery class is the choice (the lowest
+# one, made in choose-1, the pool is not read); else, if the target has no member of the class yet, the lowest
+# candidate of the class in the pool (JenaBuiltins.candidateKey: IRI text order, which is lexLess's order); a target
+# that already has one is satisfied and nothing is chosen. Without a delivery class, any member counts and held
+# resources are not used (as in the Java engine). Two expectations choosing in the same stratum for the same target
+# each see only the members it had when the stratum started (deterministic; the Java engine is sequential instead).
+#
+# Needs the builtins of JenaBuiltins.register(): prevLowest, prevNone.
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix tmf:  <http://tmforum.org/api/v5/> .
+
+# ── 1. Held resources: the lowest held resource of the delivery class (first stratum only) ──────────────────────
+
+[heldChoice: (tmf:ThisLevel tmf:levelBelow tmf:L0) (?k tmf:function tmf:Delivery) (?k tmf:hasHeld tmf:Yes)
+    (?k tmf:deliveryTarget ?t) (?k tmf:needsClass ?c) prevLowest(tmf:held, tmf:Yes, tmf:instanceOf, ?c, ?h)
+    -> (?t rdfs:member ?h) (?h tmf:chosenFor ?t)]
+
+# ── 2. A choice from a pool of the previous level ───────────────────────────────────────────────────────────────
+
+[poolChoice: (?k tmf:deliveryPool ?p) (?p tmf:levelAtLeast tmf:PrevLevel) noValue(?p tmf:levelAtLeast tmf:ThisLevel)
+    (?k tmf:needsClass ?c) notEqual(?c, tmf:Any) noValue(?k tmf:hasHeld tmf:Yes) (?k tmf:deliveryTarget ?t)
+    prevNone(?t, tmf:hasMemberOfType, ?c) prevLowest(tmf:memberOf, ?p, tmf:instanceOf, ?c, ?r)
+    -> (?t rdfs:member ?r) (?r tmf:chosenFor ?t)]
+[poolChoiceAny: (?k tmf:deliveryPool ?p) (?p tmf:levelAtLeast tmf:PrevLevel) noValue(?p tmf:levelAtLeast tmf:ThisLevel)
+    (?k tmf:needsClass tmf:Any) (?k tmf:deliveryTarget ?t)
+    prevNone(?t, tmf:hasMemberOfType, tmf:Any) prevLowest(tmf:memberOf, ?p, ?r)
+    -> (?t rdfs:member ?r) (?r tmf:chosenFor ?t)]
+
+# ── 3. Members of the delivery class (monotone, as in tio_a_delivery.rules) ─────────────────────────────────────
+
+[targetMemberOfType: (?k tmf:deliveryTarget ?t) (?k tmf:needsClass ?c) (?t rdfs:member ?m) (?m tmf:instanceOf ?c)
+    -> (?t tmf:hasMemberOfType ?c)]
+[targetMemberAny: (?k tmf:deliveryTarget ?t) (?k tmf:needsClass tmf:Any) (?t rdfs:member ?m) notLiteral(?m)
+    -> (?t tmf:hasMemberOfType tmf:Any)]

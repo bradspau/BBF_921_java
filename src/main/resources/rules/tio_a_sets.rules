@@ -62,9 +62,9 @@
 # So every consumer fails closed: difference does not subtract a volatile container, nor take an unknown one as its
 # first argument (tmf:diffUnsound: no members, `?s tmf:setFailure`); a boolean set function with a volatile container
 # argument is false here ("container membership is not final ..."); so is log:matchAll/Any/None/One over one
-# (tio_a_logic cmatchNotFinal). A literal where a container is expected is "missing operand nodes". Task 15 must apply the same
-# rule to icm:chooseFrom over a volatile pool (the C-tag pool): a stage-B negation over its members is unsound;
-# it needs its own stratum (e.g. a further stage per choice level), not this one.
+# (tio_a_logic cmatchNotFinal). A literal where a container is expected is "missing operand nodes". icm:chooseFrom over
+# a volatile pool (the C-tag pool) is chosen from in its own choice stratum (tio_a_delivery.rules levels,
+# tio_c_choose.rules), never by a negation over a pool that is still growing.
 #
 # ── Container argument of set:resourcesWithPropertyObject (DEVIATIONS.md entry 2, design §9.2) ─────────────────
 # An object argument that is a set node (it has a set constructor) or an icm:Target stands for its members, as in the

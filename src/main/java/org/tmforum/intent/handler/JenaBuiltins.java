@@ -53,6 +53,15 @@ import java.time.format.DateTimeParseException;
  *       blank node named deterministically from (k, node, m). All triples of one copy are added in one rule firing,
  *       so a {@code noValue} test on a copied node never sees a partial copy (RETEEngine.addTriple writes the
  *       deduction at once).</li>
+ *   <li>{@code prevLowest(?p1, ?o1, ..., ?pn, ?on, ?out)}: binds {@code ?out} to the lowest subject {@code s} that has
+ *       every {@code (s ?pi ?oi)} in the <em>previous stage</em> (the raw graph), in the Java engine's candidate
+ *       order ({@code TurtleEvaluator.sortedMembers}: an IRI by {@link String#compareTo} of its text, which is also
+ *       {@code lexLess}'s order, every IRI before every blank node); literal-member proxies ({@code tmf:proxyOf}) are
+ *       not candidates. Fails when there is none. Used by the choice strata (tio_c_choose.rules): the minimum in one
+ *       pass instead of a quadratic "a lower candidate exists" join, read from facts that are complete when the stage
+ *       starts, so the choice is the same whatever order the rules fire in.</li>
+ *   <li>{@code prevNone(?s, ?p, ?o)}: the previous stage (the raw graph) has no {@code (?s ?p ?o)}. A
+ *       {@code noValue} that cannot see facts derived in the current stage.</li>
  * </ul>
  *
  * <p>Every builtin fails (never throws) on unbound or unexpected input. Values whose decimal exponent exceeds
@@ -81,6 +90,8 @@ public final class JenaBuiltins {
         BuiltinRegistry.theRegistry.register(new NoObservation());
         BuiltinRegistry.theRegistry.register(new AllSubjectsIn());
         BuiltinRegistry.theRegistry.register(new ForAllCopy());
+        BuiltinRegistry.theRegistry.register(new PrevLowest());
+        BuiltinRegistry.theRegistry.register(new PrevNone());
     }
 
     private static final Node RDF_TYPE = RDF.type.asNode();
@@ -250,6 +261,76 @@ public final class JenaBuiltins {
                 return false;                     // backstop: a builtin fails, never throws
             } finally {
                 it.close();
+            }
+        }
+    }
+
+    /** {@code prevLowest(?p1, ?o1, ..., ?out)}: see the class comment. */
+    static final class PrevLowest extends BaseBuiltin {
+        @Override
+        public String getName() { return "prevLowest"; }
+
+        @Override
+        public int getArgLength() { return 0; }          // variable: one or more (property, object) pairs, then ?out
+
+        @Override
+        public boolean bodyCall(Node[] args, int length, RuleContext context) {
+            if (length < 3 || length % 2 == 0) return false;
+            int pairs = (length - 1) / 2;
+            Node[] p = new Node[pairs], o = new Node[pairs];
+            for (int i = 0; i < pairs; i++) {
+                p[i] = getArg(2 * i, args, context);
+                o[i] = getArg(2 * i + 1, args, context);
+                if (p[i] == null || p[i].isVariable() || !p[i].isURI() || o[i] == null || o[i].isVariable()) return false;
+            }
+            Graph prev = previousStage(context);
+            Node best = null;
+            String bestKey = null;
+            ExtendedIterator<Triple> it = prev.find(Node.ANY, p[0], o[0]);
+            try {
+                while (it.hasNext()) {
+                    Node s = it.next().getSubject();
+                    if (s.isLiteral() || prev.contains(s, TMF_PROXY_OF, Node.ANY)) continue;
+                    String key = candidateKey(s);
+                    if (bestKey != null && key.compareTo(bestKey) >= 0) continue;
+                    boolean all = true;
+                    for (int i = 1; i < pairs && all; i++) all = prev.contains(s, p[i], o[i]);
+                    if (all) { best = s; bestKey = key; }
+                }
+            } catch (RuntimeException e) {
+                return false;                     // backstop: a builtin fails, never throws
+            } finally {
+                it.close();
+            }
+            if (best == null) return false;
+            Node out = getArg(length - 1, args, context);
+            if (out != null && !out.isVariable()) return out.equals(best);
+            return context.getEnv().bind(args[length - 1], best);
+        }
+    }
+
+    /** The Java engine's candidate order (TurtleEvaluator.sortedMembers): IRIs by text, then blank nodes. */
+    static String candidateKey(Node n) {
+        return n.isURI() ? n.getURI() : "~" + n.getBlankNodeLabel();
+    }
+
+    /** {@code prevNone(?s, ?p, ?o)}: see the class comment. */
+    static final class PrevNone extends BaseBuiltin {
+        @Override
+        public String getName() { return "prevNone"; }
+
+        @Override
+        public int getArgLength() { return 3; }
+
+        @Override
+        public boolean bodyCall(Node[] args, int length, RuleContext context) {
+            if (length != 3) return false;
+            Node s = getArg(0, args, context), p = getArg(1, args, context), o = getArg(2, args, context);
+            for (Node n : new Node[]{s, p, o}) if (n == null || n.isVariable()) return false;
+            try {
+                return !previousStage(context).contains(s, p, o);
+            } catch (RuntimeException e) {
+                return false;
             }
         }
     }

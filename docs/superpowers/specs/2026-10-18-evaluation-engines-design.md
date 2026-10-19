@@ -207,6 +207,15 @@ saturated facts.
   container's membership: boolean set functions, `log:match*` and a subtracting `set:difference` over one fail closed.
   **Choosing from a volatile pool (`icm:chooseFrom` over the C-tag pool, which follows the S-VLAN choice) needs its
   own stratum** (a stage per choice level); a stage-B `noValue` over such a pool's members is unsound.
+- **Choice strata (Task 15).** Stages: A → choose-1 … choose-`MAX_CHOICE_DEPTH` (2) → B. Stage A derives each
+  container's level positively (`tmf:levelAtLeast`, `tio_a_delivery.rules`: a pool is level 0 unless built on something
+  that grows after stage A; a delivery target is its pool's level + 1, at least 1; a difference at least 1; unknown
+  membership beyond the strata). choose-n (`tio_c_choose.rules`, a template loaded once per level, plus
+  `tio_b_pools.rules`) chooses only from pools of level n-1; its negations read stage A facts or, through the builtins
+  `prevLowest`/`prevNone`, only the previous stage. Held resources of the delivery type are chosen in choose-1 and the
+  pool is not read. Each delivery expectation has a stage-A contribution (`tmf:function tmf:Delivery`) valued in stage
+  B (`tio_b_delivery.rules`): true iff its target has a member of the delivery type (subclasses included,
+  DEVIATIONS.md entry 16); choices do not depend on the expectations' order (entry 17). Deeper pools fail closed.
 - `rdf:value` is the associated-value property (TR292C §2-4 and every example). TR292C §11.7 names
   `tio:assumedValue` as the default `fun:resultProperty`; it appears nowhere else in the specification set and
   is not defined in the ontology, so it is treated as an editorial inconsistency.

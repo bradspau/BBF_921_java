@@ -18,7 +18,8 @@
 #   ?k tmf:contribHasEarlier/Later     # ?k is not the first / not the last. Stage B walks this order to combine
 #                                      # the contributions by conjunction (TR292A §4, TR292E §4) monotonically.
 #
-#   ?f tmf:implemented tmf:Yes        # axioms: the functions some stage A/B rule evaluates (last section)
+#   ?f tmf:implemented tmf:Yes        # axioms: the functions some stage A/B rule evaluates, and the handler's own
+#                                      # contributions tmf:Delivery (tio_a_delivery.rules) and tmf:Reporting (below)
 #   ?k tmf:valuedInA tmf:Yes           # contribution node whose rdf:value is decided in stage A (quantity functions,
 #                                      # unimplemented functions); stage B may negate its rdf:value (any false wins).
 #                                      # Every other contribution is valued in stage B, single-valued by construction.
@@ -96,6 +97,10 @@
                      (set:intersectsWith tmf:implemented tmf:Yes) (set:identical tmf:implemented tmf:Yes)
                      (set:forAll tmf:implemented tmf:Yes)]
 
+# The handler's own contributions (not fun:Functions): the delivery check (tio_a_delivery.rules, valued in the value
+# stage by tio_b_delivery.rules) and the reporting assumption below.
+[implementedHandler: -> (tmf:Delivery tmf:implemented tmf:Yes) (tmf:Reporting tmf:implemented tmf:Yes)]
+
 # Implemented functions whose result is a container, not a boolean (TR292F §3, §4; fun:resultType rdfs:Container).
 # They are not contributors: no tmf:hasContributor, no contribution node (see the header).
 [producesSet: -> (set:resourcesOfType tmf:producesSet tmf:Yes) (set:resourcesWithProperty tmf:producesSet tmf:Yes)
@@ -112,3 +117,15 @@
 [notImplemented: (?k tmf:function ?f) noValue(?f tmf:implemented tmf:Yes)
     strConcat(?f, ?iri) regex(?iri, '(?:.*[/#])?([^/#]*)', ?n) strConcat('function not implemented: ', ?n, ?t)
     -> (?k rdf:value "false"^^xsd:boolean) (?k tmf:failure ?t) (?k tmf:valuedInA tmf:Yes)]
+
+# ── Reporting expectations are assumed compliant (DEVIATIONS.md entry 3, D2) ───────────────────────────────────
+# The handler cannot see whether its reports were delivered (TR290 §3) and assumes they were, as the Java engine does:
+# a reporting expectation gets a true contribution, so it is true unless another conjunct on it is false.
+
+[reportingClasses: -> (icm:ReportingExpectation rdf:type tmf:ReportingElementClass)
+                      (icm:ObservationReportingExpectation rdf:type tmf:ReportingElementClass)]
+[reportingSubclass: (?d rdf:type tmf:ReportingElementClass) (?c rdfs:subClassOf ?d)
+    -> (?c rdf:type tmf:ReportingElementClass)]
+[reportingAssumed: (?c rdf:type tmf:ReportingElementClass) (?e rdf:type ?c) makeSkolem(?k, ?e, tmf:Reporting)
+    -> (?e tmf:contribution ?k) (?k tmf:function tmf:Reporting) (?k rdf:value "true"^^xsd:boolean)
+       (?k tmf:valuedInA tmf:Yes)]

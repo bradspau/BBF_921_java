@@ -19,7 +19,8 @@ import java.util.*;
  *       model holds {@code rdfs:subClassOf} statements (the ontology). Blank-node elements are not reported
  *       (TR290 section 4.2).</li>
  *   <li>{@code rdf:value} booleans, {@code icm:reason} (with the reason's type and label) and
- *       {@code met:observed} are copied for elements only.</li>
+ *       {@code met:observed} are copied for elements only. The value of an element with a contributor is the rules'
+ *       conjunction ({@code tmf:result}), never an {@code rdf:value} the input gave it (see {@link #copyValue}).</li>
  *   <li>{@code ?target rdfs:member ?r} is copied only for a <em>chosen</em> member, marked by the rules with
  *       {@code ?r tmf:chosenFor ?target} ({@link #CHOSEN_FOR}); seed and pool members are never emitted.</li>
  *   <li>Observations are flattened exactly as {@link ResultContract#copyObservation} does.</li>
@@ -48,7 +49,7 @@ public final class ContractExtractor {
         Model out = ModelFactory.createDefaultModel();
         for (Resource e : elements(stageB, ELEMENT_CLASSES)) {
             if (stageB.contains(e, FORALL_TEMPLATE)) continue;   // evaluated per member through copies, not itself
-            out.add(stageB.listStatements(e, RDF.value, (RDFNode) null));
+            copyValue(stageB, out, e);
             for (Statement st : stageB.listStatements(e, ResultContract.ICM_REASON, (RDFNode) null).toList()) {
                 if (!st.getObject().isResource()) continue;
                 Resource r = st.getObject().asResource();
@@ -71,6 +72,26 @@ public final class ContractExtractor {
         out.setNsPrefixes(stageB.getNsPrefixMap());
         return ResultContract.filter(out);
     }
+
+    /**
+     * The element's value. An element with a contributor (stage A {@code tmf:hasContributor}) is valued by the rules
+     * as the conjunction of its contributions, recorded as {@code tmf:result tmf:T|tmf:F}; that is its value, and an
+     * {@code rdf:value} the input also gave it is ignored (otherwise contradictory input would show two values). An
+     * element without a contributor keeps its input value, or the default false.
+     */
+    private static void copyValue(Model m, Model out, Resource e) {
+        if (!m.contains(e, HAS_CONTRIBUTOR)) {
+            out.add(m.listStatements(e, RDF.value, (RDFNode) null));
+            return;
+        }
+        if (m.contains(e, RESULT, RESULT_T)) out.addLiteral(e, RDF.value, true);
+        if (m.contains(e, RESULT, RESULT_F)) out.addLiteral(e, RDF.value, false);
+    }
+
+    static final Property HAS_CONTRIBUTOR = ResourceFactory.createProperty(Namespaces.TMF + "hasContributor");
+    static final Property RESULT = ResourceFactory.createProperty(Namespaces.TMF + "result");
+    static final Resource RESULT_T = ResourceFactory.createResource(Namespaces.TMF + "T");
+    static final Resource RESULT_F = ResourceFactory.createResource(Namespaces.TMF + "F");
 
     /** IRI-identified instances of the classes or of any of their subclasses in {@code m}, in IRI order. */
     static SortedSet<Resource> elements(Model m, List<Resource> classes) {

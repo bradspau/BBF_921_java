@@ -4,18 +4,21 @@ import org.apache.jena.graph.compose.Union;
 import org.apache.jena.rdf.model.InfModel;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.rdf.model.Statement;
+import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.reasoner.rulesys.GenericRuleReasoner;
 import org.apache.jena.reasoner.rulesys.Rule;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.tmforum.intent.graph.Namespaces;
 import org.tmforum.intent.handler.JenaBuiltins;
 import org.tmforum.intent.model.EvaluationResult;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.StringReader;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -30,10 +33,11 @@ import java.util.function.UnaryOperator;
  * Rule-based engine (spec 5.5, staging decided in 5.5.1).
  *
  * <p>Per evaluation: base model = ontology (cached, read-only, unioned rather than copied) ∪ expression ∪
- * observations ∪ resources ∪ held facts ({@link EvaluationInputs}, the same conventions as the Java engine);
- * stage A = {@link GenericRuleReasoner} ({@code FORWARD_RETE}) over {@link #STAGE_A}; stage B = a reasoner over
- * {@link #STAGE_B} chained on stage A's {@link InfModel}; then {@link ContractExtractor} and
- * {@link ResultAdapter}.
+ * observations ∪ resources ∪ held facts ({@link EvaluationInputs}, the same conventions as the Java engine), with
+ * every triple in the engine's helper namespace removed from the input first ({@link #stripHelperTriples}); stage A =
+ * {@link GenericRuleReasoner} ({@code FORWARD_RETE}) over {@link #STAGE_A}; the choice strata ({@link #CHOICE_STAGE},
+ * one per level up to {@link #MAX_CHOICE_DEPTH}) and stage B ({@link #STAGE_B}), each a reasoner chained on the
+ * previous stage's {@link InfModel}; then {@link ContractExtractor} and {@link ResultAdapter}.
  *
  * <p>Not ready until the conformance suite passes ({@link #READY}, flipped in Task 17), and never ready without
  * the ontology files.
@@ -45,10 +49,23 @@ public class JenaEvaluationEngine implements EvaluationEngine {
     public static final boolean READY = false;
 
     /** Stage A rule files (positive facts), classpath resources under {@code rules/}, in load order. */
-    public static final List<String> STAGE_A =
-            List.of("tio_a_core.rules", "tio_a_quantity.rules", "tio_a_logic.rules", "tio_a_sets.rules");
-    /** Stage B rule files (defaults, combination, negation, choice), classpath resources under {@code rules/}. */
-    public static final List<String> STAGE_B = List.of("tio_b_logic.rules", "tio_b_sets.rules");
+    public static final List<String> STAGE_A = List.of("tio_a_core.rules", "tio_a_quantity.rules",
+            "tio_a_logic.rules", "tio_a_sets.rules", "tio_a_delivery.rules");
+    /**
+     * Rule files of one choice stratum (design 5.5 "Sets and pools"): loaded once per level n = 1 ..
+     * {@link #MAX_CHOICE_DEPTH}, with {@code tmf:PrevLevel}/{@code tmf:ThisLevel} replaced by {@code tmf:L(n-1)} /
+     * {@code tmf:Ln}; each copy is its own stage between stage A and stage B.
+     */
+    public static final List<String> CHOICE_STAGE = List.of("tio_c_choose.rules", "tio_b_pools.rules");
+    /**
+     * Number of choice strata. A pool that depends on choices nested deeper than this is not chosen from (fail closed,
+     * tio_b_delivery.rules). The seed needs 2 (UNI and S-VLAN from complete pools, the C-tag pool after the S-VLAN
+     * choice). The level facts of tio_a_delivery.rules go up to {@code tmf:L3} = MAX_CHOICE_DEPTH + 1.
+     */
+    public static final int MAX_CHOICE_DEPTH = 2;
+    /** Stage B (value stage) rule files: defaults, combination, negation, delivery values. */
+    public static final List<String> STAGE_B =
+            List.of("tio_b_pools.rules", "tio_b_logic.rules", "tio_b_sets.rules", "tio_b_delivery.rules");
 
     private static final Map<String, List<Rule>> RULES = new ConcurrentHashMap<>();
 
@@ -91,6 +108,7 @@ public class JenaEvaluationEngine implements EvaluationEngine {
         } catch (Exception e) {
             return degraded("Turtle parse error: " + e.getMessage());
         }
+        stripHelperTriples(input);
         EvaluationInputs.addHeld(input, in.held());
 
         Model base = withOntology(input);
@@ -98,6 +116,22 @@ public class JenaEvaluationEngine implements EvaluationEngine {
 
         Model contract = ContractExtractor.extract(stageB);
         return new EvaluationOutcome(contract, ResultAdapter.adapt(contract, base));
+    }
+
+    /**
+     * Removes from the input every triple the rules could mistake for one of their own helper facts: a predicate in the
+     * {@code tmf:} namespace ({@link Namespaces#TMF}) or an {@code rdf:type} with a {@code tmf:} class. Input cannot
+     * then assert, for example, {@code tmf:implemented}, {@code tmf:valuedInA} or {@code tmf:chosenFor}.
+     */
+    public static void stripHelperTriples(Model input) {
+        List<Statement> helper = new ArrayList<>();
+        input.listStatements().forEachRemaining(st -> {
+            boolean tmfPredicate = st.getPredicate().getURI().startsWith(Namespaces.TMF);
+            boolean tmfType = st.getPredicate().equals(RDF.type) && st.getObject().isURIResource()
+                    && st.getObject().asResource().getURI().startsWith(Namespaces.TMF);
+            if (tmfPredicate || tmfType) helper.add(st);
+        });
+        input.remove(helper);
     }
 
     /** Input ∪ ontology without copying the ontology; writes (none expected) would go to the input. */
@@ -110,20 +144,37 @@ public class JenaEvaluationEngine implements EvaluationEngine {
     }
 
     /**
-     * Runs stage A over {@code base} and stage B chained on it (design 5.5.1) and returns the prepared stage B model;
-     * {@code getRawModel()} of the result is stage A. {@code order} may reorder each stage's rules (tests shuffle
-     * them to prove the result does not depend on rule order); production passes the identity.
+     * Runs the stages over {@code base}, each chained on the previous one's {@link InfModel} (design 5.5.1): stage A,
+     * the choice strata choose-1 .. choose-{@link #MAX_CHOICE_DEPTH}, stage B. Returns the prepared stage B model;
+     * {@code getRawModel()} of it is the last choice stratum, which contains everything before it. {@code order} may
+     * reorder each stage's rules (tests shuffle them to prove the result does not depend on rule order); production
+     * passes the identity.
      */
     public static InfModel infer(Model base, UnaryOperator<List<Rule>> order) {
-        InfModel stageA = ModelFactory.createInfModel(reasoner(order.apply(rules(STAGE_A))), base);
-        InfModel stageB = ModelFactory.createInfModel(reasoner(order.apply(rules(STAGE_B))), stageA);
-        stageB.prepare();
-        return stageB;
+        Model previous = base;
+        InfModel stage = null;
+        for (List<Rule> rules : stages()) {
+            stage = ModelFactory.createInfModel(reasoner(order.apply(rules)), previous);
+            previous = stage;
+        }
+        stage.prepare();
+        return stage;
     }
 
-    private static List<Rule> rules(List<String> files) {
+    /** The rules of each stage in order: stage A, one choice stratum per level, stage B. */
+    public static List<List<Rule>> stages() {
+        List<List<Rule>> stages = new ArrayList<>();
+        stages.add(rules(STAGE_A, 0));
+        for (int level = 1; level <= MAX_CHOICE_DEPTH; level++) stages.add(rules(CHOICE_STAGE, level));
+        stages.add(rules(STAGE_B, 0));
+        return stages;
+    }
+
+    private static List<Rule> rules(List<String> files, int level) {
         List<Rule> rules = new ArrayList<>();
-        for (String f : files) rules.addAll(RULES.computeIfAbsent(f, JenaEvaluationEngine::parseRules));
+        for (String f : files) {
+            rules.addAll(RULES.computeIfAbsent(f + "@" + level, k -> parseRules(f, level)));
+        }
         return rules;
     }
 
@@ -135,10 +186,29 @@ public class JenaEvaluationEngine implements EvaluationEngine {
 
     /** Parses one rule file from the classpath ({@code rules/<name>}); a listed file that is missing is a bug. */
     public static List<Rule> parseRules(String name) {
+        return parseRules(name, 0);
+    }
+
+    /**
+     * Parses one rule file for choice level {@code level} (0 outside the choice strata): {@code tmf:ThisLevel},
+     * {@code tmf:PrevLevel} and {@code tmf:MaxLevel} become {@code tmf:L<level>}, {@code tmf:L<level-1>} and
+     * {@code tmf:L<MAX_CHOICE_DEPTH>}.
+     */
+    public static List<Rule> parseRules(String name, int level) {
         String path = "rules/" + name;
         InputStream s = JenaEvaluationEngine.class.getClassLoader().getResourceAsStream(path);
         if (s == null) throw new IllegalStateException("rule file not on the classpath: " + path);
-        try (BufferedReader r = new BufferedReader(new InputStreamReader(s, StandardCharsets.UTF_8))) {
+        String text;
+        try (s) {
+            text = new String(s.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        text = text.replace("tmf:MaxLevel", "tmf:L" + MAX_CHOICE_DEPTH);
+        if (level > 0) {
+            text = text.replace("tmf:ThisLevel", "tmf:L" + level).replace("tmf:PrevLevel", "tmf:L" + (level - 1));
+        }
+        try (BufferedReader r = new BufferedReader(new StringReader(text))) {
             return Rule.parseRules(Rule.rulesParserFromReader(r));
         } catch (IOException e) {
             throw new UncheckedIOException(e);

@@ -2,6 +2,7 @@ package org.tmforum.intent.unit;
 
 import org.apache.jena.graph.Graph;
 import org.apache.jena.graph.Node;
+import org.apache.jena.graph.Triple;
 import org.apache.jena.graph.compose.Union;
 import org.apache.jena.reasoner.InfGraph;
 import org.apache.jena.rdf.model.InfModel;
@@ -80,8 +81,8 @@ class JenaSetRulesTest {
         }
         return JenaEvaluationEngine.infer(base, rules -> {
             List<Rule> r = new ArrayList<>(rules);
-            boolean stageB = r.stream().anyMatch(x -> "default".equals(x.getName()));
-            r.addAll(stageB ? extraB : extraA);
+            if (r.stream().anyMatch(x -> "default".equals(x.getName()))) r.addAll(extraB);
+            if (r.stream().anyMatch(x -> "elementClasses".equals(x.getName()))) r.addAll(extraA);
             if (seed != 0) Collections.shuffle(r, new Random(seed * 31 + 7));
             return r;
         });
@@ -101,7 +102,7 @@ class JenaSetRulesTest {
                 String where = " (seed " + seed + ", ontology " + withOntology + ")\n" + turtle;
                 JenaLogicRulesTest.assertEveryElementHasExactlyOneBooleanValue(m, where);
                 JenaLogicRulesTest.assertStageBWritesOnlyOnContributorsOrDefaults(m, where);
-                if (extraA.isEmpty() && extraB.isEmpty()) assertNoRdfsMemberDerived(m, where);
+                if (extraA.isEmpty() && extraB.isEmpty()) assertOnlyChoicesDerivedAsMembers(m, where);
                 check.check(m, where);
                 last = m;
             }
@@ -113,13 +114,30 @@ class JenaSetRulesTest {
         return allRuns(turtle, List.of(), List.of(), check);
     }
 
-    /** Pool members stay helper facts: no rule of either stage derives rdfs:member. */
-    static void assertNoRdfsMemberDerived(InfModel stageB, String where) {
-        Graph stageADeductions = ((InfGraph) stageB.getRawModel().getGraph()).getDeductionsGraph();
-        assertFalse(stageADeductions.contains(Node.ANY, RDFS.member.asNode(), Node.ANY),
-                () -> "stage A derived rdfs:member" + where);
-        assertFalse(stageB.getDeductionsModel().contains(null, RDFS.member), () -> "stage B derived rdfs:member" + where);
+    /**
+     * Pool members stay helper facts: no stage derives rdfs:member except a choice of a delivery expectation (Task 15),
+     * marked {@code ?r tmf:chosenFor ?target}; and only chosen members reach the result contract.
+     */
+    static void assertOnlyChoicesDerivedAsMembers(InfModel m, String where) {
+        Graph g = m.getGraph();
+        while (g instanceof InfGraph inf) {
+            for (Triple t : inf.getDeductionsGraph().find(Node.ANY, RDFS.member.asNode(), Node.ANY).toList()) {
+                assertTrue(m.getGraph().contains(t.getObject(), CHOSEN_FOR.asNode(), t.getSubject()),
+                        () -> "derived " + t + " is not a choice" + where);
+            }
+            g = inf.getRawGraph();
+        }
+        assertOnlyChosenMembersInContract(m, where);
     }
+
+    static void assertOnlyChosenMembersInContract(InfModel m, String where) {
+        for (Statement st : ContractExtractor.extract(m).listStatements(null, RDFS.member, (RDFNode) null).toList()) {
+            assertTrue(m.contains(st.getObject().asResource(), CHOSEN_FOR, st.getSubject()),
+                    () -> "contract member " + st + " is not a choice" + where);
+        }
+    }
+
+    static final Property CHOSEN_FOR = ResourceFactory.createProperty(TMF + "chosenFor");
 
     /** Members of {@code ex:<local>} (local names of IRIs, lexical forms of literals). */
     static Set<String> members(Model m, String local) {
@@ -337,15 +355,18 @@ class JenaSetRulesTest {
     }
 
     @Test
-    void aPoolFollowsTheMembersOfATargetChosenInStageB() {
-        // simulates Task 15: the choice is derived in stage B as rdfs:member of the delivery target
-        List<Rule> pickInB = List.of(rule("[pickB: (?t <" + EX + "pick> ?x) -> (?t rdfs:member ?x)]"));
-        allRuns(CTAG_POOL + "ex:SelectedSVLAN ex:pick ex:svA .\n", List.of(), pickInB, (m, where) -> {
+    void aPoolFollowsTheMembersOfATargetChosenInALaterStage() {
+        // the S-VLAN svA is chosen in the first choice stratum (Task 15); the C-tag pool follows it there
+        allRuns(CTAG_POOL, (m, where) -> {
             assertEquals(set("b1"), members(m, "CTags"), () -> "CTags" + where);
-            assertEquals(set(), members(m.getRawModel(), "CTags"), () -> "stage A cannot know the choice" + where);
+            Graph g = m.getGraph();
+            while (g instanceof InfGraph inf && inf.getRawGraph() instanceof InfGraph) g = inf.getRawGraph();
+            assertEquals(set(), members(ModelFactory.createModelForGraph(g), "CTags"),
+                    () -> "stage A cannot know the choice" + where);
         });
-        // no choice: the pool is empty
-        allRuns(CTAG_POOL, members(Map.of("CTags", set(), "SVLANs", set("svA", "svB"))));
+        // no S-VLAN of the delivery type can be chosen: the pool is empty
+        allRuns(CTAG_POOL.replace("icm:deliveryType ex:SVLAN", "icm:deliveryType ex:Nothing"),
+                members(Map.of("CTags", set(), "SVLANs", set("svA", "svB"))));
     }
 
     @Test
@@ -396,14 +417,13 @@ class JenaSetRulesTest {
                 "pool-explicit-intersection", Map.of("Pool", set("w2")),
                 "pool-legacy-multifunction", Map.of("Pool", set("w1", "w2", "g0")),   // union (entry 1)
                 "input-nonlist-resourcesOfType", Map.of("Pool", set("a1", "a2")),     // entry 5 (D4)
-                "pool-depends-on-choice", Map.of("SVLANs", set("svA", "svB"), "CTags", set()));
+                "pool-depends-on-choice", Map.of("SVLANs", set("svA", "svB"), "CTags", set("b1")));
         for (boolean withOntology : JenaLogicRulesTest.ontologyModes()) {
             for (long seed : SEEDS) {
                 cases.forEach((name, pools) -> {
                     InfModel m = runCase(name, withOntology, seed, List.of());
                     pools.forEach((pool, exp) -> assertEquals(exp, members(m, pool), name + " " + pool));
-                    assertFalse(ContractExtractor.extract(m).contains(null, RDFS.member),
-                            name + ": no pool member reaches the contract");
+                    assertOnlyChosenMembersInContract(m, " " + name);
                 });
             }
         }
@@ -420,7 +440,7 @@ class JenaSetRulesTest {
         InfModel m = runCase("seed-fulfilled", false, 0, List.of());
         Set<String> unis = members(m, m.getResource("http://broadband-forum.org/Intent#AvailableUNIInterfaces"));
         assertTrue(unis.contains("UNI-001-1"), () -> "free UNI ports: " + unis);
-        assertFalse(ContractExtractor.extract(m).contains(null, RDFS.member));
+        assertOnlyChosenMembersInContract(m, "");
     }
 
     // ── set-producing functions are not boolean contributors ──────────────────────
@@ -740,7 +760,7 @@ class JenaSetRulesTest {
             System.out.printf("1000-UNI inventory (ontology %s): %d input triples, pool %d members, best of 8: %d ms"
                             + " (without the set rules: %d ms)%n", withOntology, input.size(), poolSize, best, without);
             assertTrue(poolSize >= 1000, "pool " + poolSize);
-            assertFalse(ContractExtractor.extract(m).contains(null, RDFS.member));
+            assertOnlyChosenMembersInContract(m, "");
             assertTrue(best < 10_000, "1000-UNI evaluation took " + best + " ms");
         }
     }
