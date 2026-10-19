@@ -1,0 +1,10 @@
+# Handler result (ResultAdapterTest), derived by hand from expression.ttl and checked against the
+# registered contract; java- lines: the Java engine, where it differs.
+# DEVIATIONS 11: no opaqueChildren failure; noneOf ( ) of the removed members is true.
+state: Fulfilled
+reason: 
+condition: passed=true | type=logMatch
+java-state: Degraded
+java-reason: Conditions not met: opaqueChildren: no evaluable conditions in children
+java-condition: error=no evaluable conditions in children | passed=false | type=opaqueChildren
+java-condition: passed=true | type=logMatch

@@ -1,0 +1,9 @@
+# Handler result (ResultAdapterTest), derived by hand from expression.ttl and checked against the
+# registered contract; java- lines: the Java engine, where it differs.
+# DEVIATIONS 16: the BigWidget b1 is a Widget.
+state: Fulfilled
+reason: 
+condition: passed=true | selected=http://example.org/b1 | type=DeliveryExpectation
+java-state: Degraded
+java-reason: Conditions not met: DeliveryExpectation: no candidate of type Widget in chooseFrom pool
+java-condition: error=no candidate of type Widget in chooseFrom pool | passed=false | type=DeliveryExpectation

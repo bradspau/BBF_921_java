@@ -1,0 +1,9 @@
+# Handler result (ResultAdapterTest), derived by hand from expression.ttl and checked against the
+# registered contract; java- lines: the Java engine, where it differs.
+# DEVIATIONS 20: set-function members of the target are not delivered.
+state: Degraded
+reason: Conditions not met: DeliveryExpectation: no target member of type Widget
+condition: error=no target member of type Widget | passed=false | type=DeliveryExpectation
+java-state: Fulfilled
+java-reason: 
+java-condition: passed=true | type=DeliveryExpectation

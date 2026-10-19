@@ -1,0 +1,11 @@
+# Handler result (ResultAdapterTest), derived by hand from expression.ttl and checked against the
+# registered contract; java- lines: the Java engine, where it differs.
+# DEVIATIONS 21: the spec form reads the newest observation; the missing one names the metric.
+state: Degraded
+reason: Conditions not met: smaller: no observation: LatencyMetric
+condition: bound=100 | boundUnit=Mbps | observed=150 | observedUnit=Mbps | operator=>= | passed=true | type=atLeast
+condition: error=no observation: LatencyMetric | operator=< | passed=false | type=smaller
+java-state: Degraded
+java-reason: Conditions not met: atLeast: no observation: null; smaller: no observation: null
+java-condition: error=no observation: null | operator=>= | passed=false | type=atLeast
+java-condition: error=no observation: null | operator=< | passed=false | type=smaller

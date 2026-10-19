@@ -8,8 +8,10 @@
 #                                                     # <unit> is false; DEVIATIONS.md entry 4, D3). Numbers in plain
 #                                                     # notation, units trimmed (builtin quantityText). atLeast, atMost,
 #                                                     # greater, smaller, and each unequal neighbouring pair of exactly
-#                                                     # ("4 == 5 is false"). inRange has none, as in the Java engine
-#                                                     # (its detail has no single bound).
+#                                                     # ("4 == 5 is false"; the pair's first cell also gets
+#                                                     # `?x tmf:pairViolation "text"`, so ResultAdapter can show that
+#                                                     # pair). inRange has none, as in the Java engine (its detail has no
+#                                                     # single bound).
 #   ?k tmf:failureAfter "text"                        # ?k has another tmf:failure that sorts before "text" (lexLess);
 #   ?k tmf:violationAfter "text"                      # likewise for violations. The value stage reports the first one
 #                                                     # only: one reason per contribution, whatever order the rules
@@ -61,7 +63,7 @@
     (?x tmf:argValue ?v1) (?x tmf:argUnit ?u1) (?r tmf:argValue ?v2) (?r tmf:argUnit ?u2)
     unitCompare(?v1, ?u1, ?v2, ?u2, ?c) notEqual(?c, 0)
     quantityText(?v1, ?u1, ?t1) quantityText(?v2, ?u2, ?t2) strConcat(?t1, ' == ', ?t2, ' is false', ?t)
-    -> (?k tmf:violation ?t)]
+    -> (?k tmf:violation ?t) (?x tmf:pairViolation ?t)]
 
 # ── 2. One text per contribution: an order over its failures and its violations ──────────────────────────────────
 

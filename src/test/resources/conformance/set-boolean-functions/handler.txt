@@ -1,0 +1,16 @@
+# Handler result (ResultAdapterTest), derived by hand from expression.ttl and checked against the
+# registered contract; java- lines: the Java engine, where it differs.
+# DEVIATIONS 14: the function-form set predicates are evaluated, one entry each.
+state: Degraded
+reason: Conditions not met: isMember: FAIL; empty: FAIL; empty: FAIL
+condition: passed=true | type=isMember
+condition: passed=false | type=isMember
+condition: passed=true | type=elementOf
+condition: passed=false | type=empty
+condition: passed=true | type=includedIn
+condition: passed=true | type=intersectsWith
+condition: passed=true | type=forAll
+condition: passed=false | type=empty
+java-state: Degraded
+java-reason: Conditions not met: opaqueChildren: no evaluable conditions in children
+java-condition: error=no evaluable conditions in children | passed=false | type=opaqueChildren

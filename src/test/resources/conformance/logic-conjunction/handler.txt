@@ -1,0 +1,15 @@
+# Handler result (ResultAdapterTest), derived by hand from expression.ttl and checked against the
+# registered contract; java- lines: the Java engine, where it differs.
+# DEVIATIONS 13: every function of a condition is listed with its own value.
+state: Degraded
+reason: Conditions not met: logMatch: FAIL; logMatch: FAIL
+condition: passed=true | type=logMatch
+condition: passed=true | type=logMatch
+condition: passed=false | type=logMatch
+condition: passed=true | type=logMatch
+condition: passed=false | type=logMatch
+java-state: Fulfilled
+java-reason: 
+java-condition: passed=true | type=logMatch
+java-condition: passed=false | type=logMatch
+java-condition: passed=true | type=logMatch

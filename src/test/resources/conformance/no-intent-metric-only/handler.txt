@@ -1,0 +1,7 @@
+# Handler result (ResultAdapterTest), derived by hand from expression.ttl and checked against the
+# registered contract; java- lines: the Java engine, where it differs.
+# DEVIATIONS 28: no IRI icm:Intent: empty contract, but the handler result is the Java engine's (flat scan, legacy type form first).
+state: Degraded
+reason: Conditions not met: quanatMost: unit mismatch: 'ms' cannot be compared with a value without unit
+condition: bound=10 | error=unit mismatch: 'ms' cannot be compared with a value without unit | observed=8 | observedUnit=ms | operator=<= | passed=false | type=quanatMost
+condition: bound=10 | boundUnit=ms | observed=8 | observedUnit=ms | operator=<= | passed=true | type=atMost

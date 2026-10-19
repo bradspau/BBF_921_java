@@ -1,0 +1,9 @@
+# Handler result (ResultAdapterTest), derived by hand from expression.ttl and checked against the
+# registered contract; java- lines: the Java engine, where it differs.
+# DEVIATIONS 23: the bound metric is read through its observation (100 Mbps).
+state: Fulfilled
+reason: 
+condition: bound=100 | boundUnit=Mbps | observed=150 | observedUnit=Mbps | operator=>= | passed=true | type=atLeast
+java-state: Degraded
+java-reason: Conditions not met: atLeast: missing bound value
+java-condition: error=missing bound value | observed=150 | operator=>= | passed=false | type=atLeast

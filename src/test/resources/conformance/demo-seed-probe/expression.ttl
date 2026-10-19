@@ -1,0 +1,5 @@
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+# The "Sample Bandwidth Intent" of seed_data/seed.sh, unchanged.
+_:c quan:atLeast ( <http://broadband-forum.org/Intent#DownstreamBandwidthMetric> [ rdf:value "100"^^xsd:decimal ] ) .

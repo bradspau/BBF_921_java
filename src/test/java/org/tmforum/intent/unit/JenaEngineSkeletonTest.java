@@ -226,30 +226,27 @@ class JenaEngineSkeletonTest {
     // ── ResultAdapter ────────────────────────────────────────────────────────
 
     @Test
-    void adapterMapsIntentValueAndBuildsJavaStyleReason() {
-        Model expression = ttl(INTENT + "ex:C2 a log:Condition .");
-        Model g = ModelFactory.createDefaultModel();
-        Resource i = g.createResource("http://example.org/I");
-        g.addLiteral(i, RDF.value, true);
-        g.addLiteral(g.createResource("http://example.org/C"), RDF.value, true);
-        EvaluationResult ok = ResultAdapter.adapt(g, expression);
+    void adapterListsEachFunctionApplicationWithItsOwnValueAndJavaStyleReason() {
+        // the adapter reads the inferred model (Task 16 fix round, R1); ex:C2 is not reached from the intent
+        EvaluationResult bad = new JenaEvaluationEngine().evaluate(new EvaluationInput("x",
+                INTENT + "ex:C2 a log:Condition .", null, null, List.of())).result();
+        assertEquals("Degraded", bad.intentHandlingState());
+        assertEquals("Conditions not met: atLeast: no observation: m; DeliveryExpectation: no target member",
+                bad.reason());
+        List<Map<String, Object>> conds = bad.conditions();
+        assertEquals(2, conds.size());
+        assertEquals("atLeast", conds.get(0).get("type"));
+        assertEquals(">=", conds.get(0).get("operator"));
+        assertEquals(Boolean.FALSE, conds.get(0).get("passed"));
+        assertNull(conds.get(0).get("observed"), "no observation: no value invented");
+
+        EvaluationResult ok = new JenaEvaluationEngine().evaluate(new EvaluationInput("x", INTENT
+                + "ex:T rdfs:member ex:t1 . ex:o a met:Observation ; met:observedMetric ex:m ; <http://www.w3.org/1999/02/22-rdf-syntax-ns#value> 12 .",
+                null, null, List.of())).result();
         assertEquals("Fulfilled", ok.intentHandlingState());
         assertNull(ok.reason());
-
-        g.removeAll(i, RDF.value, null).addLiteral(i, RDF.value, false);
-        g.removeAll(g.createResource("http://example.org/C"), RDF.value, null)
-                .addLiteral(g.createResource("http://example.org/C"), RDF.value, false);
-        g.addLiteral(g.createResource("http://example.org/C2"), RDF.value, false);
-        EvaluationResult bad = ResultAdapter.adapt(g, expression);
-        assertEquals("Degraded", bad.intentHandlingState());
-        // one entry per function application reached from the intent (ex:C2 is not reached); no observation linked
-        assertEquals("Conditions not met: atLeast: FAIL", bad.reason());
-        List<Map<String, Object>> conds = bad.conditions();
-        assertEquals(1, conds.size());
-        assertEquals("atLeast", conds.get(0).get("type"));
-        assertNull(conds.get(0).get("operator"), "no values: labelled by type, not \"null >= null\"");
-        assertEquals(Boolean.FALSE, conds.get(0).get("passed"));
-        assertNull(conds.get(0).get("observed"), "no met:observed in the graph: nothing invented");
+        assertEquals(new java.math.BigDecimal("12"), ok.conditions().get(0).get("observed"));
+        assertEquals(new java.math.BigDecimal("10"), ok.conditions().get(0).get("bound"));
     }
 
     @Test

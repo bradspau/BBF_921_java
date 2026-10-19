@@ -1,0 +1,7 @@
+# Handler result (ResultAdapterTest), derived by hand from expression.ttl and checked against the
+# registered contract; java- lines: the Java engine, where it differs.
+# DEVIATIONS 9: literal members have no entries; the listed matches agree with Java, the values of the parents differ only in the contract.
+state: Fulfilled
+reason: 
+condition: passed=true | type=logMatch
+condition: passed=false | type=logMatch

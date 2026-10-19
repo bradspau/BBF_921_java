@@ -85,6 +85,14 @@
     -> (?s tmf:contribution ?k) (?k tmf:function quan:inRange) (?k tmf:arguments ?l)
        (?k rdf:type tmf:RangeComparison)]
 
+# An IRI subject of a quantity function is a reported condition even without a type, as in the Java engine
+# (TurtleEvaluator.kindOf: a node with an rdf:type in the quan: namespace, which its predicate form normalises to, is a
+# "Condition"): it gets its own value, reason and observation link in the contract (Task 16 fix round, R4). The demo
+# expressions use this shape (`bbf:DL_Check quan:atLeast ( ... )`).
+[quanSubjectElement1: (?s tmf:contribution ?k) (?k rdf:type tmf:BinaryComparison) notBNode(?s) -> (?s rdf:type tmf:Element)]
+[quanSubjectElement2: (?s tmf:contribution ?k) (?k rdf:type tmf:ExactlyComparison) notBNode(?s) -> (?s rdf:type tmf:Element)]
+[quanSubjectElement3: (?s tmf:contribution ?k) (?k rdf:type tmf:RangeComparison) notBNode(?s) -> (?s rdf:type tmf:Element)]
+
 # Quantity contributions are decided in this stage (tio_a_core: tmf:valuedInA).
 [quanValuedInA1: (?k rdf:type tmf:BinaryComparison)  -> (?k tmf:valuedInA tmf:Yes)]
 [quanValuedInA2: (?k rdf:type tmf:ExactlyComparison) -> (?k tmf:valuedInA tmf:Yes)]

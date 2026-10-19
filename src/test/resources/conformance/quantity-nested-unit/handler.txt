@@ -1,0 +1,9 @@
+# Handler result (ResultAdapterTest), derived by hand from expression.ttl and checked against the
+# registered contract; java- lines: the Java engine, where it differs.
+# DEVIATIONS 25: the inner unit Mbps of the nested bound.
+state: Fulfilled
+reason: 
+condition: bound=100 | boundUnit=Mbps | observed=150 | observedUnit=Mbps | operator=>= | passed=true | type=atLeast
+java-state: Degraded
+java-reason: Conditions not met: 150 Mbps >= 100 Gbps: FAIL
+java-condition: bound=100 | boundUnit=Gbps | observed=150 | observedUnit=Mbps | operator=>= | passed=false | type=atLeast

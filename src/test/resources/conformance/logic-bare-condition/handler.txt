@@ -1,0 +1,9 @@
+# Handler result (ResultAdapterTest), derived by hand from expression.ttl and checked against the
+# registered contract; java- lines: the Java engine, where it differs.
+# DEVIATIONS 8: the bare conditions are false; they apply no function, so they have no entry and the reason has no label.
+state: Degraded
+reason: Conditions not met
+condition: passed=true | type=logMatch
+java-state: Fulfilled
+java-reason: 
+java-condition: passed=true | type=logMatch

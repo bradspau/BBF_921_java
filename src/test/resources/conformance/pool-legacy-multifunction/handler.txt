@@ -1,0 +1,9 @@
+# Handler result (ResultAdapterTest), derived by hand from expression.ttl and checked against the
+# registered contract; java- lines: the Java engine, where it differs.
+# DEVIATIONS 1: union pool, lowest candidate w1.
+state: Fulfilled
+reason: 
+condition: passed=true | selected=http://example.org/w1 | type=DeliveryExpectation
+java-state: Fulfilled
+java-reason: 
+java-condition: passed=true | selected=http://example.org/w2 | type=DeliveryExpectation

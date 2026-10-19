@@ -16,7 +16,9 @@ import java.util.*;
  * <ul>
  *   <li><b>Elements</b> are the IRI-identified instances of {@code icm:Intent}, {@code icm:Expectation},
  *       {@code icm:Condition} and {@code log:Condition}, including instances of their subclasses as far as the
- *       model holds {@code rdfs:subClassOf} statements (the ontology). Blank-node elements are not reported
+ *       model holds {@code rdfs:subClassOf} statements (the ontology), and every IRI the rules mark
+ *       {@code tmf:Element} (also an untyped subject of a quantity function, as the Java engine reports it).
+ *       Blank-node elements are not reported
  *       (TR290 section 4.2).</li>
  *   <li>{@code rdf:value} booleans, {@code icm:reason} (with the reason's type and label) and
  *       {@code met:observed} are copied for elements only. The value of an element with a contributor is the rules'
@@ -39,6 +41,9 @@ public final class ContractExtractor {
     /** Rule-engine marker: a condition template of {@code set:forAll} (tio_a_sets.rules); not reported itself. */
     static final Property FORALL_TEMPLATE = ResourceFactory.createProperty(Namespaces.TMF + "forAllTemplate");
 
+    /** Rule-engine marker: an intent element (tio_a_core), including untyped IRI quantity conditions (tio_a_quantity). */
+    static final Resource TMF_ELEMENT = ResourceFactory.createResource(Namespaces.TMF + "Element");
+
     static final List<Resource> ELEMENT_CLASSES = List.of(
             ResourceFactory.createResource(TioNamespaces.ICM + "Intent"),
             ResourceFactory.createResource(TioNamespaces.ICM + "Expectation"),
@@ -47,7 +52,11 @@ public final class ContractExtractor {
 
     public static Model extract(InfModel stageB) {
         Model out = ModelFactory.createDefaultModel();
-        for (Resource e : elements(stageB, ELEMENT_CLASSES)) {
+        SortedSet<Resource> reported = elements(stageB, ELEMENT_CLASSES);
+        stageB.listSubjectsWithProperty(RDF.type, TMF_ELEMENT).forEachRemaining(s -> {
+            if (s.isURIResource()) reported.add(s);
+        });
+        for (Resource e : reported) {
             if (stageB.contains(e, FORALL_TEMPLATE)) continue;   // evaluated per member through copies, not itself
             copyValue(stageB, out, e);
             for (Statement st : stageB.listStatements(e, ResultContract.ICM_REASON, (RDFNode) null).toList()) {

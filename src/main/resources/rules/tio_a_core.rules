@@ -3,7 +3,8 @@
 # Stage B may use noValue only over facts that are complete when it starts. Everything it needs to negate about the
 # shape of the intent is therefore derived here, positively:
 #
-#   ?e rdf:type tmf:Element            # an intent element that must end with a boolean value: an instance of
+#   ?e rdf:type tmf:Element            # an intent element that must end with a boolean value (also an untyped IRI
+#                                      # subject of a quantity function, tio_a_quantity.rules): an instance of
 #                                      # icm:Intent, icm:Expectation, icm:Condition, log:Condition or of any of their
 #                                      # subclasses known to the model (the ontology). Type inference belongs here,
 #                                      # never in stage B (precondition (c)).

@@ -1,0 +1,9 @@
+# Handler result (ResultAdapterTest), derived by hand from expression.ttl and checked against the
+# registered contract; java- lines: the Java engine, where it differs.
+# DEVIATIONS 22: "?" for an argument without a name.
+state: Degraded
+reason: Conditions not met: atLeast: no observation: ?
+condition: error=no observation: ? | operator=>= | passed=false | type=atLeast
+java-state: Degraded
+java-reason: Conditions not met: atLeast: no observation: null
+java-condition: error=no observation: null | operator=>= | passed=false | type=atLeast

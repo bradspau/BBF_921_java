@@ -1,0 +1,68 @@
+# The inline expression of docs/HSI_DEMO.md step 1, unchanged: no icm:Intent, untyped IRI conditions.
+@prefix bbf:  <http://broadband-forum.org/Intent#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+bbf:HSICompositeExpectation
+    log:allOf (
+        bbf:DeliveryCheck
+        bbf:UNICheck
+        bbf:PerformanceCheck
+    ) .
+
+bbf:DeliveryCheck  a icm:DeliveryExpectation ;
+    icm:target       bbf:SelectedUNIInterface ;
+    icm:deliveryType bbf:HSIService .
+
+bbf:SelectedUNIInterface
+    rdfs:member bbf:HSIServiceInstance .
+
+bbf:HSIServiceInstance  a bbf:HSIService .
+
+bbf:UNICheck
+    log:allOf (
+        bbf:UNIUpCondition
+        bbf:UNIReadyCondition
+    ) .
+
+bbf:UNIUpCondition
+    log:match ( bbf:SelectedUNIInterface
+                bbf:operationalState
+                bbf:OperationalUp ) .
+
+bbf:UNIReadyCondition
+    log:match ( bbf:SelectedUNIInterface
+                bbf:provisioningState
+                bbf:Ready ) .
+
+bbf:SelectedUNIInterface
+    bbf:operationalState  bbf:OperationalUp ;
+    bbf:provisioningState bbf:Ready .
+
+bbf:PerformanceCheck
+    log:allOf (
+        bbf:DL_Check
+        bbf:UL_Check
+        bbf:Lat_Check
+        bbf:Jit_Check
+        bbf:PL_Check
+    ) .
+
+bbf:DL_Check  quan:atLeast ( bbf:DownstreamBandwidthMetric
+              [ rdf:value "100"^^xsd:decimal ] ) .
+
+bbf:UL_Check  quan:atLeast ( bbf:UpstreamBandwidthMetric
+              [ rdf:value "20"^^xsd:decimal ] ) .
+
+bbf:Lat_Check  quan:smaller ( bbf:LatencyMetric
+               [ rdf:value "25"^^xsd:decimal ] ) .
+
+bbf:Jit_Check  quan:smaller ( bbf:JitterMetric
+               [ rdf:value "3"^^xsd:decimal ] ) .
+
+bbf:PL_Check  quan:smaller ( bbf:PacketLossMetric
+              [ rdf:value "0.1"^^xsd:decimal ] ) .

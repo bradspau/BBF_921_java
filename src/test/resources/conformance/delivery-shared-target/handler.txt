@@ -1,0 +1,11 @@
+# Handler result (ResultAdapterTest), derived by hand from expression.ttl and checked against the
+# registered contract; java- lines: the Java engine, where it differs.
+# DEVIATIONS 18: one choice for the shared target, listed for the first expectation only.
+state: Fulfilled
+reason: 
+condition: passed=true | selected=http://example.org/w1 | type=DeliveryExpectation
+condition: passed=true | type=DeliveryExpectation
+java-state: Fulfilled
+java-reason: 
+java-condition: passed=true | selected=http://example.org/w2 | type=DeliveryExpectation
+java-condition: passed=true | type=DeliveryExpectation

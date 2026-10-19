@@ -112,16 +112,12 @@ public class JenaEvaluationEngine implements EvaluationEngine {
         EvaluationInputs.addHeld(input, in.held());
 
         Model base = withOntology(input);
-        if (ContractExtractor.elements(base, List.of(ResultAdapter.ICM_INTENT)).isEmpty()) {
-            // No IRI-identified icm:Intent: nothing to report on (TR290 §4.2), the same empty contract as the Java
-            // engine's (ResultGraphWriter); the rules are not run (task 16 report, no-intent policy).
-            Model empty = ModelFactory.createDefaultModel();
-            return new EvaluationOutcome(empty, ResultAdapter.adapt(empty, base));
-        }
         InfModel stageB = infer(base, UnaryOperator.identity());
-
-        Model contract = ContractExtractor.extract(stageB);
-        return new EvaluationOutcome(contract, ResultAdapter.adapt(contract, base));
+        // No IRI-identified icm:Intent (exact type, as the Java engine and ReportBuilder read it): nothing to report on
+        // (TR290 §4.2), the Java engine's empty contract; the handler result is still computed (DEVIATIONS.md 28).
+        Model contract = ResultAdapter.hasIriIntent(input)
+                ? ContractExtractor.extract(stageB) : ModelFactory.createDefaultModel();
+        return new EvaluationOutcome(contract, ResultAdapter.adapt(stageB, input));
     }
 
     /**

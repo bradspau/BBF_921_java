@@ -348,18 +348,41 @@ PDF references: TR290 = Intent Common Model v3.8.0 (TR290A v3.6.0 has matching s
 - Decision: both engines do the same (tio_a_reasons.rules `observedBinary`, `observedExactly`); the corpus and
   `JenaReasonsRulesTest` cover it. Design §5.2 is read with this narrowing. No case of its own.
 
-## 28. Expression without an intent: empty contract (Task 16, Review Focus 1)
+## 28. Expression without an IRI-identified intent: empty contract, the Java engine's handler result (Task 16)
 
 - case: no-intent-metric-only
-- Java: evaluates the conditions it finds with a flat scan and returns Degraded with their reasons
-  ("Conditions not met: quanatMost: unit mismatch: ..."), but writes an empty contract (there is no element to report
-  on, TR290 §4.2).
-- Decision (policy): the rule engine does not evaluate an expression with no IRI-identified `icm:Intent`
-  (subclasses included): empty contract, no exception, no report, and the adapter's result is Degraded
-  "No icm:Intent in expression" with no conditions. Both engines produce the same graph (`expected.ttl`, no
-  `expected.jena.ttl`) and the same state; only the handler's reason string differs (`ResultAdapterTest`).
+- case: demo-hsi-inline-good
+- case: demo-hsi-inline-bad
+- case: demo-seed-probe
+- case: demo-access-top
+- case: intent-blank-node
+- case: intent-subclass
+- Java: writes the contract only when an IRI subject has `rdf:type icm:Intent` itself (`ResultGraphWriter` needs an
+  element of kind "Intent", which `kindOf` gives only for the exact type; `ReportBuilder` reads the intent the same
+  way). Its handler result does not depend on an intent: the state is the conjunction of its evaluation roots
+  (`log:allOf/anyOf/noneOf/oneOf` subjects that are no operator's member, and `log:match*` subjects), or, without any
+  root, of every condition its flat scan finds (quantity subjects by function, delivery and property expectations);
+  without either, Degraded "No quantity conditions found in expression". The demo expressions (docs/HSI_DEMO.md step
+  1, docs/Access_HSI_Demo.md step 8 `bbf:Top`, the seed_data/seed.sh probe intents `_:c quan:atLeast ...`) have no
+  intent at all; a blank-node intent (`[] a icm:Intent`) and an instance of a subclass of `icm:Intent` give no contract
+  either.
+- Decision (policy, Review Focus 1): no deviation. The rule engine always evaluates; its contract is empty unless an
+  IRI subject is typed `icm:Intent` exactly (`ResultAdapter.hasIriIntent`), so no TR290 report is built, as with the
+  Java engine. Its handler result is built from the inferred model with the Java engine's rule (`ResultAdapter`): the
+  same state, reason string, condition list and Flow 3 proposal as the Java engine in all seven cases
+  (`ResultAdapterTest`; `no-intent-metric-only/handler.txt`). With an IRI intent the state is the intent's value.
+- Reading an instance of a subclass of `icm:Intent` as no intent matches the Java engine and `ReportBuilder`; the PDFs'
+  RDFS reading would make it an intent. Kept for parity (no `expected.jena.ttl`); revisit with the report builder.
 
 ## Not deviations (documented, kept out of the corpus)
+
+- An untyped IRI subject of a quantity function (the demo shape `bbf:DL_Check quan:atLeast ( ... )`) is a reported
+  condition in both engines: its own value, reason and observation link (Java `kindOf`; tio_a_quantity.rules
+  `quanSubjectElement*`). Case `condition-untyped-iri`, no `expected.jena.ttl`.
+- The handler's condition list (ResultAdapter, Task 16 fix round) has one entry per function application, with its own
+  value, anonymous and untyped conditions included, as the Java engine's. Where the Java engine evaluates only one of
+  several functions on a node (entry 13), the rule engine lists each with its own value; the cases with a registered
+  deviation carry their hand-derived handler result in `handler.txt`.
 
 - `quan:inRange ( value lower upper )`: both engines read the arguments in this order (TR292D §8.9) and compare
   lower <= value <= upper inclusively; only the reason differs from the two-argument functions (none for a plain
