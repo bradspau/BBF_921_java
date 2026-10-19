@@ -1,7 +1,12 @@
 # Selectable evaluation engines with a shared result graph
 
-Status: draft for approval. Beads: `bbf921j-4qm` (P1).
+Status: implemented (Tasks 0-18), 2026-10-19. Beads: `bbf921j-4qm` (P1).
 Date: 2026-10-18.
+
+Open follow-ups: bd "Jena delivery engine: shared-target choice edge cases"; bd "Untyped delivery expectation leaks one
+resource per re-evaluation"; bd "Java evaluator crashes with ArithmeticException on extreme-exponent numerals"; bd
+`bbf921j-dp2` (NegotiationIT Flow 2, unrelated); performance: the Jena engine takes about 15-45 ms per evaluation
+against about 2 ms for Java, which is acceptable for the demos and has not been tuned.
 
 ## 1. Intent and why
 
@@ -222,9 +227,9 @@ saturated facts.
 - `rdf:value` is the associated-value property (TR292C §2-4 and every example). TR292C §11.7 names
   `tio:assumedValue` as the default `fun:resultProperty`; it appears nowhere else in the specification set and
   is not defined in the ontology, so it is treated as an editorial inconsistency.
-- One source of truth for the rule files. Today `tio_all.rules` exists in `ontology/jena-rules/` and
-  `src/main/resources/rules/` (identical copies). The runtime copy is authoritative; the ontology copy is dropped
-  or generated.
+- One source of truth for the rule files: `src/main/resources/rules/` is authoritative. The legacy `tio_all.rules`
+  (runtime and `ontology/jena-rules/` copies) and `tio_choose.rules` were deleted in Task 18; the other files in
+  `ontology/jena-rules/` are the supplied RDFox-derived reference rules and are not loaded at runtime.
 
 #### 5.5.1 Decision from the stage-chaining spike (Task 10)
 
@@ -333,7 +338,7 @@ chainings agree).
 - How the conformance corpus is stored (Turtle files per case or in code).
 - How reasons are worded (the contract fixes the structure, not the text), as long as engines produce the same
   text for the same case.
-- Whether to keep `HandlerStateWriter`'s `handlerState` graph or retire it in favour of the inferred graph.
+- (Decided in Task 18: `handlerState` is kept, see section 10.)
 - Performance tuning of the ontology-loaded model (measure first: about 4,200 triples of ontology per evaluation).
 
 ## 8. Known inconsistencies and risks
@@ -362,3 +367,14 @@ chainings agree).
    register, and the rule engine implements it.
 
 Status: approved by the owner on 2026-10-18. Next step: the implementation plan.
+
+## 10. Decisions made during execution
+
+- **`handlerState` graph kept (Task 18, owner).** `HandlerStateWriter` still writes the per-intent `handlerState`
+  graph (`imo:conditionPassed`). Flow 4 (resource allocation write-back) and notifications read it, and retiring it
+  is outside this plan. Cost: there are two parallel records of an evaluation's results, the `handlerState` graph and
+  the `/inferred` graph, written on every evaluation and able to drift in principle (both come from the same
+  `EvaluationResult`/outcome, so they do not in practice). A later change can move Flow 4 and notifications to the
+  inferred graph and drop `handlerState`.
+- **Unused reasoner removed (Task 18).** The `ruleReasoner` bean in `JenaConfig` and the `intent.rules-path`
+  property are gone; the Jena engine builds its own staged reasoners.

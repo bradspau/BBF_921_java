@@ -18,7 +18,7 @@ TMF921 API under the `access` Spring profile. It verifies that:
 POST /intent          →  TDB2 intent named graph
 POST /observation     →  TDB2 observations graph  (per intent)
                                  ↓ merged at evaluation time
-         TurtleEvaluator.evaluate()   ← Java, embedded Jena, access profile
+         EvaluationEngine (intent.evaluator: java | jena | compare), access profile
                                  ↓
          Set constructors resolve against resource graph (TDB2)
                                  ↓
@@ -83,42 +83,88 @@ curl http://localhost:8001/health
 
 Expected:
 ```json
-{"status": "UP", "graph": "UP"}
+{"status": "UP", "graph": "UP", "evaluator": {"engine": "java", "ready": true}}
 ```
 
 > All steps below use port **8001**. Set once: `BASE=http://localhost:8001/tmf-api/intentManagement/v5`
 
 ---
 
+## Choosing the evaluation engine
+
+The evaluation engine is selected by `intent.evaluator`: `java` (default), `jena` (the Jena rule engine) or
+`compare` (runs both, returns Java's answer, logs differences). The demo behaves the same on all three; the
+choice only changes who computes the result. Spring maps the property to the environment variable
+`INTENT_EVALUATOR`.
+
+**Docker** (`docker-compose.yml` passes `INTENT_EVALUATOR` through, default `java`):
+
+```bash
+INTENT_EVALUATOR=jena    APP_PROFILES=access,fuseki docker compose --profile access up --build
+INTENT_EVALUATOR=compare APP_PROFILES=access,fuseki docker compose --profile access up --build
+```
+
+**Dev server:**
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.profiles=access,fuseki -Dspring-boot.run.arguments=--intent.evaluator=jena
+# or: INTENT_EVALUATOR=compare mvn spring-boot:run -Dspring-boot.run.profiles=access,fuseki
+```
+
+The Jena engine needs the licensed ontology files in `ontology/` (it reports not ready without them; check
+`curl http://localhost:8001/health`, field `evaluator`). In `compare` mode, look for `compare:` warnings in the
+log; none means the engines agree. After an evaluation, the engine's result graph is in the named graph
+`http://tmforum.org/api/v5/intents/{id}/inferred`, which you can browse in Fuseki.
+
+---
+
 ## The intent expression
 
-The HSI expression (`seed_data/hsionlyintent_v0.5.ttl`) uses TIO set constructors:
+The HSI expression (`seed_data/hsionlyintent_v0.5.ttl`) uses TIO set constructors. Pools are combined with an
+explicit `set:intersection` (several set functions on one node would combine as a union, TR292A):
 
 ```
-┌─ log:allOf ─────────────────────────────────────────────────────────┐
+┌─ bbf:HSIIntent  log:allOf ──────────────────────────────────────────┐
+│    UNI expectation, S-tag expectation, C-tag expectation,            │
+│    performance expectation, monitoring expectation                   │
 │                                                                      │
-│  icm:DeliveryExpectation                                             │
-│    icm:target  set:SelectedUNIs                                      │
-│    icm:deliveryType  bbf:HSIService                                  │
+│  icm:DeliveryExpectation (UNI)                                       │
+│    icm:target          bbf:SelectedUNIInterface                      │
+│    icm:deliveryType    pon:UNIPort        <- needed, see below       │
+│    icm:chooseFrom      bbf:AvailableUNIInterfaces                    │
 │                                                                      │
-│  set:SelectedUNIs                                                    │
-│    set:resourcesOfType pon:UNIPort                                   │
-│    set:resourcesWithPropertyObject (pon:inUse false)                 │
-│    set:resourcesWithPropertyObject (pon:operationalState pon:Up)     │
+│  bbf:AvailableUNIInterfaces                                          │
+│    set:intersection (                                                │
+│      [ set:resourcesOfType ( pon:UNIPort ) ]                         │
+│      [ set:resourcesWithPropertyObject ( pon:inUse false ) ]         │
+│      [ set:resourcesWithPropertyObject ( pon:operationalState        │
+│                                          pon:Up ) ]                  │
+│      [ set:resourcesWithPropertyObject ( pon:provisioningState       │
+│                                          pon:Ready ) ] )             │
 │                                                                      │
-│  log:allOf  (5× metric conditions)                                   │
-│    quan:atLeast DownstreamBandwidthMetric 100                        │
-│    quan:atLeast UpstreamBandwidthMetric 20                           │
-│    quan:smaller LatencyMetric 25                                     │
-│    quan:smaller JitterMetric 3                                       │
-│    quan:smaller PacketLossMetric 0.1                                 │
+│  (S-VLAN and C-tag expectations choose the same way; the C-tag pool  │
+│   is limited to the chosen S-VLAN)                                   │
+│                                                                      │
+│  icm:PropertyExpectation  log:allOf  (5x metric conditions)          │
+│    quan:atLeast ( DownstreamBandwidthMetric 100 Mbps )               │
+│    quan:atLeast ( UpstreamBandwidthMetric 20 Mbps )                  │
+│    quan:smaller ( LatencyMetric 25 ms )                              │
+│    quan:smaller ( JitterMetric 3 ms )                                │
+│    quan:smaller ( PacketLossMetric 0.1 percent )                     │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-`set:SelectedUNIs` resolves to all UNI ports that are:
+`bbf:AvailableUNIInterfaces` resolves to all UNI ports that are:
 - typed `pon:UNIPort`
 - have `pon:inUse false`
-- have `pon:operationalState pon:Up`
+- have `pon:operationalState pon:Up` and `pon:provisioningState pon:Ready`
+
+The handler chooses one member of that pool (the lowest IRI) as the member of `bbf:SelectedUNIInterface`.
+
+> **`icm:deliveryType` is required** on every delivery expectation whose resource the intent should keep.
+> A held resource is only kept on re-evaluation when it is an instance of the expectation's delivery type; an
+> expectation without one leaks a newly allocated resource on each re-evaluation (open bd issue "Untyped delivery
+> expectation leaks one resource per re-evaluation").
 
 On Fulfilled evaluation, Flow 4 writes `pon:inUse true` and
 `pon:assignedToService <intent-uri>` to the matched ports.
@@ -687,8 +733,10 @@ referenced by `icm:DeliveryExpectation` and `icm:target`.
 | Class | What it does |
 |---|---|
 | `SchemaInit.loadResourceInventory()` | Loads `BBF_access/*.ttl` into TDB2 resource graph |
-| `TurtleEvaluator.computeSetConstructors()` | Resolves `set:resourcesOfType`, `set:resourcesWithPropertyObject` |
-| `TurtleEvaluator.evalDeliveryExpectation()` | Checks `icm:target` container has members of `icm:deliveryType` |
+| `TurtleEvaluator.computeSetConstructors()` | Java engine: resolves `set:resourcesOfType`, `set:resourcesWithPropertyObject` |
+| `TurtleEvaluator.evalDeliveryExpectation()` | Java engine: checks `icm:target` container has members of `icm:deliveryType` |
+| `JenaEvaluationEngine` + `rules/tio_a_sets.rules`, `tio_c_choose.rules`, `tio_b_delivery.rules` | Jena engine: the same set, choice and delivery logic as rules |
+| `ReportBuilder`, `ResultAdapter` | Turn either engine's result graph into the TR290 report and the handler result |
 | `HandlerStateWriter.writeResourceAllocation()` | Writes `pon:inUse true` + `pon:assignedToService` |
 | `HandlerStateWriter.resourcesAlreadyAllocated()` | ASK-query idempotency guard |
 | `EvaluationDispatcher.tryResourceAllocation()` | Flow 4: calls writeResourceAllocation on Fulfilled |
