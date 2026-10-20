@@ -300,6 +300,55 @@ INTENT_ID=$(echo "$HSI_INTENT" | python3 -c "import sys,json; print(json.load(sy
 echo "Intent ID: $INTENT_ID"
 ```
 
+The API returns `201 Created` with `lifecycleStatus: ACKNOWLEDGED`, and the first evaluation runs in the background.
+
+### See the intent in Fuseki
+
+The intent is stored as RDF, and with the `fuseki` profile you can look at it directly (see "The graphs this solution
+uses" above for what each graph is). Either open the Fuseki UI at <http://localhost:3030>, choose the dataset
+`/intents`, and paste a query below into the **query** tab (replace `$INTENT_ID` with your intent's id,
+`echo "$INTENT_ID"`), or run it from the shell with this helper, which the later steps use too (define it again if you
+are in a new shell):
+
+```bash
+sparql() { curl -s -G http://localhost:3030/intents/sparql -H 'Accept: text/csv' --data-urlencode "query=$1"; }
+```
+
+**The intent resource** (id, name, lifecycle status, the IRI of its expression; the expression text itself is a long
+string, so it is left out here):
+
+```bash
+sparql "SELECT ?p ?o WHERE { GRAPH <http://tmforum.org/api/v5/intents/$INTENT_ID> { ?s ?p ?o }
+        FILTER (STRLEN(STR(?o)) < 200) } ORDER BY ?p"
+```
+
+Expected: eleven rows, among them `lifecycleStatus` = `ACKNOWLEDGED`, your `name`, the `id` and `href`, the
+`expressionIri` (`bbf:HSIOnlyIntent`) and `hasExpression` (the intent's own `…/expression` node), and the two types
+`Intent` and `TurtleExpression`. After Step 3 (activate) `lifecycleStatus` is `ACTIVE` and a `statusChangeDate` row
+appears.
+
+**The expression, exactly as stored.** The API and the store keep the expression as an opaque string, and only the
+evaluation engine reads it:
+
+```bash
+sparql "PREFIX tmf: <http://tmforum.org/api/v5/>
+SELECT ?value WHERE { GRAPH <http://tmforum.org/api/v5/intents/$INTENT_ID> { ?e tmf:expressionValue ?value } }"
+```
+
+Expected: one row, the Turtle you posted (the contents of `seed_data/hsionlyintent_v0.5.ttl`). The `curl` output is CSV,
+which doubles every double quote inside the text (`""North region""`); the Fuseki UI shows it as it was posted.
+
+**Which graphs does this intent have?**
+
+```bash
+sparql "SELECT ?g (COUNT(*) AS ?triples) WHERE { GRAPH ?g { ?s ?p ?o }
+        FILTER (CONTAINS(STR(?g), \"$INTENT_ID\")) } GROUP BY ?g ORDER BY ?g"
+```
+
+Expected: three graphs already: the intent itself (12 triples, 13 once it is activated), `…/handlerState` (42) and
+`…/inferred` (29). The last two exist because the first evaluation ran as soon as the intent was created; Step 4
+shows its report. A fourth graph, `…/observations`, appears in Step 5 when the first observation is posted.
+
 ---
 
 ## Step 2 — Verify free UNIs exist in the inventory
@@ -471,30 +520,11 @@ older report, change `[0]` to a later index: the list is newest first.)
 
 ### See the intent and its reports in Fuseki
 
-The intent and every report are also stored as RDF, and with the `fuseki` profile you can look at them directly
-(see "The graphs this solution uses" above for what each graph is). Either open the Fuseki UI at
-<http://localhost:3030>, choose the dataset `/intents`, and paste a query below into the **query** tab (replace
-`$INTENT_ID` with your intent's id, `echo "$INTENT_ID"`), or run it from the shell with this helper:
-
-```bash
-sparql() { curl -s -G http://localhost:3030/intents/sparql -H 'Accept: text/csv' --data-urlencode "query=$1"; }
-```
-
-**Which graphs does this intent have?** The intent itself, the handler's state and the engine's inferred result.
-(A fourth, `…/observations`, appears in Step 5 when the first observation is posted.)
-
-```bash
-sparql "SELECT ?g (COUNT(*) AS ?triples) WHERE { GRAPH ?g { ?s ?p ?o }
-        FILTER (CONTAINS(STR(?g), \"$INTENT_ID\")) } GROUP BY ?g ORDER BY ?g"
-```
-
-**The intent resource** (id, name, lifecycle status, the IRI of its expression; the expression text itself is a
-long string, so it is left out here):
-
-```bash
-sparql "SELECT ?p ?o WHERE { GRAPH <http://tmforum.org/api/v5/intents/$INTENT_ID> { ?s ?p ?o }
-        FILTER (STRLEN(STR(?o)) < 200) } ORDER BY ?p"
-```
+The intent and every report are stored as RDF, and with the `fuseki` profile you can look at them directly (see "The
+graphs this solution uses" above for what each graph is). Paste a query below into the Fuseki UI query tab (replace
+`$INTENT_ID` with your intent's id), or run it from the shell with the `sparql` helper from Step 1 (define it again if
+you are in a new shell). The intent resource, its stored expression and its graphs are in Step 1; these queries look
+at its reports.
 
 **Its reports, newest first.** Each report is its own named graph, linked to the intent by `tmf:parentIntent`. Right
 after Steps 1 and 3 there are two (one when the intent was created, one when it was activated), both `Degraded`:
