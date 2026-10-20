@@ -528,9 +528,12 @@ prints the whole newest report as a tree, from the report's own fields down to t
 their conditions, with the `icm:result` of every element, the reason for each false one and the resources chosen:
 
 ```bash
-pip install rdflib    # once; only this snippet needs it
+# once: a small virtual environment holding rdflib, the only library this snippet needs.
+# (A plain `pip install rdflib` is refused on Debian/Ubuntu with "externally-managed-environment".)
+python3 -m venv ~/.venvs/intent-demo
+~/.venvs/intent-demo/bin/pip install rdflib
 
-curl -s "$BASE/intent/$INTENT_ID/intentReport" | python3 -c '
+curl -s "$BASE/intent/$INTENT_ID/intentReport" | ~/.venvs/intent-demo/bin/python3 -c '
 import sys, json
 from rdflib import Graph, Namespace, RDF, RDFS
 
