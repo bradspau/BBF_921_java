@@ -131,8 +131,10 @@ public class IntentService {
             }
         } else if (cleanPatch.containsKey("expression")) {
             notificationService.fire(NotificationService.INTENT_ATTRIBUTE_VALUE_CHANGE, updated);
-            // Re-evaluate when expression is patched and intent is active
-            if ("ACTIVE".equals(updated.get("lifecycleStatus"))) {
+            // Re-evaluate when the expression is patched and the intent is active or degraded
+            // (a DEGRADED intent that is now Fulfilled goes back to ACTIVE, Flow 2)
+            Object status = updated.get("lifecycleStatus");
+            if ("ACTIVE".equals(status) || "DEGRADED".equals(status)) {
                 evaluationDispatcher.scheduleEvaluation(id);
             }
         } else {

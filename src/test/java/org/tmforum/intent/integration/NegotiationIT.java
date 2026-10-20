@@ -276,6 +276,35 @@ class NegotiationIT {
         assertEquals("ACTIVE", intent.getBody().get("lifecycleStatus"));
     }
 
+    @Test
+    void degradedToActive_flowTwo_whenTheExpressionIsPatchedToSomethingFulfilled() {
+        String metricUri = "http://example.org/metrics/jitter";
+        String template = """
+                @prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+                @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+                @prefix quan: <http://tio.models.tmforum.org/tio/v3.6.0/QuantityOntology/> .
+
+                _:cond a quan:quansmaller ;
+                    rdf:first <http://example.org/metrics/jitter> ;
+                    rdf:rest [ rdf:first _:bound ] .
+                _:bound rdf:value "%s"^^xsd:decimal .
+                """;
+        String id = createActiveIntent(String.format(template, "10"));
+        rest.postForEntity(base + "/intent/" + id + "/observation",
+                Map.of("metricUri", metricUri, "value", 30.0), Map.class);
+
+        // 30 < 10 is false: Degraded evaluation. Mark the lifecycle DEGRADED by hand.
+        assertNotNull(pollForReport(id, "Degraded", 8));
+        patchIntent(id, Map.of("lifecycleStatus", "DEGRADED"));
+
+        // Relax the bound (30 < 100): patching the expression evaluates the DEGRADED intent again
+        patchIntent(id, Map.of("expression", Map.of(
+                "@type", "TurtleExpression", "expressionValue", String.format(template, "100"))));
+
+        // Flow 2: DEGRADED -> ACTIVE after the Fulfilled evaluation
+        pollUntilStatus(id, "ACTIVE", 10);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private String createActiveIntent(String turtle) {

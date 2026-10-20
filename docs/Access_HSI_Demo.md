@@ -7,6 +7,9 @@ TMF921 API under the `access` Spring profile. It verifies that:
 2. Set-constructor conditions (`set:resourcesOfType`, `set:resourcesWithPropertyObject`) resolve correctly
 3. A Fulfilled evaluation triggers Flow 4 resource write-back (`pon:inUse true`, `pon:assignedToService`)
 4. Idempotent re-evaluation does not double-allocate
+5. A ProbeIntent checks availability without allocating (Flow 1)
+6. A `DEGRADED` intent recovers when it is `Fulfilled` again (Flow 2)
+7. A too-tight bound is relaxed to what the network can deliver, only on the condition that failed (Flow 3)
 
 > For the simpler metric-only HSI demo (no resource inventory), see [`HSI_DEMO.md`](HSI_DEMO.md).
 
@@ -21,13 +24,15 @@ as the evaluation, and an error in one is logged and never affects the report.
 
 | Flow | Runs when | What it does | Shown in |
 |---|---|---|---|
-| **1 — ProbeIntent** | a `ProbeIntent` in `ACKNOWLEDGED` has just been evaluated | moves it to `ACTIVE` if `Fulfilled`, `TERMINATED` if `Degraded` (a capability probe: "could this be delivered?") | [`HSI_DEMO.md`](HSI_DEMO.md) Step 9 |
-| **2 — Judge / Preference** | the evaluation is `Fulfilled` and the intent's `lifecycleStatus` is `DEGRADED` | moves it back to `ACTIVE` | not shown in these demos |
-| **3 — Best / Propose** | the evaluation is `Degraded` and the intent is an `Intent` in `ACKNOWLEDGED` or `ACTIVE` | rewrites each failed quantity bound in the stored expression to the observed value (a best-effort counter-proposal) and fires `IntentAttributeValueChangeEvent` | [`HSI_DEMO.md`](HSI_DEMO.md) Step 10 |
+| **1 — ProbeIntent** | a `ProbeIntent` in `ACKNOWLEDGED` has just been evaluated | moves it to `ACTIVE` if `Fulfilled`, `TERMINATED` if `Degraded` (a capability probe: "could this be delivered?") | **this demo**, Step 9 (and [`HSI_DEMO.md`](HSI_DEMO.md) Step 9) |
+| **2 — Judge / Preference** | the evaluation is `Fulfilled` and the intent's `lifecycleStatus` is `DEGRADED` | moves it back to `ACTIVE` | **this demo**, Step 10 |
+| **3 — Best / Propose** | the evaluation is `Degraded` and the intent is an `Intent` in `ACKNOWLEDGED` or `ACTIVE` | rewrites each failed quantity bound in the stored expression to the observed value (a best-effort counter-proposal) and fires `IntentAttributeValueChangeEvent` | **this demo**, Step 11 (and [`HSI_DEMO.md`](HSI_DEMO.md) Step 10) |
 | **4 — Resource allocation** | the evaluation is `Fulfilled` and the intent is not a `ProbeIntent` | writes `pon:inUse true` and `pon:assignedToService <intent>` to the resources the intent chose (UNI port, C-tag) in the `resources` graph. It claims only what is still missing, so a repeat evaluation changes nothing. | **this demo**, Steps 5 to 7 |
 
 This demo is about **Flow 4**: it is why the intent, once `Fulfilled`, holds a port and a C-tag that no other
-intent can be given. Flows 1 and 3 need no resource inventory and are shown in the HSI demo.
+intent can be given (Steps 5 to 7). Steps 9 to 11 then show the other three flows in the access domain, and how
+they interact with Flow 4: a probe takes nothing, a recovered intent keeps what it holds, and a relaxed bound
+leads to an allocation.
 
 ---
 
@@ -930,6 +935,247 @@ curl -s "$BASE/intent/$MULTI_ID/intentReport" \
   | python3 -c "import sys,json; r=json.load(sys.stdin); print('Full state:', r[0]['intentHandlingState'])"
 # Expected: Fulfilled
 ```
+
+---
+
+## Step 9 — Flow 1: ProbeIntent (could this be delivered?)
+
+Step 5 showed Flow 4, which allocates resources for a `Fulfilled` intent. A **ProbeIntent** is the opposite: a
+capability probe that asks "could this be delivered?" without taking anything. Its first evaluation decides its fate
+(Flow 1): `Fulfilled` moves it to `ACTIVE`, `Degraded` moves it to `TERMINATED`. Flow 4 skips probes, so a probe
+never allocates a resource.
+
+Set up the helpers, and take a snapshot of the resources in use so you can show the probes change nothing:
+
+```bash
+in_use() {        # every resource in use, and which service holds it (Fuseki)
+  curl -s -G http://localhost:3030/intents/sparql -H 'Accept: text/csv' \
+    --data-urlencode 'query=PREFIX pon: <http://broadband-forum.org/ont/pon-resource#>
+SELECT ?resource ?svc WHERE { GRAPH <http://tmforum.org/api/v5/resources> {
+  ?resource pon:inUse true ; pon:assignedToService ?svc } } ORDER BY ?resource' \
+    | sed 's|http://broadband-forum.org/ont/pon-resource#||g'
+}
+
+lifecycle() {     # usage: lifecycle <intent id>
+  curl -s "$BASE/intent/$1" | python3 -c "import sys,json; print('lifecycleStatus:', json.load(sys.stdin)['lifecycleStatus'])"
+}
+
+create_probe() {  # usage: create_probe "<name>" "<turtle>"  -> prints the new intent's id
+  curl -s -X POST "$BASE/intent" -H "Content-Type: application/json" -d "{
+    \"@type\": \"ProbeIntent\",
+    \"name\": \"$1\",
+    \"expression\": {
+      \"@type\": \"TurtleExpression\",
+      \"expressionValue\": $(python3 -c "import sys, json; print(json.dumps(sys.argv[1]))" "$2")
+    }
+  }" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])"
+}
+
+probe_ttl() {     # usage: probe_ttl '<extra pool filter, or empty>'
+  cat <<EOF
+@prefix pon:  <http://broadband-forum.org/ont/pon-resource#> .
+@prefix bbf:  <http://broadband-forum.org/Intent#> .
+@prefix icm:  <http://tio.models.tmforum.org/tio/v3.6.0/IntentCommonModel/> .
+@prefix log:  <http://tio.models.tmforum.org/tio/v3.6.0/LogicalOperators/> .
+@prefix set:  <http://tio.models.tmforum.org/tio/v3.6.0/SetOperators/> .
+
+bbf:ProbeIntentRoot  a icm:Intent ;
+    log:allOf ( bbf:ProbeUNIExpectation ) .
+
+# Can a UNI port be delivered? A probe only checks availability: nothing is allocated.
+bbf:ProbeUNIExpectation  a icm:DeliveryExpectation ;
+    icm:target       bbf:ProbeSelectedUNI ;
+    icm:deliveryType pon:UNIPort ;
+    icm:chooseFrom   bbf:ProbeUNIPool .
+
+bbf:ProbeSelectedUNI  a icm:Target .
+
+bbf:ProbeUNIPool  a icm:Target ;
+    set:intersection ( [ set:resourcesOfType ( pon:UNIPort ) ]
+                       [ set:resourcesWithPropertyObject ( pon:inUse             false ) ]
+                       [ set:resourcesWithPropertyObject ( pon:operationalState  pon:Up ) ]
+                       [ set:resourcesWithPropertyObject ( pon:provisioningState pon:Ready ) ]
+                       $1 ) .
+EOF
+}
+
+IN_USE_BEFORE=$(in_use)
+```
+
+This block only defines helpers and takes the snapshot, so it prints nothing.
+
+### 9a — A probe that passes
+
+A free, `Up`, `Ready` UNI port exists, so the probe is `Fulfilled`:
+
+```bash
+PROBE_PASS_ID=$(create_probe "UNI availability probe" "$(probe_ttl '')")
+sleep 2
+lifecycle "$PROBE_PASS_ID"
+```
+
+Expected: **`ACTIVE`**
+
+### 9b — A probe that fails
+
+The same probe, but asking for a port on an ONT the inventory does not have (`pon:ONT-999`). No port qualifies, so
+the probe is `Degraded`:
+
+```bash
+PROBE_FAIL_ID=$(create_probe "UNI availability probe, unknown ONT" \
+  "$(probe_ttl '[ set:resourcesWithPropertyObject ( pon:belongsToONT pon:ONT-999 ) ]')")
+sleep 2
+lifecycle "$PROBE_FAIL_ID"
+curl -s "$BASE/intent/$PROBE_FAIL_ID/intentReport" \
+  | python3 -c "import sys,json; r=json.load(sys.stdin); print(r[0]['intentHandlingState'], '|', r[0]['intentHandlingReason'])"
+```
+
+Expected: **`TERMINATED`**, and the report says why:
+`Degraded | Conditions not met: DeliveryExpectation: no candidate of type UNIPort in chooseFrom pool`.
+
+### 9c — The probes took nothing
+
+```bash
+[ "$(in_use)" = "$IN_USE_BEFORE" ] && echo "unchanged: the probes allocated nothing" || echo "CHANGED"
+```
+
+Expected: **`unchanged: the probes allocated nothing`**. Compare with Step 5: a `Fulfilled` intent that is not a probe
+does allocate.
+
+---
+
+## Step 10 — Flow 2: a `DEGRADED` intent recovers
+
+Flow 2 brings an intent back: when an evaluation is `Fulfilled` and the intent's `lifecycleStatus` is `DEGRADED`, the
+handler moves it to `ACTIVE`. This reuses the intent from Step 1, which is `ACTIVE` and holds its UNI port and
+C-tag.
+
+> **`DEGRADED` is set by hand here.** The handler does not yet move an intent to `DEGRADED` by itself when an
+> evaluation comes out `Degraded` (tracked as `bbf921j-9pf`), so this step marks it with a PATCH, as an operator or
+> another system would.
+
+```bash
+curl -s -X PATCH "$BASE/intent/$INTENT_ID" -H "Content-Type: application/json" \
+  -d '{"lifecycleStatus": "DEGRADED"}' > /dev/null
+
+sleep 1
+lifecycle "$INTENT_ID"
+report
+```
+
+Expected: `lifecycleStatus: DEGRADED`. The PATCH does not evaluate anything, so the newest report is the one from before,
+still `Fulfilled`.
+
+A `DEGRADED` intent is evaluated again when an observation arrives (or its expression is patched). Post one, a
+latency still inside its bound:
+
+```bash
+post_metric LatencyMetric 9.0 ms
+sleep 3
+lifecycle "$INTENT_ID"
+report
+```
+
+Expected: **`lifecycleStatus: ACTIVE`** — the evaluation is `Fulfilled` (one more report than before), so Flow 2 moved
+the intent back to `ACTIVE`. Its resources did not change: it still holds the same UNI port and C-tag, because Flow 4
+claims only what is missing.
+
+```bash
+in_use | grep -c "$INTENT_ID"
+```
+
+Expected: `2`
+
+---
+
+## Step 11 — Flow 3: Best/Propose
+
+Flow 3 handles an intent whose bounds are too tight for what the network can do. When an `ACKNOWLEDGED` or `ACTIVE`
+`Intent` evaluates as `Degraded`, the handler rewrites each **failed** quantity bound in the stored expression to the
+value actually observed, and fires `IntentAttributeValueChangeEvent`. It changes only the condition that failed: a
+condition that passed keeps its bound, even if another condition of the same kind failed. The new bounds are used by
+the *next* evaluation; the rewrite does not re-evaluate by itself.
+
+An intent that is not `ACTIVE` is not evaluated when an observation arrives. So post the observations first, then
+activate the intent: activation is what triggers the evaluation.
+
+### 11a — Create an intent with a downstream bound that is too tight
+
+The Step 1 expression with the downstream bound raised from 100 to 500 Mbps (this network can deliver 150):
+
+```bash
+TIGHT=$(python3 -c "import sys, json; print(json.dumps(open('seed_data/hsionlyintent_v0.5.ttl').read().replace('\"100\"^^xsd:decimal', '\"500\"^^xsd:decimal')))")
+
+TIGHT_INTENT=$(curl -s -X POST "$BASE/intent" -H "Content-Type: application/json" -d "{
+  \"@type\": \"Intent\",
+  \"name\": \"Access Flow 3 demo, tight bound\",
+  \"expression\": {\"@type\": \"TurtleExpression\", \"iri\": \"http://broadband-forum.org/Intent#HSIOnlyIntent\", \"expressionValue\": $TIGHT}
+}")
+TIGHT_ID=$(echo "$TIGHT_INTENT" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+echo "Tight intent: $TIGHT_ID"
+
+bounds() {        # the downstream and upstream bounds in the stored expression
+  curl -s "$BASE/intent/$TIGHT_ID" | python3 -c "
+import sys, json, re
+t = json.load(sys.stdin)['expression']['expressionValue']
+for name in ('Downstream', 'Upstream'):
+    m = re.search(r'HSI_%sBandwidthCondition\s+(?:a|rdf:type)\s+icm:Condition.*?rdf:value\s+(\"?[0-9.]+)' % name, t, re.S)
+    print(f'{name} bound:', m.group(1).strip(chr(34)), 'Mbps')
+"
+}
+bounds
+```
+
+Expected: `Downstream bound: 500 Mbps` and `Upstream bound: 20 Mbps`.
+
+### 11b — Observe, then activate
+
+Post the same good observations as Step 4, to the new intent, while it is still `ACKNOWLEDGED`, then activate it:
+
+```bash
+tight_metric() {  # usage: tight_metric DownstreamBandwidthMetric 150.0 Mbps
+  curl -s -o /dev/null -X POST "$BASE/intent/$TIGHT_ID/observation" -H "Content-Type: application/json" \
+    -d "{\"metricUri\": \"${BBF}$1\", \"value\": $2, \"unit\": \"$3\"}"
+}
+tight_metric DownstreamBandwidthMetric 150.0 Mbps
+tight_metric UpstreamBandwidthMetric   30.0  Mbps
+tight_metric LatencyMetric             8.0   ms
+tight_metric JitterMetric              1.2   ms
+tight_metric PacketLossMetric          0.02  percent
+
+curl -s -X PATCH "$BASE/intent/$TIGHT_ID" -H "Content-Type: application/json" \
+  -d '{"lifecycleStatus": "ACTIVE"}' > /dev/null
+sleep 3
+
+curl -s "$BASE/intent/$TIGHT_ID/intentReport" \
+  | python3 -c "import sys,json; r=json.load(sys.stdin); print(len(r), 'reports | latest:', r[0]['intentHandlingState'], '|', r[0]['intentHandlingReason'])"
+```
+
+Expected: **`Degraded`**, because only the downstream condition failed: `150.0 Mbps >= 500 Mbps: FAIL`. Nothing was
+allocated: Flow 4 runs only for a `Fulfilled` intent.
+
+### 11c — Inspect the proposal
+
+```bash
+bounds
+```
+
+Expected: **`Downstream bound: 150.0 Mbps`** (was 500) and **`Upstream bound: 20 Mbps`** (unchanged: that condition
+passed). The stored expression now asks for what the network can deliver. The rewritten Turtle is re-serialised, so
+it looks different from what you posted, but it means the same.
+
+### 11d — The new bound takes effect, and Flow 4 follows
+
+```bash
+tight_metric DownstreamBandwidthMetric 150.0 Mbps
+sleep 4
+curl -s "$BASE/intent/$TIGHT_ID/intentReport" \
+  | python3 -c "import sys,json; r=json.load(sys.stdin); print(len(r), 'reports | latest:', r[0]['intentHandlingState'])"
+in_use | grep -c "$TIGHT_ID"
+```
+
+Expected: **`Fulfilled`** — the next evaluation uses the 150 Mbps bound — and `2`: now that the intent is `Fulfilled`,
+Flow 4 has allocated a UNI port and a C-tag to it. Flow 3 relaxed the bound, and Flow 4 then acted on the result.
 
 ---
 
