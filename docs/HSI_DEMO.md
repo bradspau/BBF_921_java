@@ -44,7 +44,7 @@ as the evaluation, and an error in one is logged and never affects the report.
 | Flow | Runs when | What it does | Shown in |
 |---|---|---|---|
 | **1 — ProbeIntent** | a `ProbeIntent` in `ACKNOWLEDGED` has just been evaluated | moves it to `ACTIVE` if `Fulfilled`, `TERMINATED` if `Degraded` (a capability probe: "could this be delivered?") | **this demo**, Step 9 |
-| **2 — Judge / Preference** | the evaluation is `Fulfilled` and the intent's `lifecycleStatus` is `DEGRADED` | moves it back to `ACTIVE` | [`Access_HSI_Demo.md`](Access_HSI_Demo.md) Step 10 |
+| **2 — Judge / Preference** | the evaluation is `Fulfilled` and the intent's `lifecycleStatus` is `DEGRADED` | moves it back to `ACTIVE` | [`Access_HSI_Demo.md`](Access_HSI_Demo.md) Step 11 |
 | **3 — Best / Propose** | the evaluation is `Degraded` and the intent is an `Intent` in `ACKNOWLEDGED` or `ACTIVE` | rewrites each failed quantity bound in the stored expression to the observed value (a best-effort counter-proposal) and fires `IntentAttributeValueChangeEvent` | **this demo**, Step 10 |
 | **4 — Resource allocation** | the evaluation is `Fulfilled` and the intent is not a `ProbeIntent` | writes `pon:inUse true` and `pon:assignedToService <intent>` to the resources the intent chose in the `resources` graph | [`Access_HSI_Demo.md`](Access_HSI_Demo.md) (this demo has no resource inventory, so it does nothing here) |
 

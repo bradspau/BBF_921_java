@@ -368,8 +368,8 @@ PDF references: TR290 = Intent Common Model v3.8.0 (TR290A v3.6.0 has matching s
   way). Its handler result does not depend on an intent: the state is the conjunction of its evaluation roots
   (`log:allOf/anyOf/noneOf/oneOf` subjects that are no operator's member, and `log:match*` subjects), or, without any
   root, of every condition its flat scan finds (quantity subjects by function, delivery and property expectations);
-  without either, Degraded "No quantity conditions found in expression". The demo expressions (docs/HSI_DEMO.md step
-  1, docs/Access_HSI_Demo.md step 8 `bbf:Top`, the seed_data/seed.sh probe intents `_:c quan:atLeast ...`) have no
+  without either, Degraded "No quantity conditions found in expression". The demo expressions (docs/HSI_DEMO.md steps
+  9 and 10, docs/Access_HSI_Demo.md step 9 `bbf:Top`, the seed_data/seed.sh probe intents `_:c quan:atLeast ...`) have no
   intent at all; a blank-node intent (`[] a icm:Intent`) and an instance of a subclass of `icm:Intent` give no contract
   either.
 - Decision (policy, Review Focus 1): no deviation. The rule engine always evaluates; its contract is empty unless an

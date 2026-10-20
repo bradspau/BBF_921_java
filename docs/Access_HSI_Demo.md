@@ -24,13 +24,13 @@ as the evaluation, and an error in one is logged and never affects the report.
 
 | Flow | Runs when | What it does | Shown in |
 |---|---|---|---|
-| **1 — ProbeIntent** | a `ProbeIntent` in `ACKNOWLEDGED` has just been evaluated | moves it to `ACTIVE` if `Fulfilled`, `TERMINATED` if `Degraded` (a capability probe: "could this be delivered?") | **this demo**, Step 9 (and [`HSI_DEMO.md`](HSI_DEMO.md) Step 9) |
-| **2 — Judge / Preference** | the evaluation is `Fulfilled` and the intent's `lifecycleStatus` is `DEGRADED` | moves it back to `ACTIVE` | **this demo**, Step 10 |
-| **3 — Best / Propose** | the evaluation is `Degraded` and the intent is an `Intent` in `ACKNOWLEDGED` or `ACTIVE` | rewrites each failed quantity bound in the stored expression to the observed value (a best-effort counter-proposal) and fires `IntentAttributeValueChangeEvent` | **this demo**, Step 11 (and [`HSI_DEMO.md`](HSI_DEMO.md) Step 10) |
-| **4 — Resource allocation** | the evaluation is `Fulfilled` and the intent is not a `ProbeIntent` | writes `pon:inUse true` and `pon:assignedToService <intent>` to the resources the intent chose (UNI port, C-tag) in the `resources` graph. It claims only what is still missing, so a repeat evaluation changes nothing. | **this demo**, Steps 5 to 7 |
+| **1 — ProbeIntent** | a `ProbeIntent` in `ACKNOWLEDGED` has just been evaluated | moves it to `ACTIVE` if `Fulfilled`, `TERMINATED` if `Degraded` (a capability probe: "could this be delivered?") | **this demo**, Step 10 (and [`HSI_DEMO.md`](HSI_DEMO.md) Step 9) |
+| **2 — Judge / Preference** | the evaluation is `Fulfilled` and the intent's `lifecycleStatus` is `DEGRADED` | moves it back to `ACTIVE` | **this demo**, Step 11 |
+| **3 — Best / Propose** | the evaluation is `Degraded` and the intent is an `Intent` in `ACKNOWLEDGED` or `ACTIVE` | rewrites each failed quantity bound in the stored expression to the observed value (a best-effort counter-proposal) and fires `IntentAttributeValueChangeEvent` | **this demo**, Step 12 (and [`HSI_DEMO.md`](HSI_DEMO.md) Step 10) |
+| **4 — Resource allocation** | the evaluation is `Fulfilled` and the intent is not a `ProbeIntent` | writes `pon:inUse true` and `pon:assignedToService <intent>` to the resources the intent chose (UNI port, C-tag) in the `resources` graph. It claims only what is still missing, so a repeat evaluation changes nothing. | **this demo**, Steps 6 to 8 |
 
 This demo is about **Flow 4**: it is why the intent, once `Fulfilled`, holds a port and a C-tag that no other
-intent can be given (Steps 5 to 7). Steps 9 to 11 then show the other three flows in the access domain, and how
+intent can be given (Steps 6 to 8). Steps 10 to 12 then show the other three flows in the access domain, and how
 they interact with Flow 4: a probe takes nothing, a recovered intent keeps what it holds, and a relaxed bound
 leads to an allocation.
 
@@ -48,9 +48,9 @@ this demo (the steps query them through Fuseki).
 | `intents/{id}` | intent | The TMF921 `Intent` resource, including its expression (the Turtle, kept as an opaque string) and its lifecycle status. | `POST` / `PATCH /intent` | The source of truth for what the intent *asks for*. The evaluator reads the expression from here. |
 | `intents/{id}/observations` | intent | The metric observations posted for that intent (metric, value, unit, time). | `POST /intent/{id}/observation` | Observations are the live measurements the conditions are checked against. They are kept apart from the expression and merged with it at evaluation time. |
 | `intents/{id}/inferred` | intent | **The evaluation engine's answer**: an explicit `rdf:value true`/`false` on the intent, each expectation and each condition, the resources chosen for each delivery expectation (as `rdfs:member` of the target), an `icm:reason` on anything false because of an error or a missing observation, and a `met:observed` link to the observation each metric condition used. | The evaluation engine (java, jena or compare), after every evaluation | Both engines write **the same graph in the same vocabulary**, so everything downstream does not care which engine ran, and the two can be compared triple for triple (that is what `compare` mode does). It is replaced on every evaluation, so it always shows the latest answer. It does **not** contain `icm:result`: that belongs in the report (below). Browse it in Fuseki to see exactly what the engine decided. |
-| `intents/{id}/handlerState` | intent | The handler's working memory: the intent's handling state (`Fulfilled`/`Degraded`), when it was last evaluated, and one entry per condition (passed or not, observed value, bound, or the resource selected). | The handler, after every evaluation | The handler's record of the latest evaluation, one graph per intent, replaced on every evaluation. It is what the handler (and the notifications built on it) work from; it is not what keeps a choice stable. A resource chosen earlier is *held* because Flow 4 marked it in the `resources` graph (`pon:assignedToService`), and it is kept on re-evaluation instead of being chosen again (Step 6). |
+| `intents/{id}/handlerState` | intent | The handler's working memory: the intent's handling state (`Fulfilled`/`Degraded`), when it was last evaluated, and one entry per condition (passed or not, observed value, bound, or the resource selected). | The handler, after every evaluation | The handler's record of the latest evaluation, one graph per intent, replaced on every evaluation. It is what the handler (and the notifications built on it) work from; it is not what keeps a choice stable. A resource chosen earlier is *held* because Flow 4 marked it in the `resources` graph (`pon:assignedToService`), and it is kept on re-evaluation instead of being chosen again (Step 7). |
 | `reports/{id}` | intent report | One `IntentReport` and, for an intent with an `icm:Intent`, the TR290 report beneath it: an `icm:result` for the intent, every expectation and every condition, what each was derived from (`icm:resultFrom`), why it is false (`icm:reason`), and the resources chosen (`icm:targetReport`). It points back to its intent with `tmf:parentIntent`. | The handler, after every evaluation | The report is what the API returns (`GET …/intentReport`) and what `icm:result` is queried from. A **new** report graph is created on every evaluation, so reports accumulate (newest first) and you can see the intent change over time. The handler builds it from the expression plus the `inferred` result, copying each `icm:result` from the matching `rdf:value`; it never decides truth itself. |
-| `resources` | shared | The PON resource inventory: ONTs, UNI ports, S-VLAN and C-tag allocations and their state (`pon:inUse`, `pon:operationalState`, …). | Loaded at startup from `BBF_access/`; updated by Flow 4 | The access domain's real-world state. The set constructors in the intent (`set:resourcesOfType`, `set:resourcesWithPropertyObject`, …) are resolved against it, and a Fulfilled evaluation writes `pon:inUse true` and `pon:assignedToService` back to it (Flow 4, Step 5). |
+| `resources` | shared | The PON resource inventory: ONTs, UNI ports, S-VLAN and C-tag allocations and their state (`pon:inUse`, `pon:operationalState`, …). | Loaded at startup from `BBF_access/`; updated by Flow 4 | The access domain's real-world state. The set constructors in the intent (`set:resourcesOfType`, `set:resourcesWithPropertyObject`, …) are resolved against it, and a Fulfilled evaluation writes `pon:inUse true` and `pon:assignedToService` back to it (Flow 4, Step 6). |
 
 Other shared graphs exist but are not used in this demo: `hubs` (notification subscriptions), `audit/{id}`
 (immutable state-change records) and `ontology`.
@@ -71,7 +71,7 @@ Which graph to look at:
 
 | To see… | Look in |
 |---|---|
-| Whether each condition is met (`icm:result`), and why not | `reports/{id}`, via the `results` helper in Step 4 |
+| Whether each condition is met (`icm:result`), and why not | `reports/{id}`, via the `results` helper in Step 5 |
 | What the engine itself decided, in raw form (and to check java, jena and compare agree) | `intents/{id}/inferred` |
 | The handler's record of the latest state and per-condition results | `intents/{id}/handlerState` |
 | Which ports and tags are in use, and which intent holds them (`pon:assignedToService`) | `resources` |
@@ -109,7 +109,7 @@ this graph at evaluation time when resolving `set:resourcesOfType` and
 
 ### Start the access-profile server, with Fuseki
 
-Steps 1b, 4 and 5 query the graph store through Fuseki (SPARQL + web UI on port 3030), so start the server with
+Steps 2, 5 and 6 query the graph store through Fuseki (SPARQL + web UI on port 3030), so start the server with
 both the `access` and `fuseki` profiles.
 
 **Docker (recommended):**
@@ -302,7 +302,7 @@ echo "Intent ID: $INTENT_ID"
 
 ---
 
-## Step 1b — Verify free UNIs exist in the inventory
+## Step 2 — Verify free UNIs exist in the inventory
 
 Before activating the intent, confirm the resource graph contains at least one UNI port the evaluator
 can select; the intent can only reach `Fulfilled`, and allocate resources, if it does.
@@ -351,7 +351,7 @@ delivery expectation in the intent names the class of resource it must deliver (
 
 ---
 
-## Step 2 — Activate
+## Step 3 — Activate
 
 ```bash
 curl -s -X PATCH "$BASE/intent/$INTENT_ID" \
@@ -361,7 +361,7 @@ curl -s -X PATCH "$BASE/intent/$INTENT_ID" \
 
 ---
 
-## Step 3 — Check the initial intent report
+## Step 4 — Check the initial intent report
 
 Before posting observations, read the intent's reports to see its starting state. A new report is created every
 time the intent is evaluated, and the list is newest first:
@@ -390,7 +390,7 @@ curl -s "$BASE/intent/$INTENT_ID/intentReport" \
 ```
 
 It is long (one entry per intent element), so the steps below query it in Fuseki instead (the `results` helper in
-Step 4), which shows one row per element.
+Step 5), which shows one row per element.
 
 **Pretty-print the full report.** The raw Turtle above is hard to read: long URIs and no obvious order. This
 prints the whole newest report as a tree, from the report's own fields down to the intent, its expectations and
@@ -481,7 +481,7 @@ sparql() { curl -s -G http://localhost:3030/intents/sparql -H 'Accept: text/csv'
 ```
 
 **Which graphs does this intent have?** The intent itself, the handler's state and the engine's inferred result.
-(A fourth, `…/observations`, appears in Step 4 when the first observation is posted.)
+(A fourth, `…/observations`, appears in Step 5 when the first observation is posted.)
 
 ```bash
 sparql "SELECT ?g (COUNT(*) AS ?triples) WHERE { GRAPH ?g { ?s ?p ?o }
@@ -497,7 +497,7 @@ sparql "SELECT ?p ?o WHERE { GRAPH <http://tmforum.org/api/v5/intents/$INTENT_ID
 ```
 
 **Its reports, newest first.** Each report is its own named graph, linked to the intent by `tmf:parentIntent`. Right
-after Steps 1 and 2 there are two (one when the intent was created, one when it was activated), both `Degraded`:
+after Steps 1 and 3 there are two (one when the intent was created, one when it was activated), both `Degraded`:
 
 ```bash
 sparql "PREFIX tmf: <http://tmforum.org/api/v5/>
@@ -523,7 +523,7 @@ SELECT ?report WHERE { GRAPH ?report { ?report tmf:parentIntent <http://tmforum.
 sparql "SELECT ?s ?p ?o WHERE { GRAPH <$REPORT> { ?s ?p ?o } } ORDER BY ?s ?p ?o"
 ```
 
-One row per element, with its result and reason, is easier to read: that is the `results` helper in Step 4.
+One row per element, with its result and reason, is easier to read: that is the `results` helper in Step 5.
 The engine's own answer, before it was turned into a report, is in the `…/inferred` graph:
 
 ```bash
@@ -538,7 +538,7 @@ There is no `icm:result` here: that is in the report graph.
 
 ---
 
-## Step 4 — Show the intent is not Fulfilled until every condition is met
+## Step 5 — Show the intent is not Fulfilled until every condition is met
 
 The intent has **eight** conditions, all of which must pass:
 
@@ -620,7 +620,7 @@ if they are empty.
 > Observed values are left out because it is an `icm:ReportingExpectation`; an `icm:ObservationReportingExpectation`
 > would add them (`met:observed`).
 
-### 4a — First half: bandwidth metrics only
+### 5a — First half: bandwidth metrics only
 
 ```bash
 post_metric DownstreamBandwidthMetric 150.0 Mbps    # >= 100 Mbps: pass
@@ -651,9 +651,9 @@ Order matters in the intent: the S-tag is selected before the C-tag, because the
 chosen S-VLAN.
 
 Nothing is allocated yet. The UNI, S-tag and C-tag are only *selected*; the handler writes the allocation back
-when the intent becomes Fulfilled (see Step 5).
+when the intent becomes Fulfilled (see Step 6).
 
-### 4b — Second half: latency, jitter and packet loss
+### 5b — Second half: latency, jitter and packet loss
 
 ```bash
 post_metric LatencyMetric      8.0  ms         # < 25 ms: pass
@@ -680,7 +680,7 @@ Expected: **`Fulfilled`** with reason `None`, and all 11 rows `result = true`, u
 
 ---
 
-## Step 5 — Verify Fulfilled + resource allocation
+## Step 6 — Verify Fulfilled + resource allocation
 
 ```bash
 # Check latest report
@@ -745,7 +745,7 @@ Expected: two rows for your intent ID:
 | 2 | `pon:CTAGAllocation` | e.g. `200` / `100` | The inner VLAN (C-tag) taken from the S-VLAN chosen for this service (S-tag 100); the `N`/`S` in `CTAG-N-001` / `CTAG-S-001` is the North/South S-VLAN pool, not "S-tag" |
 
 The S-tag the handler selected (`SVLAN-N-HSI`) is not in this result. An S-VLAN carries many services, so it is
-*selected* (visible in the per-condition results from Step 4) but not claimed by one service the way a port and
+*selected* (visible in the per-condition results from Step 5) but not claimed by one service the way a port and
 a C-tag are.
 
 Both rows must carry your intent ID. Resources that belonged to the initial inventory (`UNI-002-1`,
@@ -767,7 +767,7 @@ On a clean store after one Fulfilled intent, expect **4 rows**:
 
 | Resource | `svc` | Where it comes from |
 |---|---|---|
-| `UNI-002-1` | `existing-service-placeholder` | Already in use in the seed data (see Step 1b); not part of your intent |
+| `UNI-002-1` | `existing-service-placeholder` | Already in use in the seed data (see Step 2); not part of your intent |
 | `CTAG-N-002` | `existing-service-placeholder` | Already in use in the seed data (C-tag 201 in the North pool); not part of your intent |
 | a free `UNI-…` (e.g. `UNI-001-1`) | your intent ID | Allocated by this demo |
 | a free `CTAG-…` (e.g. `CTAG-N-001`) | your intent ID | Allocated by this demo |
@@ -810,7 +810,7 @@ ASK {
 
 ---
 
-## Step 6 — Verify idempotency
+## Step 7 — Verify idempotency
 
 Post the same observation a second time. This triggers another evaluation of an intent that already holds its
 resources:
@@ -825,7 +825,7 @@ results
 ```
 
 Expected: still **`Fulfilled`**, all rows `true`, and the three `DeliveryExpectationReport` rows still show the
-**same** `target` resources as in Step 4 (`UNI-001-1`, `SVLAN-N-HSI`, `CTAG-N-001`), even though the UNI and
+**same** `target` resources as in Step 5 (`UNI-001-1`, `SVLAN-N-HSI`, `CTAG-N-001`), even though the UNI and
 C-tag are now in use and no longer in the free pool.
 
 Each observation creates a new IntentReport. Allocation does not repeat, and the intent does not choose again:
@@ -843,13 +843,13 @@ irrespective of service provider (the lowest-named HSI S-VLAN); provider-aware s
 
 ---
 
-## Step 7 — Exhaust the inventory
+## Step 8 — Exhaust the inventory
 
 To trigger `Degraded` via exhausted resources, patch a test expression that requires
 a type with no free instances. (The PON inventory in `pon_resource_data.ttl` may be
-fully allocated after Step 5.)
+fully allocated after Step 6.)
 
-### 7a — Create a competing intent
+### 8a — Create a competing intent
 
 ```bash
 COMP=$(curl -s -X POST "$BASE/intent" \
@@ -870,14 +870,14 @@ curl -s -X PATCH "$BASE/intent/$COMP_ID" \
   -d '{"lifecycleStatus": "ACTIVE"}' > /dev/null
 ```
 
-### 7b — Post the same metric observations
+### 8b — Post the same metric observations
 
 ```bash
 COMP_OBS="$BASE/intent/$COMP_ID/observation"
 
 curl -s -X POST "$COMP_OBS" -H "Content-Type: application/json" \
   -d "{\"metricUri\": \"${BBF}DownstreamBandwidthMetric\", \"value\": 150.0, \"unit\": \"Mbps\"}"
-# ... (repeat for all 5 metrics, with their units as in Step 4)
+# ... (repeat for all 5 metrics, with their units as in Step 5)
 
 sleep 2
 
@@ -890,7 +890,7 @@ empty set → the `DeliveryExpectation` fails → `Degraded`.
 
 ---
 
-## Step 8 — Multiple concurrent intents (allOf composition)
+## Step 9 — Multiple concurrent intents (allOf composition)
 
 You can compose a multi-condition `log:allOf` expression spanning both structural
 and metric conditions. The evaluator handles all condition types in a single pass.
@@ -938,9 +938,9 @@ curl -s "$BASE/intent/$MULTI_ID/intentReport" \
 
 ---
 
-## Step 9 — Flow 1: ProbeIntent (could this be delivered?)
+## Step 10 — Flow 1: ProbeIntent (could this be delivered?)
 
-Step 5 showed Flow 4, which allocates resources for a `Fulfilled` intent. A **ProbeIntent** is the opposite: a
+Step 6 showed Flow 4, which allocates resources for a `Fulfilled` intent. A **ProbeIntent** is the opposite: a
 capability probe that asks "could this be delivered?" without taking anything. Its first evaluation decides its fate
 (Flow 1): `Fulfilled` moves it to `ACTIVE`, `Degraded` moves it to `TERMINATED`. Flow 4 skips probes, so a probe
 never allocates a resource.
@@ -1004,7 +1004,7 @@ IN_USE_BEFORE=$(in_use)
 
 This block only defines helpers and takes the snapshot, so it prints nothing.
 
-### 9a — A probe that passes
+### 10a — A probe that passes
 
 A free, `Up`, `Ready` UNI port exists, so the probe is `Fulfilled`:
 
@@ -1016,7 +1016,7 @@ lifecycle "$PROBE_PASS_ID"
 
 Expected: **`ACTIVE`**
 
-### 9b — A probe that fails
+### 10b — A probe that fails
 
 The same probe, but asking for a port on an ONT the inventory does not have (`pon:ONT-999`). No port qualifies, so
 the probe is `Degraded`:
@@ -1033,18 +1033,18 @@ curl -s "$BASE/intent/$PROBE_FAIL_ID/intentReport" \
 Expected: **`TERMINATED`**, and the report says why:
 `Degraded | Conditions not met: DeliveryExpectation: no candidate of type UNIPort in chooseFrom pool`.
 
-### 9c — The probes took nothing
+### 10c — The probes took nothing
 
 ```bash
 [ "$(in_use)" = "$IN_USE_BEFORE" ] && echo "unchanged: the probes allocated nothing" || echo "CHANGED"
 ```
 
-Expected: **`unchanged: the probes allocated nothing`**. Compare with Step 5: a `Fulfilled` intent that is not a probe
+Expected: **`unchanged: the probes allocated nothing`**. Compare with Step 6: a `Fulfilled` intent that is not a probe
 does allocate.
 
 ---
 
-## Step 10 — Flow 2: a `DEGRADED` intent recovers
+## Step 11 — Flow 2: a `DEGRADED` intent recovers
 
 Flow 2 brings an intent back: when an evaluation is `Fulfilled` and the intent's `lifecycleStatus` is `DEGRADED`, the
 handler moves it to `ACTIVE`. This reuses the intent from Step 1, which is `ACTIVE` and holds its UNI port and
@@ -1088,7 +1088,7 @@ Expected: `2`
 
 ---
 
-## Step 11 — Flow 3: Best/Propose
+## Step 12 — Flow 3: Best/Propose
 
 Flow 3 handles an intent whose bounds are too tight for what the network can do. When an `ACKNOWLEDGED` or `ACTIVE`
 `Intent` evaluates as `Degraded`, the handler rewrites each **failed** quantity bound in the stored expression to the
@@ -1099,7 +1099,7 @@ the *next* evaluation; the rewrite does not re-evaluate by itself.
 An intent that is not `ACTIVE` is not evaluated when an observation arrives. So post the observations first, then
 activate the intent: activation is what triggers the evaluation.
 
-### 11a — Create an intent with a downstream bound that is too tight
+### 12a — Create an intent with a downstream bound that is too tight
 
 The Step 1 expression with the downstream bound raised from 100 to 500 Mbps (this network can deliver 150):
 
@@ -1128,9 +1128,9 @@ bounds
 
 Expected: `Downstream bound: 500 Mbps` and `Upstream bound: 20 Mbps`.
 
-### 11b — Observe, then activate
+### 12b — Observe, then activate
 
-Post the same good observations as Step 4, to the new intent, while it is still `ACKNOWLEDGED`, then activate it:
+Post the same good observations as Step 5, to the new intent, while it is still `ACKNOWLEDGED`, then activate it:
 
 ```bash
 tight_metric() {  # usage: tight_metric DownstreamBandwidthMetric 150.0 Mbps
@@ -1154,7 +1154,7 @@ curl -s "$BASE/intent/$TIGHT_ID/intentReport" \
 Expected: **`Degraded`**, because only the downstream condition failed: `150.0 Mbps >= 500 Mbps: FAIL`. Nothing was
 allocated: Flow 4 runs only for a `Fulfilled` intent.
 
-### 11c — Inspect the proposal
+### 12c — Inspect the proposal
 
 ```bash
 bounds
@@ -1164,7 +1164,7 @@ Expected: **`Downstream bound: 150.0 Mbps`** (was 500) and **`Upstream bound: 20
 passed). The stored expression now asks for what the network can deliver. The rewritten Turtle is re-serialised, so
 it looks different from what you posted, but it means the same.
 
-### 11d — The new bound takes effect, and Flow 4 follows
+### 12d — The new bound takes effect, and Flow 4 follows
 
 ```bash
 tight_metric DownstreamBandwidthMetric 150.0 Mbps
