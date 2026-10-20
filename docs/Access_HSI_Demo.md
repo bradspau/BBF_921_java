@@ -355,8 +355,8 @@ shows its report. A fourth graph, `…/observations`, appears in Step 5 when the
 
 Before activating the intent, confirm the resource graph contains at least one UNI port the evaluator
 can select; the intent can only reach `Fulfilled`, and allocate resources, if it does.
-`set:SelectedUNIs` in the intent expression picks UNI ports that are not in use (`pon:inUse false`),
-operationally `Up` and provisioning `Ready`.
+The UNI pool in the intent expression (`bbf:AvailableUNIInterfaces`) picks UNI ports that are not in use
+(`pon:inUse false`), operationally `Up` and provisioning `Ready`.
 
 This reads the TDB2 resource graph directly, which is not exposed through the TMF921 API, so it needs
 the Fuseki profile (`access,fuseki`, see above). Run it in the Fuseki UI query tab at
@@ -392,11 +392,39 @@ If the query returns no rows, every UNI is allocated or unavailable and the inte
 The intent also selects an S-tag and a C-tag. The HSI service is carried on an 802.1ad dual-tagged VLAN: the
 S-tag identifies the S-VLAN and the C-tag is an inner tag that is unique only *within* that S-VLAN. So the S-tag
 is chosen first, from S-VLANs whose `pon:serviceType` is `pon:HSIService`, and the C-tag must then come from the
-S-VLAN that was chosen, never from another one. A clean store has three S-VLANs: `SVLAN-N-HSI` and
-`SVLAN-S-HSI` (both HSI, S-tag 100) and `SVLAN-N-VoIP` (VoIP, so never used for HSI). There are 6 free C-tags,
-all on the two HSI S-VLANs. Each
-delivery expectation in the intent names the class of resource it must deliver (`icm:deliveryType`):
-`pon:UNIPort`, `pon:SVLANAllocation` and `pon:CTAGAllocation`. `pon:HSIService` is the delivery description.
+S-VLAN that was chosen, never from another one. Each delivery expectation in the intent names the class of resource
+it must deliver (`icm:deliveryType`): `pon:UNIPort`, `pon:SVLANAllocation` and `pon:CTAGAllocation`.
+`pon:HSIService` is the delivery description. The same Fuseki helper (`sparql`, defined in Step 1) shows both.
+
+**S-VLANs.** A clean store has three:
+
+```bash
+sparql 'PREFIX pon: <http://broadband-forum.org/ont/pon-resource#>
+SELECT ?svlan ?sTag ?serviceType WHERE {
+  GRAPH <http://tmforum.org/api/v5/resources> {
+    ?svlan a pon:SVLANAllocation ; pon:sTag ?sTag ; pon:serviceType ?serviceType .
+  }
+} ORDER BY ?svlan'
+```
+
+Expected: `SVLAN-N-HSI` and `SVLAN-S-HSI` (both HSI, S-tag 100) and `SVLAN-N-VoIP` (S-tag 200, VoIP, so never used for
+HSI).
+
+**Free C-tags.** There are six, all on the two HSI S-VLANs:
+
+```bash
+sparql 'PREFIX pon: <http://broadband-forum.org/ont/pon-resource#>
+SELECT ?ctag ?cTag ?svlan WHERE {
+  GRAPH <http://tmforum.org/api/v5/resources> {
+    ?ctag a pon:CTAGAllocation ; pon:inUse false ; pon:cTag ?cTag ; pon:fromSVLAN ?svlan .
+  }
+} ORDER BY ?svlan ?ctag'
+```
+
+Expected: six rows. On `SVLAN-N-HSI`: `CTAG-N-001` (200), `CTAG-N-003` (202), `CTAG-N-004` (203). On `SVLAN-S-HSI`:
+`CTAG-S-001` (200), `CTAG-S-002` (201), `CTAG-S-003` (202). The C-tag value 200 appears on both S-VLANs: it is the
+inner tag, and only the pair (S-VLAN, C-tag) is unique, which is why the C-tag must come from the chosen S-VLAN. The
+seventh C-tag, `CTAG-N-002` (201), is already in use in the seed data, so it is not listed.
 
 ---
 
@@ -407,6 +435,17 @@ curl -s -X PATCH "$BASE/intent/$INTENT_ID" \
   -H "Content-Type: application/json" \
   -d '{"lifecycleStatus": "ACTIVE"}' | python3 -m json.tool
 ```
+
+Expected: `"lifecycleStatus": "ACTIVE"`. Activation triggers another evaluation. The stored intent changed too:
+
+```bash
+sparql "PREFIX tmf: <http://tmforum.org/api/v5/>
+SELECT ?status ?changed WHERE {
+  GRAPH <http://tmforum.org/api/v5/intents/$INTENT_ID> { ?s tmf:lifecycleStatus ?status ; tmf:statusChangeDate ?changed }
+}"
+```
+
+Expected: one row, `ACTIVE` and the time of the change (the intent graph gained a `statusChangeDate` triple, 13 in all).
 
 ---
 
