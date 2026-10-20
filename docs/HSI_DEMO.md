@@ -145,6 +145,41 @@ Expected:
 
 > All steps below use port **8000**. Set once: `BASE=http://localhost:8000/tmf-api/intentManagement/v5`
 
+### Stop the server
+
+**Docker:**
+
+```bash
+docker compose --profile standalone down      # stop and remove the container; the data is kept
+docker compose --profile standalone stop      # or only stop it; `start` resumes the same container
+```
+
+`--profile standalone` is required: the services are profile-gated, so without it Compose finds nothing to stop.
+
+**Dev server:** press `Ctrl-C` in the terminal running `mvn spring-boot:run`.
+
+### Optionally clear the data
+
+There is no separate volume for observations. Observations are stored in the same TDB2 store as everything else
+(intents, observations, reports, and the handler state and inferred results), and that store lives in one named
+Docker volume, `tdb2-standalone`. Compose prefixes the volume name with the project name, so here it is
+`bbf_921_java_tdb2-standalone`; `docker volume ls` shows it. Clearing the observations therefore means clearing the
+store:
+
+```bash
+docker compose --profile standalone down -v            # stop, remove the container AND this profile's data volume
+# or, once the container is stopped or removed:
+docker volume rm bbf_921_java_tdb2-standalone
+```
+
+This removes every intent, observation and report. The next start begins with an empty store.
+
+Dev server: stop it first, then `make clean` (removes `tdb2-data/`, `tdb2-access/` and `tdb2-aggregation/`).
+
+Observations cannot be deleted one by one: the observation endpoint only accepts `POST`, and Fuseki is read-only. If
+you only want a fresh set of observations, you do not have to wipe anything: observations belong to one intent, so
+creating a new intent (Step 1) starts with none.
+
 ---
 
 ## Choosing the evaluation engine
