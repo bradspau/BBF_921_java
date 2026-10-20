@@ -34,6 +34,24 @@ with the observation graph, then evaluates the TIO expression to produce `Fulfil
 
 ---
 
+## The handler's four post-evaluation flows
+
+After every evaluation the handler creates the intent report, fires `IntentReportCreateEvent`, and then runs up
+to four follow-up actions. They are called **Flow 1 to Flow 4** in the code (`EvaluationDispatcher`), in the
+docs and in these demos; the names are this project's, not TM Forum terms. They run in the same background task
+as the evaluation, and an error in one is logged and never affects the report.
+
+| Flow | Runs when | What it does | Shown in |
+|---|---|---|---|
+| **1 — ProbeIntent** | a `ProbeIntent` in `ACKNOWLEDGED` has just been evaluated | moves it to `ACTIVE` if `Fulfilled`, `TERMINATED` if `Degraded` (a capability probe: "could this be delivered?") | **this demo**, Step 9 |
+| **2 — Judge / Preference** | the evaluation is `Fulfilled` and the intent's `lifecycleStatus` is `DEGRADED` | moves it back to `ACTIVE` | not shown in these demos |
+| **3 — Best / Propose** | the evaluation is `Degraded` and the intent is an `Intent` in `ACKNOWLEDGED` or `ACTIVE` | rewrites each failed quantity bound in the stored expression to the observed value (a best-effort counter-proposal) and fires `IntentAttributeValueChangeEvent` | **this demo**, Step 10 |
+| **4 — Resource allocation** | the evaluation is `Fulfilled` and the intent is not a `ProbeIntent` | writes `pon:inUse true` and `pon:assignedToService <intent>` to the resources the intent chose in the `resources` graph | [`Access_HSI_Demo.md`](Access_HSI_Demo.md) (this demo has no resource inventory, so it does nothing here) |
+
+This demo shows **Flow 1** (Step 9) and **Flow 3** (Step 10).
+
+---
+
 ## The graphs this solution uses, and why
 
 Everything is stored as RDF in one TDB2 dataset, split into **named graphs**. Most graphs are **per intent**: each
