@@ -565,6 +565,13 @@ SELECT ?kind ?element ?result ?target ?reason WHERE {
 
 This block only defines the variables and the three helpers, so it prints nothing.
 
+> **Where `icm:result` lives.** The `results` query has no `GRAPH` clause, so it runs against Fuseki's default graph,
+> which here is the union of all the named graphs. The `icm:result` triples it finds are in the **report graphs**
+> (`reports/{id}`, one per evaluation), not in the intent graph (`intents/{id}`) or the inferred graph
+> (`intents/{id}/inferred`), which hold none. `tmf:parentIntent`, stored in each report graph, ties a report to your
+> intent; `icm:reportNumber` picks the newest report; and `icm:resultFrom*` walks from its `IntentReport` down to every
+> expectation and condition, each of which carries an `icm:result`.
+
 > **How the intent is reported on (TR290 §4).** Each evaluation creates a TR290 report with one report per intent
 > element: an `icm:IntentReport`, an expectation report per expectation (`icm:DeliveryExpectationReport`,
 > `icm:PropertyExpectationReport`, ...) and an `icm:ConditionReport` per condition. Each says which element it
