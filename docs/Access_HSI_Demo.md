@@ -159,28 +159,59 @@ Expected:
 
 ## Choosing the evaluation engine
 
-The evaluation engine is selected by `intent.evaluator`: `java` (default), `jena` (the Jena rule engine) or
-`compare` (runs both, returns Java's answer, logs differences). The demo behaves the same on all three; the
-choice only changes who computes the result. Spring maps the property to the environment variable
-`INTENT_EVALUATOR`.
+There are **two evaluation engines** and one **mode** that uses both. The choice is `intent.evaluator`:
 
-**Docker** (`docker-compose.yml` passes `INTENT_EVALUATOR` through, default `java`):
+| `intent.evaluator` | What runs | Use it for |
+|---|---|---|
+| `java` (default) | The Java evaluator only (`TurtleEvaluator`). | Normal use. This is what you get when nothing is set. |
+| `jena` | The Jena rule engine only: the same intent is evaluated by rules (`src/main/resources/rules/`). Needs the licensed ontology files in `ontology/`. | Running on the rule engine. |
+| `compare` | **Both engines on every evaluation.** The handler uses Java's answer, so reports, state, flows and notifications are exactly as in `java` mode; the Jena answer is only compared with it. Any difference is logged as a `compare:` warning, and no warning means the two engines agree. | Checking that the rule engine agrees with Java on a scenario, such as this demo. Not for production: it does the work of both engines (about 15-45 ms extra per evaluation). |
+
+The demo behaves the same on all three; the choice only changes who computes the result. The setting is read when
+the application starts, so switch engine by restarting it. Spring maps the property to the environment variable
+`INTENT_EVALUATOR`, and `docker-compose.yml` passes it through (default `java`).
+
+**Java engine only (the default).** Set nothing, or set `java` explicitly:
 
 ```bash
+# Docker
+APP_PROFILES=access,fuseki docker compose --profile access up --build
+INTENT_EVALUATOR=java APP_PROFILES=access,fuseki docker compose --profile access up --build    # same, explicit
+
+# Dev server
+mvn spring-boot:run -Dspring-boot.run.profiles=access,fuseki
+mvn spring-boot:run -Dspring-boot.run.profiles=access,fuseki -Dspring-boot.run.arguments=--intent.evaluator=java    # same, explicit
+```
+
+**Jena engine only, or compare mode:**
+
+```bash
+# Docker
 INTENT_EVALUATOR=jena    APP_PROFILES=access,fuseki docker compose --profile access up --build
 INTENT_EVALUATOR=compare APP_PROFILES=access,fuseki docker compose --profile access up --build
+
+# Dev server
+mvn spring-boot:run -Dspring-boot.run.profiles=access,fuseki -Dspring-boot.run.arguments=--intent.evaluator=jena
+INTENT_EVALUATOR=compare mvn spring-boot:run -Dspring-boot.run.profiles=access,fuseki
 ```
 
-**Dev server:**
+**Check which engine is running** (field `evaluator`):
 
 ```bash
-mvn spring-boot:run -Dspring-boot.run.profiles=access,fuseki -Dspring-boot.run.arguments=--intent.evaluator=jena
-# or: INTENT_EVALUATOR=compare mvn spring-boot:run -Dspring-boot.run.profiles=access,fuseki
+curl http://localhost:8001/health
+# {"status":"UP","graph":"UP","evaluator":{"engine":"java","ready":true}}
 ```
 
-The Jena engine needs the licensed ontology files in `ontology/` (it reports not ready without them; check
-`curl http://localhost:8001/health`, field `evaluator`). In `compare` mode, look for `compare:` warnings in the
-log; none means the engines agree. After an evaluation, the engine's result graph is in the named graph
+The Jena engine needs the licensed ontology files in `ontology/`; without them `jena` reports `"ready": false` (HTTP
+503) and evaluations are skipped, and `compare` skips the Jena side (logging one `compare: secondary engine 'jena'
+skipped, not ready` info line per evaluation) and returns Java's answer. In `compare` mode, a difference between
+the engines is logged as a `WARN` line starting `compare:`; none means the engines agree on everything you ran:
+
+```bash
+docker compose --profile access logs | grep -E 'WARN.*compare:'
+```
+
+After an evaluation, the engine's result graph is in the named graph
 `http://tmforum.org/api/v5/intents/{id}/inferred`, which you can browse in Fuseki.
 
 ---
