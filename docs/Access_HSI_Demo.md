@@ -504,6 +504,12 @@ for r in json.load(sys.stdin):
 The initial report shows **`Degraded`** because no metric observations exist yet, and the reason lists the five
 metrics with no observation.
 
+You will see **two** reports, and they look the same. They are two evaluations of the same intent: one ran when you
+created it (Step 1) and one when you activated it (Step 3). Nothing changed between them (same expression, still no
+observations), so the state and the reason are identical; only the `creationDate` differs, by however long you took
+between the two steps. A new report is written every time the intent is evaluated, even when the result is unchanged,
+so the count goes up with each step below (Step 5 shows it as `reports so far`).
+
 Each report also carries its detail in `expression`. That is a `TurtleExpression` whose `expressionValue` is the
 TM Forum TR290 intent report: a report for the intent, for each expectation and for each condition, with the
 truth value of each (`icm:result`), what it was derived from (`icm:resultFrom`), why it is false
