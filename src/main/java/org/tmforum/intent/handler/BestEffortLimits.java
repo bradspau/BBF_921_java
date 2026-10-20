@@ -19,6 +19,11 @@ import java.util.*;
  * For each failed two-argument quantity condition, substitutes the bound with the
  * observed value (actual capability). Mirrors Python limits.py:apply_best_effort_bounds().
  *
+ * <p>Each failed condition is matched to its own bound node by function type and metric, so a passing
+ * condition of the same function type (another {@code atLeast} on a different metric) keeps its bound.
+ * A failed condition without a metric is only rewritten when its function type identifies exactly one
+ * condition in the expression; with several candidates it cannot be told apart and is left alone.
+ *
  * Two-step fallback per failed condition:
  *  1. Use conditions[].observed (actual measured value)
  *  2. Fall back to HANDLER_LIMITS if configured
@@ -38,23 +43,23 @@ public class BestEffortLimits {
             return Optional.empty();
         }
 
-        // Build best-effort value per condition type from evaluator output
-        Map<String, BigDecimal> bestByType = new LinkedHashMap<>();
+        // One substitution per failed condition: (function type, metric) -> observed value
+        record Failed(String typeName, String metric, BigDecimal best) {}
+        List<Failed> failed = new ArrayList<>();
         for (Map<String, Object> c : conditions) {
             if (Boolean.TRUE.equals(c.get("passed"))) continue;
             String typeName = (String) c.get("type");
             if (!isQuantityType(typeName)) continue;
+            Object metric = c.get("metric");
             Object observed = c.get("observed");
-            if (observed != null) {
-                try {
-                    bestByType.putIfAbsent(typeName, new BigDecimal(observed.toString()));
-                    continue;
-                } catch (NumberFormatException ignored) {}
-            }
-            // No observed value — could fall back to handler limits here if configured
+            if (observed == null) continue; // no value to propose
+            try {
+                failed.add(new Failed(typeName, metric == null ? null : metric.toString(),
+                        new BigDecimal(observed.toString())));
+            } catch (NumberFormatException ignored) {}
         }
 
-        if (bestByType.isEmpty()) return Optional.empty();
+        if (failed.isEmpty()) return Optional.empty();
 
         Model g = ModelFactory.createDefaultModel();
         try {
@@ -64,31 +69,37 @@ public class BestEffortLimits {
         }
 
         boolean changed = false;
-        for (Map.Entry<String, BigDecimal> entry : bestByType.entrySet()) {
-            String typeName = entry.getKey();
-            BigDecimal bestVal = entry.getValue();
-            Resource typeRes = ResourceFactory.createResource(
-                    TioNamespaces.QUAN + typeName);
-            Property typeProp = ResourceFactory.createProperty(
-                    TioNamespaces.QUAN + typeName);
+        for (Failed f : failed) {
+            Resource typeRes = ResourceFactory.createResource(TioNamespaces.QUAN + f.typeName());
+            Property typeProp = ResourceFactory.createProperty(TioNamespaces.QUAN + f.typeName());
 
-            // Type-form: ?node a quan:atLeast ; rdf:first ?val ; rdf:rest [ rdf:first ?bound ]
+            // The list node of each condition of this function type:
+            //   type-form:      ?node a quan:atLeast ; rdf:first ?metric ; rdf:rest [ rdf:first ?bound ]   (the node is the list)
+            //   predicate-form: ?cond quan:atLeast ( ?metric ?bound )                                      (the object is the list)
+            List<Resource> lists = new ArrayList<>();
             for (ResIterator it = g.listSubjectsWithProperty(RDF.type, typeRes); it.hasNext(); ) {
-                Resource node = it.next();
-                if (substituteTypedFormBound(g, node, bestVal)) changed = true;
+                lists.add(it.next());
             }
-
-            // Predicate-form: ?cond quan:atLeast (?list)
             for (StmtIterator it = g.listStatements(null, typeProp, (RDFNode) null); it.hasNext(); ) {
                 Statement stmt = it.next();
-                if (!stmt.getObject().isResource()) continue;
-                Resource listNode = stmt.getObject().asResource();
-                Statement restStmt = g.getProperty(listNode, RDF.rest);
+                if (stmt.getObject().isResource()) lists.add(stmt.getObject().asResource());
+            }
+
+            List<Resource> targets = new ArrayList<>();
+            if (f.metric() != null) {
+                Resource metric = ResourceFactory.createResource(f.metric());
+                for (Resource l : lists) if (firstIs(g, l, metric)) targets.add(l);
+            } else if (lists.size() == 1) {
+                targets.addAll(lists);   // the type alone identifies the condition
+            }
+
+            for (Resource list : targets) {
+                Statement restStmt = g.getProperty(list, RDF.rest);
                 if (restStmt == null || !restStmt.getObject().isResource()) continue;
                 Resource rest = restStmt.getObject().asResource();
                 Statement bndStmt = g.getProperty(rest, RDF.first);
                 if (bndStmt == null || !bndStmt.getObject().isResource()) continue;
-                if (updateBoundValue(g, bndStmt.getObject().asResource(), bestVal)) changed = true;
+                if (updateBoundValue(g, bndStmt.getObject().asResource(), f.best())) changed = true;
             }
         }
 
@@ -99,13 +110,10 @@ public class BestEffortLimits {
         return Optional.of(sw.toString());
     }
 
-    private boolean substituteTypedFormBound(Model g, Resource node, BigDecimal bestVal) {
-        Statement restStmt = g.getProperty(node, RDF.rest);
-        if (restStmt == null || !restStmt.getObject().isResource()) return false;
-        Resource rest = restStmt.getObject().asResource();
-        Statement bndStmt = g.getProperty(rest, RDF.first);
-        if (bndStmt == null || !bndStmt.getObject().isResource()) return false;
-        return updateBoundValue(g, bndStmt.getObject().asResource(), bestVal);
+    /** True when the list node's {@code rdf:first} is the given metric resource. */
+    private boolean firstIs(Model g, Resource listNode, Resource metric) {
+        Statement first = g.getProperty(listNode, RDF.first);
+        return first != null && first.getObject().isResource() && first.getObject().asResource().equals(metric);
     }
 
     private boolean updateBoundValue(Model g, Resource bndNode, BigDecimal newVal) {

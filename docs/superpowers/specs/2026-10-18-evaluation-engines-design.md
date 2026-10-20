@@ -5,8 +5,12 @@ Date: 2026-10-18.
 
 Open follow-ups: bd "Jena delivery engine: shared-target choice edge cases"; bd "Untyped delivery expectation leaks one
 resource per re-evaluation"; bd "Java evaluator crashes with ArithmeticException on extreme-exponent numerals"; bd
-`bbf921j-dp2` (NegotiationIT Flow 2, unrelated); performance: the Jena engine takes about 15-45 ms per evaluation
-against about 2 ms for Java, which is acceptable for the demos and has not been tuned.
+`bbf921j-9pf` (the handler does not set `DEGRADED` automatically); performance: the Jena engine takes about 15-45 ms
+per evaluation against about 2 ms for Java, which is acceptable for the demos and has not been tuned.
+
+Resolved since: `bbf921j-dp2` (NegotiationIT Flow 2): observations, and expression patches, now evaluate a
+`DEGRADED` intent too, so Flow 2 can bring it back to `ACTIVE`. Flow 3 (`BestEffortLimits`) now rewrites only the
+bound of each condition that failed, matched by function type and metric, instead of every condition of that type.
 
 ## 1. Intent and why
 

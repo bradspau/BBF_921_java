@@ -77,8 +77,10 @@ public class ObservationController {
 
         String obsUri = observationStore.writeObservation(intentId, metricUri, value, unit, obtainedAt);
 
-        // Re-evaluate immediately when intent is ACTIVE
-        if ("ACTIVE".equals(intent.get("lifecycleStatus"))) {
+        // Re-evaluate immediately when the intent is ACTIVE, or DEGRADED: a DEGRADED intent must be evaluated
+        // again to be brought back to ACTIVE when it is Fulfilled (Flow 2).
+        Object status = intent.get("lifecycleStatus");
+        if ("ACTIVE".equals(status) || "DEGRADED".equals(status)) {
             evaluationDispatcher.scheduleEvaluation(intentId);
         }
 
